@@ -1,0 +1,19 @@
+export type PublicUmrahPackage = {
+  id: string;
+  name: string;
+  packageType: string;
+  durationDays: number | null;
+  departureCity: string;
+  arrivalCity: string;
+  departureDate: string;
+  returnDate: string;
+  flightInfo: string;
+  makkahNights: number | null;
+  madinahNights: number | null;
+  roomType: string;
+  includesTransport: boolean | null;
+  includesVisa: boolean | null;
+  includesMeals: boolean | null;
+  includesZiyarat: boolean | null;
+  description: string;
+};

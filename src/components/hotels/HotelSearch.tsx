@@ -1,0 +1,213 @@
+"use client";
+
+import { useId, useMemo, useState, type FormEvent } from "react";
+import { PlaceholderArt } from "@/components/home/PlaceholderArt";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import {
+  demoHotels,
+  formatNightlyPrice,
+  hotelTypes,
+  priceBands,
+  starOptions,
+} from "@/config/hotels";
+
+const fieldClass =
+  "mt-1.5 w-full rounded-xl border border-line bg-background px-3 py-2.5 text-sm focus:border-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue";
+
+export function HotelSearch() {
+  const baseId = useId();
+  const [priceLabel, setPriceLabel] = useState<string>(priceBands[0].label);
+  const [stars, setStars] = useState<string>(starOptions[0]);
+  const [hotelType, setHotelType] = useState<string>(hotelTypes[0]);
+  const [note, setNote] = useState("");
+
+  const band = priceBands.find((item) => item.label === priceLabel) ?? priceBands[0];
+
+  const visible = useMemo(
+    () =>
+      demoHotels.filter((hotel) => {
+        const priceMatch = hotel.price >= band.min && hotel.price <= band.max;
+        const starMatch = stars === "Any rating" || `${hotel.stars} stars` === stars;
+        const typeMatch = hotelType === "All types" || hotel.type === hotelType;
+        return priceMatch && starMatch && typeMatch;
+      }),
+    [band.max, band.min, hotelType, stars],
+  );
+
+  function onSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setNote("Demo search only. These cards are samples and no rooms are checked.");
+  }
+
+  return (
+    <div className="space-y-8">
+      <form
+        className="rounded-3xl border border-line bg-surface p-4 shadow-xl sm:p-6"
+        autoComplete="off"
+        onSubmit={onSearch}
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field id={`${baseId}-city`} label="Destination / City" placeholder="Makkah" />
+          <Field id={`${baseId}-checkin`} label="Check-in" type="date" />
+          <Field id={`${baseId}-checkout`} label="Check-out" type="date" />
+          <SelectField
+            id={`${baseId}-rooms`}
+            label="Rooms"
+            options={["1", "2", "3", "4"]}
+          />
+          <SelectField
+            id={`${baseId}-guests`}
+            label="Guests"
+            options={["1", "2", "3", "4", "5", "6"]}
+          />
+        </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-muted">
+            Visual demo only. Nothing is searched or booked.
+          </p>
+          <Button type="submit">Search</Button>
+        </div>
+        {note ? (
+          <p role="status" className="mt-3 text-sm font-medium text-zayan-blue">
+            {note}
+          </p>
+        ) : null}
+      </form>
+
+      <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <h2 className="text-base font-semibold text-zayan-blue">Filters</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <SelectField
+            id={`${baseId}-price`}
+            label="Price"
+            value={priceLabel}
+            options={priceBands.map((item) => item.label)}
+            onChange={setPriceLabel}
+          />
+          <SelectField
+            id={`${baseId}-stars`}
+            label="Star Rating"
+            value={stars}
+            options={starOptions}
+            onChange={setStars}
+          />
+          <SelectField
+            id={`${baseId}-type`}
+            label="Hotel Type"
+            value={hotelType}
+            options={hotelTypes}
+            onChange={setHotelType}
+          />
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-zayan-blue">
+          Demo hotels
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Six sample stays. Nightly prices are not live rates.
+        </p>
+        {visible.length === 0 ? (
+          <p className="mt-6 rounded-2xl border border-line bg-surface px-6 py-8 text-sm text-muted">
+            No demo hotels match these filters.
+          </p>
+        ) : (
+          <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((hotel) => (
+                <li key={hotel.id}>
+                  <Card
+                    title={hotel.name}
+                    description={hotel.description}
+                    media={<PlaceholderArt caption={hotel.name} tone={hotel.tone} />}
+                  >
+                    <dl className="grid gap-3 text-sm">
+                      <Detail label="City" value={hotel.city} />
+                      <Detail label="Star rating" value={`${hotel.stars} stars`} />
+                      <Detail label="Amenities" value={hotel.amenities} />
+                      <Detail label="Demo nightly price" value={formatNightlyPrice(hotel.price)} />
+                    </dl>
+                    <div className="mt-4 flex flex-col gap-3">
+                      <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
+                        {hotel.type} · Demo stay
+                      </p>
+                      <Button href={`/hotels/${hotel.id}`}>View hotel</Button>
+                    </div>
+                  </Card>
+                </li>
+              ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  id,
+  label,
+  type = "text",
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  type?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label htmlFor={id} className="block text-sm font-medium">
+      {label}
+      <input
+        id={id}
+        name={id}
+        type={type}
+        placeholder={placeholder}
+        className={fieldClass}
+      />
+    </label>
+  );
+}
+
+function SelectField({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  options: readonly string[];
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  const controlled = onChange !== undefined;
+
+  return (
+    <label htmlFor={id} className="block text-sm font-medium">
+      {label}
+      <select
+        id={id}
+        name={id}
+        className={fieldClass}
+        value={controlled ? value : undefined}
+        defaultValue={controlled ? undefined : options[0]}
+        onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+      >
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-muted">{label}</dt>
+      <dd className="mt-0.5 font-semibold text-foreground">{value}</dd>
+    </div>
+  );
+}
