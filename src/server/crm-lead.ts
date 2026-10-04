@@ -1,3 +1,4 @@
+import "server-only";
 import type { InquiryInput } from "@/lib/inquiries";
 
 type CrmConfig = {

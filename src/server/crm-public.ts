@@ -1,3 +1,5 @@
+import "server-only";
+
 /** Shared public CRM origin. Staff credentials are not read. */
 export function crmPublicOrigin() {
   const url = process.env.CRM_API_URL?.trim() ?? "";

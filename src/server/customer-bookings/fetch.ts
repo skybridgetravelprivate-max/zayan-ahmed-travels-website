@@ -1,3 +1,4 @@
+import "server-only";
 import { crmPublicOrigin } from "@/server/crm-public";
 import {
   sanitizeCustomerBookingsResponse,
