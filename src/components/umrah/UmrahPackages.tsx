@@ -66,7 +66,9 @@ export function UmrahPackages({ packages = [] }: { packages?: readonly PublicUmr
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNote("Demo search only. These packages are samples and nothing is reserved.");
+    setNote(
+      "Demo search only. Departure city and travel month are not used to filter live or demo packages. These packages are samples and nothing is reserved.",
+    );
   }
 
   return (
