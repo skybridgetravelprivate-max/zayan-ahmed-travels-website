@@ -24,7 +24,7 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null }) 
             title="My bookings"
             description={
               signedIn
-                ? "Open your booking list. No trips are stored yet."
+                ? "Open your booking list."
                 : "Sign in to view bookings. Sample trips are not shown as your bookings."
             }
           >
