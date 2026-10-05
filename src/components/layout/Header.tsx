@@ -54,14 +54,14 @@ export function Header() {
             <span className="block truncate text-sm font-bold text-zayan-blue sm:text-base">
               {site.shortName}
             </span>
-            <span className="hidden text-xs text-muted sm:block">
+            <span className="block truncate text-[11px] text-muted sm:text-xs">
               {site.tagline}
             </span>
           </span>
         </Link>
 
-        <nav aria-label="Primary" className="hidden min-[1480px]:block">
-          <ul className="flex flex-nowrap items-center justify-end gap-1">
+        <nav aria-label="Primary" className="hidden xl:block">
+          <ul className="flex flex-wrap items-center justify-end gap-0.5 xl:gap-1">
             {navItems.map((item) => {
               const current = isCurrent(pathname, item.href);
 
@@ -87,7 +87,7 @@ export function Header() {
         <button
           ref={menuButtonRef}
           type="button"
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border border-line text-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue min-[1480px]:hidden`}
+          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue xl:hidden`}
           aria-expanded={open}
           aria-controls="mobile-navigation"
           aria-label={open ? "Close menu" : "Open menu"}
@@ -121,7 +121,7 @@ export function Header() {
         <nav
           id="mobile-navigation"
           aria-label="Menu"
-          className="border-t border-line bg-surface min-[1480px]:hidden"
+          className="max-h-[min(70vh,32rem)] overflow-y-auto border-t border-line bg-surface xl:hidden"
         >
           <ul className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-3 sm:px-6">
             {navItems.map((item) => {

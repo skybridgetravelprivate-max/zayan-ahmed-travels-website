@@ -1,5 +1,5 @@
 export const site = {
-  legalName: "Zayan Ahmed Travels (Pvt.) Ltd.",
+  legalName: "Zayan Ahmed Travels Private Limited",
   shortName: "Zayan Ahmed Travels",
   tagline: "Your Journey, Our Responsibility",
   /** Public origin for canonical URLs, robots.txt, and the sitemap. */
