@@ -1,7 +1,16 @@
 import type { MetadataRoute } from "next";
-import { siteOrigin } from "@/config/site";
+import { allowSearchIndexing, siteOrigin } from "@/config/site";
 
 export default function robots(): MetadataRoute.Robots {
+  if (!allowSearchIndexing()) {
+    return {
+      rules: {
+        userAgent: "*",
+        disallow: "/",
+      },
+    };
+  }
+
   return {
     rules: {
       userAgent: "*",

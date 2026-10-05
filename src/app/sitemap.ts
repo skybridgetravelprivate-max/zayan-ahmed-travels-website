@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { navItems, policyLinks, siteOrigin } from "@/config/site";
+import { allowSearchIndexing, navItems, policyLinks, siteOrigin } from "@/config/site";
 import { demoFlights } from "@/config/flights";
 import { demoHotels } from "@/config/hotels";
 import { demoOffers } from "@/config/offers";
@@ -27,6 +27,8 @@ const detailPaths = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  if (!allowSearchIndexing()) return [];
+
   const origin = siteOrigin();
   const paths = [...new Set([...staticPaths, ...detailPaths])];
 

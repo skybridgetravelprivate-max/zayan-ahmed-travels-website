@@ -2,16 +2,22 @@ export const site = {
   legalName: "Zayan Ahmed Travels Private Limited",
   shortName: "Zayan Ahmed Travels",
   tagline: "Your Journey, Our Responsibility",
-  /** Public origin for canonical URLs, robots.txt, and the sitemap. */
+  /** Production public origin. Override at runtime with SITE_URL for staging. */
   url: "https://www.zayanahmedtravels.com",
 } as const;
 
 /** Shared description already used for the public site title and social tags. */
 export const siteDescription = `${site.tagline}. ${site.legalName} online travel portal.`;
 
+/** Public site URL: SITE_URL when set, otherwise production `site.url`. */
+function publicSiteUrl() {
+  const configured = process.env.SITE_URL?.trim() ?? "";
+  return configured || site.url;
+}
+
 /** Origin used by metadata. Credentials and non-http schemes are rejected. */
 export function siteOrigin() {
-  const url = new URL(site.url);
+  const url = new URL(publicSiteUrl());
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Site URL must use http or https.");
   }
@@ -19,6 +25,11 @@ export function siteOrigin() {
     throw new Error("Site URL must not include credentials.");
   }
   return new URL(url.origin);
+}
+
+/** Indexing is allowed only when the public origin matches production. */
+export function allowSearchIndexing() {
+  return siteOrigin().origin === new URL(site.url).origin;
 }
 
 /** Public contact details. Leave blank until an approved address or email is added. */
