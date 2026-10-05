@@ -8,7 +8,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Insurance",
-  description: `Demo travel cover labels for ${site.legalName} Not an insurance policy.`,
+  description: `Demo travel cover labels for ${site.legalName}. Not an insurance policy.`,
 };
 
 export default function InsurancePage() {

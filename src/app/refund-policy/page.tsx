@@ -4,7 +4,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Refund policy",
-  description: `Placeholder refund notes for ${site.legalName} No fees or refund rules are published.`,
+  description: `Placeholder refund notes for ${site.legalName}. No fees or refund rules are published.`,
 };
 
 const services = ["Flights", "Hotels", "Tours", "Umrah", "Visas"] as const;
@@ -14,7 +14,7 @@ export default function RefundPolicyPage() {
     <>
       <InfoHero
         title="Refund policy"
-        intro={`This page reserves a place for refund terms from ${site.legalName} It does not state a refund amount, fee, or deadline.`}
+        intro={`This page reserves a place for refund terms from ${site.legalName}. It does not state a refund amount, fee, or deadline.`}
       />
       <InfoSection title="General refund terms">
         <Placeholder>

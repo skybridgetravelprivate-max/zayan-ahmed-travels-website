@@ -5,7 +5,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Payment methods",
-  description: `Placeholder payment notes for ${site.legalName} No accounts or gateways are published.`,
+  description: `Placeholder payment notes for ${site.legalName}. No accounts or gateways are published.`,
 };
 
 const methods = [

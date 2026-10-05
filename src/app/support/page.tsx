@@ -5,7 +5,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Support",
-  description: `Support notes for ${site.legalName} Questions on this page are samples.`,
+  description: `Support notes for ${site.legalName}. Questions on this page are samples.`,
 };
 
 const questions = [

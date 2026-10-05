@@ -6,7 +6,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Offers",
-  description: `Demo offers for ${site.legalName} Sample promotions only.`,
+  description: `Demo offers for ${site.legalName}. Sample promotions only.`,
 };
 
 export default function OffersPage() {

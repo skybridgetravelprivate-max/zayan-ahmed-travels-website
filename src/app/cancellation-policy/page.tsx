@@ -4,7 +4,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Cancellation policy",
-  description: `Placeholder cancellation notes for ${site.legalName} No deadlines or fees are published.`,
+  description: `Placeholder cancellation notes for ${site.legalName}. No deadlines or fees are published.`,
 };
 
 const sections = [
@@ -31,7 +31,7 @@ export default function CancellationPolicyPage() {
     <>
       <InfoHero
         title="Cancellation policy"
-        intro={`This page reserves a place for cancellation terms from ${site.legalName} It does not cancel a booking and it does not set a fee.`}
+        intro={`This page reserves a place for cancellation terms from ${site.legalName}. It does not cancel a booking and it does not set a fee.`}
       />
       <InfoSection title="General cancellation terms">
         <Placeholder>

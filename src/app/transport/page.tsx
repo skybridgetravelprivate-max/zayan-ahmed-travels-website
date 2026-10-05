@@ -8,7 +8,7 @@ import { transportServices } from "@/config/transport";
 
 export const metadata: Metadata = {
   title: "Transport",
-  description: `Demo transport services for ${site.legalName} Sample rides only.`,
+  description: `Demo transport services for ${site.legalName}. Sample rides only.`,
 };
 
 export default function TransportPage() {

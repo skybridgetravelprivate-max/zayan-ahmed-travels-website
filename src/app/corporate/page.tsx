@@ -6,7 +6,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Corporate",
-  description: `Corporate travel services from ${site.legalName} The inquiry is checked on this website, then sent to the travel desk.`,
+  description: `Corporate travel services from ${site.legalName}. The inquiry is checked on this website, then sent to the travel desk.`,
 };
 
 const services = [
@@ -49,7 +49,7 @@ export default function CorporatePage() {
             Corporate travel
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">
-            {site.tagline} Company travel is described here as a service outline,
+            {site.tagline}. Company travel is described here as a service outline,
             not a live booking desk.
           </p>
         </div>

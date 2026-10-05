@@ -5,7 +5,7 @@ import { getPublicCompanyProfile, type PublicCompanyProfile } from "@/server/crm
 
 export const metadata: Metadata = {
   title: "Contact",
-  description: `Contact ${site.legalName} The form is checked on this website, then sent to the travel desk.`,
+  description: `Contact ${site.legalName}. The form is checked on this website, then sent to the travel desk.`,
 };
 
 const missing = "Not listed in the site configuration.";
@@ -84,7 +84,7 @@ export default async function ContactPage() {
           </p>
           <h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">Contact</h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">
-            {site.tagline} The form is checked on this website, then sent to the travel desk. It is not emailed from this page.
+            {site.tagline}. The form is checked on this website, then sent to the travel desk. It is not emailed from this page.
           </p>
         </div>
       </section>

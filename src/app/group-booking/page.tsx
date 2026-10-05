@@ -6,7 +6,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Group booking",
-  description: `Group travel with ${site.legalName} The inquiry is checked on this website, then sent to the travel desk.`,
+  description: `Group travel with ${site.legalName}. The inquiry is checked on this website, then sent to the travel desk.`,
 };
 
 const features = [
@@ -40,7 +40,7 @@ export default function GroupBookingPage() {
             Group booking
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">
-            {site.tagline} Group travel is planned as one outline for the whole
+            {site.tagline}. Group travel is planned as one outline for the whole
             party. This page does not confirm seats or rooms.
           </p>
         </div>

@@ -37,7 +37,15 @@ export function TicketSearch() {
       setNotice({ tone: "error", message: "Enter a To city." });
       return;
     }
-    if (trip === "Round Trip" && depart && returnDate && returnDate < depart) {
+    if (!depart) {
+      setNotice({ tone: "error", message: "Enter a departure date." });
+      return;
+    }
+    if (trip === "Round Trip" && !returnDate) {
+      setNotice({ tone: "error", message: "Enter a return date." });
+      return;
+    }
+    if (trip === "Round Trip" && returnDate < depart) {
       setNotice({
         tone: "error",
         message: "Return date cannot be before departure.",

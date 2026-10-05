@@ -10,7 +10,7 @@ import { getPublicUmrahPackages } from "@/server/crm-umrah";
 
 export const metadata: Metadata = {
   title: "Umrah",
-  description: `Umrah packages for ${site.legalName} Demo packages stay labelled as samples.`,
+  description: `Umrah packages for ${site.legalName}. Demo packages stay labelled as samples.`,
 };
 
 export default async function UmrahPage() {

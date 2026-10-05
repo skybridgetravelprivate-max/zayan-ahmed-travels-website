@@ -6,7 +6,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Tours",
-  description: `Demo tours for ${site.legalName} Sample itineraries only.`,
+  description: `Demo tours for ${site.legalName}. Sample itineraries only.`,
 };
 
 export default function ToursPage() {

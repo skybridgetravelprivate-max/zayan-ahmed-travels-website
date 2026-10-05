@@ -20,7 +20,7 @@ export function HotelSearch() {
   const [priceLabel, setPriceLabel] = useState<string>(priceBands[0].label);
   const [stars, setStars] = useState<string>(starOptions[0]);
   const [hotelType, setHotelType] = useState<string>(hotelTypes[0]);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState<{ tone: "status" | "error"; message: string } | null>(null);
 
   const band = priceBands.find((item) => item.label === priceLabel) ?? priceBands[0];
 
@@ -37,9 +37,36 @@ export function HotelSearch() {
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNote(
-      "Demo search only. City, check-in, check-out, rooms, and guests are not used to filter demo or live results. These cards are samples and no rooms are checked.",
-    );
+    const data = new FormData(event.currentTarget);
+    const city = String(data.get("city") ?? "").trim();
+    const checkIn = String(data.get("checkin") ?? "").trim();
+    const checkOut = String(data.get("checkout") ?? "").trim();
+
+    if (!city) {
+      setNote({ tone: "error", message: "Enter a destination city." });
+      return;
+    }
+    if (!checkIn) {
+      setNote({ tone: "error", message: "Enter a check-in date." });
+      return;
+    }
+    if (!checkOut) {
+      setNote({ tone: "error", message: "Enter a check-out date." });
+      return;
+    }
+    if (checkOut < checkIn) {
+      setNote({
+        tone: "error",
+        message: "Check-out date cannot be before check-in.",
+      });
+      return;
+    }
+
+    setNote({
+      tone: "status",
+      message:
+        "Demo search only. City, check-in, check-out, rooms, and guests are not used to filter demo or live results. These cards are samples and no rooms are checked.",
+    });
   }
 
   return (
@@ -50,16 +77,18 @@ export function HotelSearch() {
         onSubmit={onSearch}
       >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field id={`${baseId}-city`} label="Destination / City" placeholder="Makkah" />
-          <Field id={`${baseId}-checkin`} label="Check-in" type="date" />
-          <Field id={`${baseId}-checkout`} label="Check-out" type="date" />
+          <Field id={`${baseId}-city`} name="city" label="Destination / City" placeholder="Makkah" />
+          <Field id={`${baseId}-checkin`} name="checkin" label="Check-in" type="date" />
+          <Field id={`${baseId}-checkout`} name="checkout" label="Check-out" type="date" />
           <SelectField
             id={`${baseId}-rooms`}
+            name="rooms"
             label="Rooms"
             options={["1", "2", "3", "4"]}
           />
           <SelectField
             id={`${baseId}-guests`}
+            name="guests"
             label="Guests"
             options={["1", "2", "3", "4", "5", "6"]}
           />
@@ -71,8 +100,11 @@ export function HotelSearch() {
           <Button type="submit">Search</Button>
         </div>
         {note ? (
-          <p role="status" className="mt-3 text-sm font-medium text-zayan-blue">
-            {note}
+          <p
+            role={note.tone === "error" ? "alert" : "status"}
+            className="mt-3 text-sm font-medium text-zayan-blue"
+          >
+            {note.message}
           </p>
         ) : null}
       </form>
@@ -148,11 +180,13 @@ export function HotelSearch() {
 
 function Field({
   id,
+  name,
   label,
   type = "text",
   placeholder,
 }: {
   id: string;
+  name: string;
   label: string;
   type?: string;
   placeholder?: string;
@@ -162,7 +196,7 @@ function Field({
       {label}
       <input
         id={id}
-        name={id}
+        name={name}
         type={type}
         placeholder={placeholder}
         className={fieldClass}
@@ -173,12 +207,14 @@ function Field({
 
 function SelectField({
   id,
+  name,
   label,
   options,
   value,
   onChange,
 }: {
   id: string;
+  name?: string;
   label: string;
   options: readonly string[];
   value?: string;
@@ -191,7 +227,7 @@ function SelectField({
       {label}
       <select
         id={id}
-        name={id}
+        name={name ?? id}
         className={fieldClass}
         value={controlled ? value : undefined}
         defaultValue={controlled ? undefined : options[0]}

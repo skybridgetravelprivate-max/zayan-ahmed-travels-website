@@ -4,7 +4,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Flights",
-  description: `Demo flight search for ${site.legalName} Sample results only.`,
+  description: `Demo flight search for ${site.legalName}. Sample results only.`,
 };
 
 export default function FlightsPage() {

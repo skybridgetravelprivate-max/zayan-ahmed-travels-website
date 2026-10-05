@@ -4,7 +4,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Hotels",
-  description: `Demo hotel search for ${site.legalName} Sample stays only.`,
+  description: `Demo hotel search for ${site.legalName}. Sample stays only.`,
 };
 
 export default function HotelsPage() {

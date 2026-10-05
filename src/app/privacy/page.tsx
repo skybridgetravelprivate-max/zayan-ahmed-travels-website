@@ -4,7 +4,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Privacy",
-  description: `Placeholder privacy notes for ${site.legalName} Not a final privacy policy.`,
+  description: `Placeholder privacy notes for ${site.legalName}. Not a final privacy policy.`,
 };
 
 export default function PrivacyPage() {

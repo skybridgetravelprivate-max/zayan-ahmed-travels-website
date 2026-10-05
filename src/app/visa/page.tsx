@@ -6,7 +6,7 @@ import { site } from "@/config/site";
 
 export const metadata: Metadata = {
   title: "Visa",
-  description: `Demo visa categories for ${site.legalName} Sample information only.`,
+  description: `Demo visa categories for ${site.legalName}. Sample information only.`,
 };
 
 export default function VisaPage() {
