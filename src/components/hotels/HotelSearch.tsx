@@ -37,7 +37,9 @@ export function HotelSearch() {
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNote("Demo search only. These cards are samples and no rooms are checked.");
+    setNote(
+      "Demo search only. City, check-in, check-out, rooms, and guests are not used to filter demo or live results. These cards are samples and no rooms are checked.",
+    );
   }
 
   return (
