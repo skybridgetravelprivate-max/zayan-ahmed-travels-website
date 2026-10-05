@@ -40,7 +40,7 @@ export default async function Home() {
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button href="/#umrah">Explore Umrah Packages</Button>
-            <Button href="/#contact" variant="inverse">
+            <Button href="/contact" variant="inverse">
               Contact us
             </Button>
           </div>
