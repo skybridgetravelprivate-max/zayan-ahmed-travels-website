@@ -21,7 +21,9 @@ export function FlightSearch() {
   const [airline, setAirline] = useState<string>("All airlines");
   const [stops, setStops] = useState<string>("Any stops");
   const [priceLabel, setPriceLabel] = useState<string>(priceBands[0].label);
-  const [note, setNote] = useState("");
+  const [notice, setNotice] = useState<{ tone: "status" | "error"; message: string } | null>(
+    null,
+  );
 
   const airlines = ["All airlines", ...demoFlights.map((flight) => flight.airline)];
   const stopOptions = ["Any stops", "Non-stop", "1 stop", "2 stops"];
@@ -40,7 +42,33 @@ export function FlightSearch() {
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNote("Demo search only. These cards are sample results and no seats are checked.");
+    const data = new FormData(event.currentTarget);
+    const from = String(data.get("from") ?? "").trim();
+    const to = String(data.get("to") ?? "").trim();
+    const depart = String(data.get("depart") ?? "").trim();
+    const returnDate = String(data.get("return") ?? "").trim();
+
+    if (!from) {
+      setNotice({ tone: "error", message: "Enter a From city." });
+      return;
+    }
+    if (!to) {
+      setNotice({ tone: "error", message: "Enter a To city." });
+      return;
+    }
+    if (trip === "Round Trip" && depart && returnDate && returnDate < depart) {
+      setNotice({
+        tone: "error",
+        message: "Return date cannot be before departure.",
+      });
+      return;
+    }
+
+    setNotice({
+      tone: "status",
+      message:
+        "Demo search only. The From, To, dates, travellers, and cabin you entered are not used for a live flight search. These cards are sample results and no seats are checked.",
+    });
   }
 
   return (
@@ -61,7 +89,7 @@ export function FlightSearch() {
                 aria-pressed={selected}
                 onClick={() => {
                   setTrip(item);
-                  setNote("");
+                  setNotice(null);
                 }}
                 className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue ${
                   selected
@@ -76,11 +104,12 @@ export function FlightSearch() {
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field id={`${baseId}-from`} label="From" placeholder="Islamabad" />
-          <Field id={`${baseId}-to`} label="To" placeholder="Jeddah" />
-          <Field id={`${baseId}-depart`} label="Departure" type="date" />
+          <Field id={`${baseId}-from`} name="from" label="From" placeholder="Islamabad" />
+          <Field id={`${baseId}-to`} name="to" label="To" placeholder="Jeddah" />
+          <Field id={`${baseId}-depart`} name="depart" label="Departure" type="date" />
           <Field
             id={`${baseId}-return`}
+            name="return"
             label="Return"
             type="date"
             disabled={trip !== "Round Trip"}
@@ -125,9 +154,12 @@ export function FlightSearch() {
           </p>
           <Button type="submit">Search</Button>
         </div>
-        {note ? (
-          <p role="status" className="mt-3 text-sm font-medium text-zayan-blue">
-            {note}
+        {notice ? (
+          <p
+            role={notice.tone === "error" ? "alert" : "status"}
+            className="mt-3 text-sm font-medium text-zayan-blue"
+          >
+            {notice.message}
           </p>
         ) : null}
       </form>
@@ -204,12 +236,14 @@ export function FlightSearch() {
 
 function Field({
   id,
+  name,
   label,
   type = "text",
   placeholder,
   disabled = false,
 }: {
   id: string;
+  name?: string;
   label: string;
   type?: string;
   placeholder?: string;
@@ -220,7 +254,7 @@ function Field({
       {label}
       <input
         id={id}
-        name={id}
+        name={name ?? id}
         type={type}
         placeholder={placeholder}
         disabled={disabled}
