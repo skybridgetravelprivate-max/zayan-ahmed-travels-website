@@ -1,9 +1,23 @@
 import Link from "next/link";
 import { companyContact, navItems, policyLinks, site } from "@/config/site";
 
+function websiteHref(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (url.username || url.password) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
 export function Footer() {
-  const hasPublishedContact =
-    companyContact.email.trim().length > 0 || companyContact.address.trim().length > 0;
+  const email = companyContact.email.trim();
+  const address = companyContact.address.trim();
+  const website = companyContact.website.trim();
+  const websiteLink = websiteHref(website);
+  const hasPublishedContact = Boolean(email || address || website);
 
   return (
     <footer className="border-t border-white/10 bg-zayan-blue text-white">
@@ -31,19 +45,33 @@ export function Footer() {
           <p className="text-sm font-semibold text-white/90">Contact</p>
           {hasPublishedContact ? (
             <ul className="mt-3 space-y-2 text-sm leading-6 text-white/80">
-              {companyContact.email.trim() ? (
+              {email ? (
                 <li>
                   <a
                     className="break-all hover:text-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
-                    href={`mailto:${companyContact.email.trim()}`}
+                    href={`mailto:${email}`}
                   >
-                    {companyContact.email.trim()}
+                    {email}
                   </a>
                 </li>
               ) : null}
-              {companyContact.address.trim() ? (
-                <li className="break-words">{companyContact.address.trim()}</li>
+              {website ? (
+                <li>
+                  {websiteLink ? (
+                    <a
+                      className="break-all hover:text-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
+                      href={websiteLink}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      {website.replace(/^https?:\/\//, "")}
+                    </a>
+                  ) : (
+                    <span className="break-all">{website}</span>
+                  )}
+                </li>
               ) : null}
+              {address ? <li className="break-words">{address}</li> : null}
             </ul>
           ) : (
             <p className="mt-3 text-sm leading-6 text-white/80">

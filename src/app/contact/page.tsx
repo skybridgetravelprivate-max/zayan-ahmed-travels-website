@@ -69,7 +69,7 @@ function companyRows(profile: PublicCompanyProfile) {
     { label: "Website", value: profile.website, href: website },
     { label: "Address", value: profile.address, href: "" },
     { label: "WhatsApp", value: profile.whatsapp, href: whatsappHref(profile.whatsapp) },
-  ];
+  ].filter((row) => row.value.trim().length > 0);
 }
 
 export default async function ContactPage() {

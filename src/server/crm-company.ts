@@ -16,7 +16,7 @@ function staticProfile(): PublicCompanyProfile {
     companyName: site.legalName,
     phone: "",
     email: companyContact.email,
-    website: "",
+    website: companyContact.website,
     address: companyContact.address,
     whatsapp: "",
   };

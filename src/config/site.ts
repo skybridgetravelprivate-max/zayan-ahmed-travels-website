@@ -32,10 +32,11 @@ export function allowSearchIndexing() {
   return siteOrigin().origin === new URL(site.url).origin;
 }
 
-/** Public contact details. Leave blank until an approved address or email is added. */
+/** Public contact details shown on Contact and Footer. Leave blank if not approved. */
 export const companyContact = {
-  address: "",
-  email: "",
+  email: "zayanahmedtravels@gmail.com",
+  address: "Pine View Road, Main Cantt Chowk, Abbottabad",
+  website: "https://www.zayanahmedtravels.com",
 } as const;
 
 export const navItems = [
