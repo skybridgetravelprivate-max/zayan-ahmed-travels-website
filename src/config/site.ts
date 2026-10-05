@@ -42,6 +42,7 @@ export const companyContact = {
 export const navItems = [
   { label: "Home", href: "/" },
   { label: "Flights", href: "/flights" },
+  { label: "Tickets", href: "/tickets" },
   { label: "Hotels", href: "/hotels" },
   { label: "Tours", href: "/tours" },
   { label: "Umrah", href: "/umrah" },
