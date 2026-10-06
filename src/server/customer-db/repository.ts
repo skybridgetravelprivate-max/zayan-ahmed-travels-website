@@ -8,6 +8,7 @@ export type CustomerRecord = {
   email: string;
   passwordHash: string;
   displayName: string;
+  crmCustomerId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -34,6 +35,7 @@ type CustomerRow = {
   email: string;
   password_hash: string;
   display_name: string;
+  crm_customer_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -61,11 +63,13 @@ function isUniqueConstraint(error: unknown) {
 }
 
 function customerFromRow(row: CustomerRow): CustomerRecord {
+  const crm = typeof row.crm_customer_id === "string" ? row.crm_customer_id.trim() : "";
   return {
     id: row.id,
     email: row.email,
     passwordHash: row.password_hash,
     displayName: row.display_name,
+    crmCustomerId: crm || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -81,6 +85,8 @@ function sessionFromRow(row: SessionRow): SessionRecord {
   };
 }
 
+const customerSelect = `id, email, password_hash, display_name, crm_customer_id, created_at, updated_at`;
+
 export function insertCustomer(input: {
   email: string;
   passwordHash: string;
@@ -95,6 +101,7 @@ export function insertCustomer(input: {
     email,
     passwordHash,
     displayName,
+    crmCustomerId: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -102,8 +109,8 @@ export function insertCustomer(input: {
 
   try {
     db.prepare(
-      `INSERT INTO customers (id, email, password_hash, display_name, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO customers (id, email, password_hash, display_name, crm_customer_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, ?, ?)`,
     ).run(record.id, record.email, record.passwordHash, record.displayName, record.createdAt, record.updatedAt);
   } catch (error) {
     if (isUniqueConstraint(error)) {
@@ -117,22 +124,27 @@ export function insertCustomer(input: {
 
 export function findCustomerById(id: string): CustomerRecord | null {
   const row = customerDatabase()
-    .prepare(
-      `SELECT id, email, password_hash, display_name, created_at, updated_at
-       FROM customers WHERE id = ?`,
-    )
+    .prepare(`SELECT ${customerSelect} FROM customers WHERE id = ?`)
     .get(text(id, "Customer id")) as CustomerRow | undefined;
   return row ? customerFromRow(row) : null;
 }
 
 export function findCustomerByEmail(email: string): CustomerRecord | null {
   const row = customerDatabase()
-    .prepare(
-      `SELECT id, email, password_hash, display_name, created_at, updated_at
-       FROM customers WHERE email = ?`,
-    )
+    .prepare(`SELECT ${customerSelect} FROM customers WHERE email = ?`)
     .get(normalizeEmail(email)) as CustomerRow | undefined;
   return row ? customerFromRow(row) : null;
+}
+
+export function setCustomerCrmId(customerId: string, crmCustomerId: string): void {
+  const id = text(customerId, "Customer id");
+  const crmId = text(crmCustomerId, "CRM customer id");
+  if (crmId.length > 64) throw new CustomerRecordError("CRM customer id is invalid.");
+  const now = new Date().toISOString();
+  const result = customerDatabase()
+    .prepare(`UPDATE customers SET crm_customer_id = ?, updated_at = ? WHERE id = ?`)
+    .run(crmId, now, id);
+  if (result.changes !== 1) throw new CustomerRecordError("Customer could not be updated.");
 }
 
 export function insertSession(input: {

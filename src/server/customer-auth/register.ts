@@ -1,9 +1,10 @@
 import "server-only";
 
 import { validateRegistration, registrationSuccessMessage, registrationUnavailableMessage } from "@/lib/registration";
+import { linkWebsiteCustomerToCrm } from "@/server/customer-auth/crm-link";
+import { hashPassword } from "@/server/customer-auth/password";
 import { CustomerDatabaseNotConfiguredError } from "@/server/customer-db/db";
 import { CustomerRecordError, insertCustomer } from "@/server/customer-db/repository";
-import { hashPassword } from "@/server/customer-auth/password";
 
 export type RegistrationResponse =
   | { ok: true; message: string }
@@ -34,10 +35,16 @@ export async function registerCustomer(body: unknown): Promise<{ status: number;
   }
 
   try {
-    insertCustomer({
+    const customer = insertCustomer({
       email: parsed.data.email,
       displayName: parsed.data.displayName,
       passwordHash,
+    });
+    // Soft link — registration succeeds even if Nest is unavailable.
+    await linkWebsiteCustomerToCrm({
+      websiteCustomerId: customer.id,
+      email: customer.email,
+      displayName: customer.displayName,
     });
   } catch (error) {
     if (error instanceof CustomerRecordError && error.code === "email-taken") {

@@ -16,11 +16,13 @@ CREATE TABLE IF NOT EXISTS customers (
   email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   display_name TEXT NOT NULL,
+  crm_customer_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique ON customers (email);
+CREATE INDEX IF NOT EXISTS customers_crm_customer_id_index ON customers (crm_customer_id);
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -34,6 +36,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_token_hash_unique ON sessions (token_hash);
 CREATE INDEX IF NOT EXISTS sessions_customer_id_index ON sessions (customer_id);
 `;
+
+function ensureCustomerCrmColumn(db: DatabaseSync) {
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN crm_customer_id TEXT`);
+  } catch {
+    // Column already exists on upgraded databases.
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS customers_crm_customer_id_index ON customers (crm_customer_id)`);
+}
 
 let database: DatabaseSync | null = null;
 
@@ -54,6 +65,7 @@ export function customerDatabase() {
   const opened = new DatabaseSync(filePath);
   opened.exec("PRAGMA foreign_keys = ON");
   opened.exec(schema);
+  ensureCustomerCrmColumn(opened);
   database = opened;
   return opened;
 }

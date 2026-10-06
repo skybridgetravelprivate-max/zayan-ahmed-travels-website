@@ -18,13 +18,13 @@ function readInternalToken() {
 }
 
 /**
- * Fetches the signed-in website customer's bookings from the CRM S2S endpoint.
- * Identity must already be resolved from customer_session — never from request input.
+ * Fetches bookings for a Nest/Prisma customer id from the CRM S2S endpoint.
+ * Identity must already be resolved from customer_session → crm_customer_id — never from request input.
  */
 export async function fetchCustomerBookingsForWebsiteCustomer(
-  websiteCustomerId: string,
+  crmCustomerId: string,
 ): Promise<CustomerBookingsResult> {
-  const id = websiteCustomerId.trim();
+  const id = crmCustomerId.trim();
   if (!id || id.length > 64) {
     return { ok: false, status: 503, error: "Bookings are temporarily unavailable." };
   }

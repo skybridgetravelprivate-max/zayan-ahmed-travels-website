@@ -1,6 +1,7 @@
 import "server-only";
 
 import { loginFailureMessage, loginSuccessMessage, loginUnavailableMessage, validateLogin } from "@/lib/login";
+import { linkWebsiteCustomerToCrm } from "@/server/customer-auth/crm-link";
 import { hashPassword, verifyPassword } from "@/server/customer-auth/password";
 import { createSession } from "@/server/customer-auth/session";
 import { CustomerDatabaseNotConfiguredError } from "@/server/customer-db/db";
@@ -40,6 +41,13 @@ export async function loginCustomer(body: unknown): Promise<{ status: number; bo
       return { status: 401, body: { ok: false, error: loginFailureMessage } };
     }
     await createSession(customer.id);
+    if (!customer.crmCustomerId) {
+      await linkWebsiteCustomerToCrm({
+        websiteCustomerId: customer.id,
+        email: customer.email,
+        displayName: customer.displayName,
+      });
+    }
   } catch (error) {
     if (error instanceof CustomerDatabaseNotConfiguredError) {
       return { status: 503, body: { ok: false, error: loginUnavailableMessage } };

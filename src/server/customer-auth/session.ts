@@ -22,6 +22,7 @@ export type CurrentCustomer = {
   id: string;
   email: string;
   displayName: string;
+  crmCustomerId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -104,6 +105,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
       id: customer.id,
       email: customer.email,
       displayName: customer.displayName,
+      crmCustomerId: customer.crmCustomerId,
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt,
     };
