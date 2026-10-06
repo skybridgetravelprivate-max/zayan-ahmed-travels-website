@@ -11,6 +11,7 @@ import { getCurrentCustomer } from "@/server/customer-auth/session";
 export const metadata: Metadata = {
   title: "My bookings",
   description: `Bookings for a ${site.legalName} account.`,
+  robots: { index: false, follow: false },
 };
 
 export default async function MyBookingsPage() {

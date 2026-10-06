@@ -8,6 +8,7 @@ import { getCurrentCustomer } from "@/server/customer-auth/session";
 export const metadata: Metadata = {
   title: "Account",
   description: `Account for ${site.legalName}`,
+  robots: { index: false, follow: false },
 };
 
 export default async function AccountPage() {

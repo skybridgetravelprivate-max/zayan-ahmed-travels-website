@@ -23,7 +23,7 @@ function included(value: boolean | null) {
 
 function publishedRows(item: PublicUmrahPackage) {
   return [
-    ["Duration", item.durationDays === null ? "" : `${item.durationDays} nights`],
+    ["Duration", item.durationDays === null ? "" : `${item.durationDays} days`],
     ["Package type", item.packageType],
     ["Departure", item.departureCity],
     ["Arrival", item.arrivalCity],

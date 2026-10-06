@@ -74,8 +74,7 @@ export function FlightSearch() {
 
     setNotice({
       tone: "status",
-      message:
-        "Demo search only. The From, To, dates, travellers, and cabin you entered are not used for a live flight search. These cards are sample results and no seats are checked.",
+      message: "This form does not check live flight availability. Contact us for current options.",
     });
   }
 
@@ -157,7 +156,7 @@ export function FlightSearch() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            Visual demo only. Nothing is searched or booked.
+            For current flight availability and booking assistance, contact us.
             {trip !== "Round Trip" ? " Return is unused for this trip type." : ""}
           </p>
           <Button type="submit">Search</Button>

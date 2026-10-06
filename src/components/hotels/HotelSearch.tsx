@@ -64,8 +64,7 @@ export function HotelSearch() {
 
     setNote({
       tone: "status",
-      message:
-        "Demo search only. City, check-in, check-out, rooms, and guests are not used to filter demo or live results. These cards are samples and no rooms are checked.",
+      message: "This form does not check hotel availability. Contact us for current options.",
     });
   }
 
@@ -95,7 +94,7 @@ export function HotelSearch() {
         </div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            Visual demo only. Nothing is searched or booked.
+            For current hotel availability and booking assistance, contact us.
           </p>
           <Button type="submit">Search</Button>
         </div>

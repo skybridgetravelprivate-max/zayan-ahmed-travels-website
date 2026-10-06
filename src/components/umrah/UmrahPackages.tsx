@@ -23,9 +23,9 @@ function included(value: boolean) {
 }
 
 function packageRows(item: PublicUmrahPackage) {
-  const nights = item.durationDays === null ? "" : `${item.durationDays} nights`;
+  const duration = item.durationDays === null ? "" : `${item.durationDays} days`;
   return [
-    ["Duration", nights],
+    ["Duration", duration],
     ["Package type", item.packageType],
     ["Departure city", item.departureCity],
     ["Arrival city", item.arrivalCity],
@@ -66,9 +66,7 @@ export function UmrahPackages({ packages = [] }: { packages?: readonly PublicUmr
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNote(
-      "Demo search only. Departure city and travel month are not used to filter live or demo packages. These packages are samples and nothing is reserved.",
-    );
+    setNote("This form does not check package availability. Contact us for current options.");
   }
 
   return (
@@ -84,7 +82,7 @@ export function UmrahPackages({ packages = [] }: { packages?: readonly PublicUmr
         </div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            Visual demo only. Nothing is searched or booked.
+            For current package availability and booking assistance, contact us.
           </p>
           <Button type="submit">Search</Button>
         </div>

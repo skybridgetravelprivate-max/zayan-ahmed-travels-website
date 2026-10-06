@@ -10,9 +10,8 @@ import { demoPackages } from "@/config/umrah";
 import { demoVisas } from "@/config/visa";
 
 const staticPaths = [
-  ...navItems.map((item) => item.href),
+  ...navItems.filter((item) => item.href !== "/account").map((item) => item.href),
   ...policyLinks.map((item) => item.href),
-  "/my-bookings",
 ];
 
 const detailPaths = [

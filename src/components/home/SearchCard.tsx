@@ -17,7 +17,7 @@ type Field = {
 
 const forms: Record<Tab, { action: string; fields: readonly Field[] }> = {
   Flights: {
-    action: "Search flights",
+    action: "Search",
     fields: [
       { name: "from", label: "From", placeholder: "Islamabad" },
       { name: "to", label: "To", placeholder: "Jeddah" },
@@ -27,7 +27,7 @@ const forms: Record<Tab, { action: string; fields: readonly Field[] }> = {
     ],
   },
   Hotels: {
-    action: "Search hotels",
+    action: "Search",
     fields: [
       { name: "city", label: "City", placeholder: "Makkah" },
       { name: "checkin", label: "Check in", type: "date" },
@@ -36,7 +36,7 @@ const forms: Record<Tab, { action: string; fields: readonly Field[] }> = {
     ],
   },
   Umrah: {
-    action: "View Umrah demo",
+    action: "View packages",
     fields: [
       { name: "city", label: "Departure city", placeholder: "Islamabad" },
       { name: "month", label: "Travel month", type: "month" },
@@ -48,7 +48,7 @@ const forms: Record<Tab, { action: string; fields: readonly Field[] }> = {
     ],
   },
   Visa: {
-    action: "View visa demo",
+    action: "View information",
     fields: [
       {
         name: "destination",
@@ -60,7 +60,7 @@ const forms: Record<Tab, { action: string; fields: readonly Field[] }> = {
     ],
   },
   Tours: {
-    action: "View tours demo",
+    action: "View tours",
     fields: [
       { name: "destination", label: "Destination", placeholder: "Hunza" },
       { name: "depart", label: "Departure", type: "date" },
@@ -78,7 +78,7 @@ export function SearchCard() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNote("Demo only. This form does not send a request.");
+    setNote("These fields do not check availability. Contact us for current options.");
   }
 
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>, item: Tab) {
@@ -188,7 +188,7 @@ export function SearchCard() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            Visual demo only. Nothing is searched or booked.
+            For current availability and booking assistance, contact us.
           </p>
           <Button type="submit">{form.action}</Button>
         </div>

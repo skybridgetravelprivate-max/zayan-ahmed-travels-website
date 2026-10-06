@@ -55,8 +55,7 @@ export function TicketSearch() {
 
     setNotice({
       tone: "status",
-      message:
-        "Demo search only. From, To, dates, travellers, and cabin are not used for live ticket availability. These cards are samples and no seats are checked.",
+      message: "This form does not check live ticket availability. Contact us for current options.",
     });
   }
 
@@ -125,7 +124,7 @@ export function TicketSearch() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            Visual demo only. Nothing is searched or booked.
+            For current ticket availability and booking assistance, contact us.
             {trip !== "Round Trip" ? " Return is unused for One Way." : ""}
           </p>
           <Button type="submit">Search</Button>
