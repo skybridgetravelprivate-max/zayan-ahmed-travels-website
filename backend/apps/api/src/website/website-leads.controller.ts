@@ -14,9 +14,9 @@ type WebsiteLeadBody = {
 
 /**
  * Website inquiry → CRM lead (staff JWT from server-side CRM_API_* login).
- * Same path as generic POST /api/v1/leads; this handler sets WEBSITE source and returns { id }.
+ * Dedicated website endpoint; generic lead creation remains on POST /api/v1/leads.
  */
-@Controller("v1")
+@Controller("v1/website")
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class WebsiteLeadsController {
   constructor(private resources: ResourcesService) {}

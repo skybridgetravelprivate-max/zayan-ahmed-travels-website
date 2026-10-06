@@ -104,7 +104,7 @@ async function login(config: CrmConfig) {
 }
 
 async function postLead(config: CrmConfig, token: string, input: InquiryInput) {
-  return fetch(`${config.url}/api/v1/leads`, {
+  return fetch(`${config.url}/api/v1/website/leads`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
