@@ -1,0 +1,27 @@
+-- Phase 14 ADMIN CMS extras
+
+CREATE TABLE IF NOT EXISTS "CmsTestimonial" (
+  "id" TEXT NOT NULL,
+  "author" TEXT NOT NULL,
+  "quote" TEXT NOT NULL,
+  "published" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CmsTestimonial_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "CmsNews" (
+  "id" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "body" TEXT NOT NULL,
+  "published" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CmsNews_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "CmsHtmlBlock" (
+  "id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "html" TEXT NOT NULL,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CmsHtmlBlock_pkey" PRIMARY KEY ("id")
+);

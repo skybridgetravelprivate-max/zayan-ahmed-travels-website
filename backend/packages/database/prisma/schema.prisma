@@ -1,0 +1,2039 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  FOLLOW_UP
+  INTERESTED
+  QUOTED
+  NEGOTIATION
+  CONFIRMED
+  LOST
+  CANCELLED
+}
+
+enum LeadSource {
+  FACEBOOK
+  WHATSAPP
+  WEBSITE
+  PHONE
+  WALK_IN
+  REFERRAL
+  INSTAGRAM
+  TIKTOK
+  GOOGLE
+  OTHER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum FollowUpType {
+  CALL
+  WHATSAPP
+  EMAIL
+  MEETING
+  OTHER
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  UPLOADED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum PackageType {
+  ECONOMY
+  STANDARD
+  EXECUTIVE
+  VIP
+  CUSTOM
+}
+
+enum UmrahBookingStatus {
+  DRAFT
+  QUOTED
+  CONFIRMED
+  PROCESSING
+  READY
+  TRAVELING
+  COMPLETED
+  CANCELLED
+}
+
+enum VisaStatus {
+  DOCUMENT_PENDING
+  READY
+  SUBMITTED
+  PROCESSING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum VisaCategory {
+  UMRAH
+  VISIT
+  OTHER
+}
+
+enum TicketStatus {
+  BOOKED
+  ISSUED
+  REFUNDED
+  REISSUED
+  CANCELLED
+}
+
+enum HotelBookingType {
+  TENTATIVE
+  DEFINITE
+  CANCELLED
+}
+
+enum InventoryKind {
+  LOCAL_SALE
+  UMRAH_SALE
+  PRIVATE
+  OUTSOURCE
+}
+
+enum InventoryDayStatus {
+  AVAILABLE
+  RESERVED
+  BLOCKED
+  SOLD_OUT
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  REFUNDED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+}
+
+enum CmsPageStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  BLOCKED
+  OUT_OF_SERVICE
+}
+
+enum PaymentMethodKind {
+  CASH
+  BANK
+  CARD
+  WALLET
+  OTHER
+}
+
+model CompanySettings {
+  id               String   @id @default(cuid())
+  companyName      String
+  logoDocumentId   String?
+  address          String?
+  phone            String?
+  mobile           String?
+  whatsapp         String?
+  email            String?
+  website          String?
+  ntn              String?
+  strn             String?
+  iataInfo         String?
+  bankName         String?
+  bankAccount      String?
+  iban             String?
+  currencyCode     String   @default("PKR")
+  timezone         String   @default("Asia/Karachi")
+  country          String   @default("Pakistan")
+  invoicePrefix    String   @default("ZAT-INV")
+  bookingPrefix    String   @default("ZAT-UM")
+  umrahPrefix      String   @default("UMR")
+  hotelPrefix      String   @default("HTL")
+  ticketPrefix     String   @default("TKT")
+  transportPrefix  String   @default("TRN")
+  invoiceDocPrefix String   @default("INV")
+  voucherPrefix    String   @default("VCH")
+  footer           String?
+  terms            String?
+  updatedAt        DateTime @updatedAt
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  managerId String?
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  userBranches      UserBranch[]
+  leads             Lead[]
+  customers         Customer[]
+  quotations        Quotation[]
+  umrahBookings     UmrahBooking[]
+  umrahGroups       UmrahGroup[]
+  tickets           TicketSale[]
+  hotelBookings     HotelBooking[]
+  transportBookings TransportBooking[]
+  visaApplications  VisaApplication[]
+  journalEntries    JournalEntry[]
+  payments          Payment[]
+  receipts          Receipt[]
+  expenses          Expense[]
+  starBookings      StarBooking[]
+  serviceInvoices   ServiceInvoice[]
+  complaints        Complaint[]
+}
+
+model Currency {
+  id     String         @id @default(cuid())
+  code   String         @unique
+  name   String
+  symbol String
+  isBase Boolean        @default(false)
+  rates  ExchangeRate[]
+}
+
+model ExchangeRate {
+  id          String   @id @default(cuid())
+  currencyId  String
+  currency    Currency @relation(fields: [currencyId], references: [id])
+  rateToBase  Decimal  @db.Decimal(18, 6)
+  effectiveAt DateTime
+  createdAt   DateTime @default(now())
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  isSystem    Boolean          @default(false)
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id        String           @id @default(cuid())
+  code      String           @unique
+  createdAt DateTime         @default(now())
+  roles     RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model User {
+  id              String     @id @default(cuid())
+  email           String     @unique
+  username        String     @unique
+  passwordHash    String
+  fullName        String
+  phone           String?
+  status          UserStatus @default(ACTIVE)
+  failedLogins    Int        @default(0)
+  lockedUntil     DateTime?
+  deletedAt       DateTime?
+  defaultBranchId String?
+  defaultBranch   Branch?    @relation(fields: [defaultBranchId], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  roles             UserRole[]
+  branches          UserBranch[]
+  sessions          Session[]
+  loginAttempts     LoginAttempt[]
+  assignedLeads      Lead[]          @relation("LeadAssignee")
+  assignedFollowUps  FollowUp[]
+  assignedTasks      Task[]
+  assignedComplaints Complaint[]     @relation("ComplaintAssignee")
+  createdComplaints  Complaint[]     @relation("ComplaintCreator")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  employees         Employee?
+  leadNotes         LeadNote[]
+  communications    Communication[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model UserBranch {
+  userId   String
+  branchId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model LoginAttempt {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  identifier String
+  success    Boolean
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  module    String?
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  reason    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@index([userId])
+  @@index([action])
+  @@index([module])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String
+  readAt    DateTime?
+  meta      Json?
+  createdAt DateTime  @default(now())
+}
+
+model StoredDocument {
+  id           String         @id @default(cuid())
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  entityType   String?
+  entityId     String?
+  status       DocumentStatus @default(UPLOADED)
+  uploadedById String?
+  createdAt    DateTime       @default(now())
+}
+
+model NumberSequence {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  prefix      String
+  year        Int
+  current     Int      @default(0)
+  padLength   Int      @default(6)
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([prefix, year])
+}
+
+/// Key-value operational settings. Branding stays on CompanySettings.
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Country {
+  id          String    @id @default(cuid())
+  iso2        String    @unique
+  iso3        String?   @unique
+  name        String
+  nationality String?
+  status      String    @default("ACTIVE")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  cities     City[]
+  airports   Airport[]
+  hotels     Hotel[]
+  customers  Customer[]
+  passengers Passenger[]
+  visaTypes  VisaType[]
+
+  @@index([name])
+  @@index([deletedAt])
+}
+
+model City {
+  id        String    @id @default(cuid())
+  countryId String
+  country   Country   @relation(fields: [countryId], references: [id])
+  name      String
+  status    String    @default("ACTIVE")
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  airports  Airport[]
+  hotels    Hotel[]
+  customers Customer[]
+
+  @@unique([countryId, name])
+  @@index([name])
+  @@index([deletedAt])
+}
+
+model Airport {
+  id        String    @id @default(cuid())
+  iata      String    @unique
+  icao      String?   @unique
+  name      String
+  cityId    String?
+  city      City?     @relation(fields: [cityId], references: [id])
+  countryId String?
+  country   Country?  @relation(fields: [countryId], references: [id])
+  status    String    @default("ACTIVE")
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([name])
+  @@index([cityId])
+  @@index([countryId])
+}
+
+model RoomType {
+  id               String          @id @default(cuid())
+  code             String          @unique
+  name             String
+  defaultOccupancy Int             @default(2)
+  status           String          @default("ACTIVE")
+  deletedAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  hotelRoomTypes   HotelRoomType[]
+}
+
+model VisaType {
+  id           String            @id @default(cuid())
+  code         String            @unique
+  name         String
+  category     VisaCategory      @default(UMRAH)
+  countryId    String?
+  country      Country?          @relation(fields: [countryId], references: [id])
+  status       String            @default("ACTIVE")
+  deletedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  applications VisaApplication[]
+
+  @@index([category])
+  @@index([countryId])
+}
+
+model Service {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  name         String
+  category     String    @default("GENERAL")
+  defaultCost  Decimal   @default(0) @db.Decimal(18, 2)
+  defaultPrice Decimal   @default(0) @db.Decimal(18, 2)
+  status       String    @default("ACTIVE")
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  invoiceLines ServiceInvoiceLine[]
+
+  @@index([category])
+  @@index([deletedAt])
+}
+
+model PaymentMethod {
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  kind      PaymentMethodKind @default(CASH)
+  status    String            @default("ACTIVE")
+  deletedAt DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  payments  Payment[]
+  receipts  Receipt[]
+
+  @@index([kind])
+}
+
+model Lead {
+  id                String        @id @default(cuid())
+  leadNumber        String        @unique
+  fullName          String
+  fatherName        String?
+  mobile            String
+  whatsapp          String?
+  email             String?
+  city              String?
+  country           String?       @default("Pakistan")
+  cnic              String?
+  passport          String?
+  source            LeadSource    @default(OTHER)
+  assignedUserId    String?
+  assignedUser      User?         @relation("LeadAssignee", fields: [assignedUserId], references: [id])
+  assignedAgentId   String?
+  assignedAgent     Agent?        @relation(fields: [assignedAgentId], references: [id])
+  branchId          String?
+  branch            Branch?       @relation(fields: [branchId], references: [id])
+  adults            Int           @default(1)
+  children          Int           @default(0)
+  infants           Int           @default(0)
+  travelDate        DateTime?
+  returnDate        DateTime?
+  budget            Decimal?      @db.Decimal(18, 2)
+  packageId         String?
+  package           UmrahPackage? @relation(fields: [packageId], references: [id])
+  hotelPreference   String?
+  roomType          String?
+  visaRequired      Boolean       @default(true)
+  transportRequired Boolean       @default(true)
+  notes             String?
+  status            LeadStatus    @default(NEW)
+  priority          Priority      @default(MEDIUM)
+  nextFollowUpAt    DateTime?
+  archivedAt        DateTime?
+  lostReason        String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  followUps      FollowUp[]
+  tasks          Task[]
+  quotations     Quotation[]
+  customers      Customer[]
+  leadNotes      LeadNote[]
+  communications Communication[]
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Communication {
+  id         String    @id @default(cuid())
+  channel    String
+  direction  String    @default("OUTBOUND")
+  subject    String?
+  body       String
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  createdAt  DateTime  @default(now())
+}
+
+model FollowUp {
+  id             String         @id @default(cuid())
+  leadId         String?
+  lead           Lead?          @relation(fields: [leadId], references: [id])
+  customerId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id])
+  assignedUserId String?
+  assignedUser   User?          @relation(fields: [assignedUserId], references: [id])
+  dueAt          DateTime
+  type           FollowUpType   @default(CALL)
+  subject        String
+  notes          String?
+  priority       Priority       @default(MEDIUM)
+  status         FollowUpStatus @default(PENDING)
+  nextFollowUpAt DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  title          String
+  description    String?
+  assignedUserId String?
+  assignedUser   User?      @relation(fields: [assignedUserId], references: [id])
+  priority       Priority   @default(MEDIUM)
+  dueDate        DateTime?
+  status         TaskStatus @default(TODO)
+  leadId         String?
+  lead           Lead?      @relation(fields: [leadId], references: [id])
+  customerId     String?
+  customer       Customer?  @relation(fields: [customerId], references: [id])
+  bookingId      String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model Complaint {
+  id               String           @id @default(cuid())
+  complaintNumber  String           @unique
+  customerId       String
+  customer         Customer         @relation(fields: [customerId], references: [id])
+  passengerId      String?
+  passenger        Passenger?       @relation(fields: [passengerId], references: [id])
+  assignedUserId   String?
+  assignedUser     User?            @relation("ComplaintAssignee", fields: [assignedUserId], references: [id])
+  createdById      String?
+  createdBy        User?            @relation("ComplaintCreator", fields: [createdById], references: [id])
+  branchId         String?
+  branch           Branch?          @relation(fields: [branchId], references: [id])
+  module           String
+  category         String
+  priority         String           @default("Medium")
+  status           String           @default("Open")
+  subject          String?
+  description      String
+  resolution       String?
+  notes            String?
+  bookingRef       String?
+  bookingId        String?
+  resolvedAt       DateTime?
+  closedAt         DateTime?
+  assignedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  events           ComplaintEvent[]
+
+  @@index([customerId])
+  @@index([passengerId])
+  @@index([status])
+  @@index([module])
+  @@index([assignedUserId])
+  @@index([bookingRef])
+}
+
+model ComplaintEvent {
+  id          String    @id @default(cuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  userId      String?
+  action      String
+  body        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([complaintId])
+}
+
+model Customer {
+  id                String    @id @default(cuid())
+  customerNumber    String    @unique
+  fullName          String
+  fatherName        String?
+  gender            Gender?
+  dateOfBirth       DateTime?
+  cnic              String?
+  passportNumber    String?
+  passportCountry   String?
+  passportIssueDate DateTime?
+  passportExpiry    DateTime?
+  nationality       String?   @default("Pakistani")
+  phone             String?
+  whatsapp          String?
+  email             String?   @unique
+  address           String?
+  emergencyContact  String?
+  countryId         String?
+  country           Country?  @relation(fields: [countryId], references: [id])
+  cityId            String?
+  city              City?     @relation(fields: [cityId], references: [id])
+  branchId          String?
+  branch            Branch?   @relation(fields: [branchId], references: [id])
+  agentId           String?
+  agent             Agent?    @relation(fields: [agentId], references: [id])
+  leadId            String?
+  lead              Lead?     @relation(fields: [leadId], references: [id])
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  passengers        Passenger[]
+  quotations        Quotation[]
+  followUps         FollowUp[]
+  tasks             Task[]
+  umrahBookings     UmrahBooking[]
+  tickets           TicketSale[]
+  hotelBookings     HotelBooking[]
+  transportBookings TransportBooking[]
+  visaApplications  VisaApplication[]
+  receipts          Receipt[]
+  communications    Communication[]
+  passportHistory   PassportHistory[]
+  ocrExtracts       OcrExtract[]
+  starBookings      StarBooking[]
+  serviceInvoices   ServiceInvoice[]
+  complaints        Complaint[]
+
+  @@index([phone])
+  @@index([cnic])
+  @@index([passportNumber])
+  @@index([countryId])
+  @@index([cityId])
+  @@index([deletedAt])
+}
+
+model Passenger {
+  id                 String    @id @default(cuid())
+  fullName           String
+  fatherName         String?
+  gender             Gender?
+  dateOfBirth        DateTime?
+  nationality        String?   @default("Pakistani")
+  passportNumber     String?
+  passportCountry    String?
+  passportIssueDate  DateTime?
+  passportExpiryDate DateTime?
+  cnic               String?
+  mobile             String?
+  whatsapp           String?
+  email              String?
+  address            String?
+  emergencyContact   String?
+  countryId          String?
+  country            Country?  @relation(fields: [countryId], references: [id])
+  customerId         String?
+  customer           Customer? @relation(fields: [customerId], references: [id])
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  documents         PassengerDocument[]
+  bookingPassengers UmrahBookingPassenger[]
+  umrahVisas        UmrahVisa[]
+  tickets           TicketSale[]
+  hotelBookings     HotelBooking[]
+  transportBookings TransportBooking[]
+  visaApplications  VisaApplication[]
+  intimations       Intimation[]
+  stayRoomPax       HotelStayRoomPax[]
+  starRoomPax       StarBookingRoomPax[]
+  passportHistory   PassportHistory[]
+  ocrExtracts       OcrExtract[]
+  complaints        Complaint[]
+
+  @@index([passportNumber])
+  @@index([cnic])
+  @@index([mobile])
+  @@index([customerId])
+  @@index([countryId])
+  @@index([deletedAt])
+}
+
+model PassengerDocument {
+  id          String         @id @default(cuid())
+  passengerId String
+  passenger   Passenger      @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  kind        String
+  documentId  String?
+  status      DocumentStatus @default(PENDING)
+  notes       String?
+  expiresAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  @@index([passengerId])
+  @@index([kind])
+}
+
+model PassportHistory {
+  id              String     @id @default(cuid())
+  customerId      String?
+  customer        Customer?  @relation(fields: [customerId], references: [id])
+  passengerId     String?
+  passenger       Passenger? @relation(fields: [passengerId], references: [id])
+  passportNumber  String
+  passportCountry String?
+  issueDate       DateTime?
+  expiryDate      DateTime?
+  recordedAt      DateTime   @default(now())
+
+  @@index([passportNumber])
+  @@index([customerId])
+  @@index([passengerId])
+}
+
+model OcrExtract {
+  id             String     @id @default(cuid())
+  entityType     String
+  entityId       String?
+  customerId     String?
+  customer       Customer?  @relation(fields: [customerId], references: [id])
+  passengerId    String?
+  passenger      Passenger? @relation(fields: [passengerId], references: [id])
+  rawText        String
+  parsed         Json
+  confidence     Float      @default(0)
+  fileDocumentId String?
+  confirmedAt    DateTime?
+  confirmedById  String?
+  userEdits      Json?
+  createdAt      DateTime   @default(now())
+
+  @@index([entityType, entityId])
+  @@index([customerId])
+  @@index([passengerId])
+}
+
+model Quotation {
+  id              String          @id @default(cuid())
+  quotationNumber String          @unique
+  customerId      String?
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  leadId          String?
+  lead            Lead?           @relation(fields: [leadId], references: [id])
+  agentId         String?
+  agent           Agent?          @relation(fields: [agentId], references: [id])
+  branchId        String?
+  branch          Branch?         @relation(fields: [branchId], references: [id])
+  issuedAt        DateTime        @default(now())
+  expiresAt       DateTime?
+  currency        String          @default("PKR")
+  costTotal       Decimal         @default(0) @db.Decimal(18, 2)
+  sellingTotal    Decimal         @default(0) @db.Decimal(18, 2)
+  discount        Decimal         @default(0) @db.Decimal(18, 2)
+  tax             Decimal         @default(0) @db.Decimal(18, 2)
+  net             Decimal         @default(0) @db.Decimal(18, 2)
+  terms           String?
+  notes           String?
+  status          QuotationStatus @default(DRAFT)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  items           QuotationItem[]
+  umrahBookings   UmrahBooking[]
+}
+
+model QuotationItem {
+  id           String    @id @default(cuid())
+  quotationId  String
+  quotation    Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  description  String
+  quantity     Int       @default(1)
+  cost         Decimal   @default(0) @db.Decimal(18, 2)
+  sellingPrice Decimal   @default(0) @db.Decimal(18, 2)
+}
+
+model UmrahPackage {
+  id                String      @id @default(cuid())
+  packageNumber     String      @unique
+  name              String
+  packageType       PackageType @default(STANDARD)
+  durationDays      Int
+  departureCity     String
+  arrivalCity       String      @default("Jeddah")
+  departureDate     DateTime?
+  returnDate        DateTime?
+  airlineId         String?
+  airline           Airline?    @relation(fields: [airlineId], references: [id])
+  flightInfo        String?
+  makkahHotelId     String?
+  makkahHotel       Hotel?      @relation("MakkahHotel", fields: [makkahHotelId], references: [id])
+  makkahNights      Int         @default(0)
+  madinahHotelId    String?
+  madinahHotel      Hotel?      @relation("MadinahHotel", fields: [madinahHotelId], references: [id])
+  madinahNights     Int         @default(0)
+  roomType          String?
+  includesTransport Boolean     @default(true)
+  includesVisa      Boolean     @default(true)
+  includesMeals     Boolean     @default(false)
+  includesZiyarat   Boolean     @default(true)
+  adultCost         Decimal     @default(0) @db.Decimal(18, 2)
+  adultPrice        Decimal     @default(0) @db.Decimal(18, 2)
+  childCost         Decimal     @default(0) @db.Decimal(18, 2)
+  childPrice        Decimal     @default(0) @db.Decimal(18, 2)
+  infantCost        Decimal     @default(0) @db.Decimal(18, 2)
+  infantPrice       Decimal     @default(0) @db.Decimal(18, 2)
+  agentPrice        Decimal     @default(0) @db.Decimal(18, 2)
+  discount          Decimal     @default(0) @db.Decimal(18, 2)
+  isPublic          Boolean     @default(false)
+  description       String?
+  status            String      @default("ACTIVE")
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  components   PackageComponent[]
+  leads        Lead[]
+  bookings     UmrahBooking[]
+  groups       UmrahGroup[]
+  ziyaratLinks ZiyaratAssignment[]
+}
+
+model PackageComponent {
+  id           String       @id @default(cuid())
+  packageId    String
+  package      UmrahPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  kind         String
+  label        String
+  cost         Decimal      @default(0) @db.Decimal(18, 2)
+  sellingPrice Decimal      @default(0) @db.Decimal(18, 2)
+  selected     Boolean      @default(true)
+}
+
+model UmrahBooking {
+  id            String             @id @default(cuid())
+  bookingNumber String             @unique
+  customerId    String
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  packageId     String?
+  package       UmrahPackage?      @relation(fields: [packageId], references: [id])
+  quotationId   String?
+  quotation     Quotation?         @relation(fields: [quotationId], references: [id])
+  groupId       String?
+  group         UmrahGroup?        @relation(fields: [groupId], references: [id])
+  agentId       String?
+  agent         Agent?             @relation(fields: [agentId], references: [id])
+  branchId      String?
+  branch        Branch?            @relation(fields: [branchId], references: [id])
+  departureDate DateTime?
+  returnDate    DateTime?
+  cost          Decimal            @default(0) @db.Decimal(18, 2)
+  sellingPrice  Decimal            @default(0) @db.Decimal(18, 2)
+  discount      Decimal            @default(0) @db.Decimal(18, 2)
+  tax           Decimal            @default(0) @db.Decimal(18, 2)
+  net           Decimal            @default(0) @db.Decimal(18, 2)
+  paid          Decimal            @default(0) @db.Decimal(18, 2)
+  balance          Decimal            @default(0) @db.Decimal(18, 2)
+  profit           Decimal            @default(0) @db.Decimal(18, 2)
+  commission       Decimal            @default(0) @db.Decimal(18, 2)
+  iataCode         String?
+  iataLocked       Boolean            @default(false)
+  visaStatus       String?
+  hotelBookingId   String?
+  ticketSaleId     String?
+  transportId      String?
+  groupName        String?
+  status           UmrahBookingStatus @default(DRAFT)
+  workflowStep  String             @default("LEAD")
+  notes         String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  passengers   UmrahBookingPassenger[]
+  visas        UmrahVisa[]
+  receipts     Receipt[]
+  intimations  Intimation[]
+  ziyaratLinks ZiyaratAssignment[]
+  transports   TransportBooking[]
+}
+
+model UmrahBookingPassenger {
+  id          String       @id @default(cuid())
+  bookingId   String
+  booking     UmrahBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  passengerId String
+  passenger   Passenger    @relation(fields: [passengerId], references: [id])
+  roomLabel   String?
+  flightPnr   String?
+}
+
+model UmrahGroup {
+  id            String        @id @default(cuid())
+  groupNumber   String        @unique
+  name          String
+  departureDate DateTime?
+  returnDate    DateTime?
+  packageId     String?
+  package       UmrahPackage? @relation(fields: [packageId], references: [id])
+  leaderName    String?
+  agentId       String?
+  agent         Agent?        @relation(fields: [agentId], references: [id])
+  branchId      String?
+  branch        Branch?       @relation(fields: [branchId], references: [id])
+  totalSeats    Int           @default(0)
+  reservedSeats Int           @default(0)
+  status        String        @default("OPEN")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  bookings     UmrahBooking[]
+  intimations  Intimation[]
+  ziyaratLinks ZiyaratAssignment[]
+}
+
+model UmrahVisa {
+  id                String        @id @default(cuid())
+  passengerId       String
+  passenger         Passenger     @relation(fields: [passengerId], references: [id])
+  bookingId         String?
+  booking           UmrahBooking? @relation(fields: [bookingId], references: [id])
+  passportNumber    String?
+  applicationNumber String?
+  submittedAt       DateTime?
+  visaNumber        String?
+  approvedAt        DateTime?
+  expiresAt         DateTime?
+  status            VisaStatus    @default(DOCUMENT_PENDING)
+  cost              Decimal       @default(0) @db.Decimal(18, 2)
+  sellingPrice      Decimal       @default(0) @db.Decimal(18, 2)
+  supplierId        String?
+  supplier          Supplier?     @relation(fields: [supplierId], references: [id])
+  notes             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model Ziyarat {
+  id            String              @id @default(cuid())
+  name          String
+  city          String
+  location      String?
+  description   String?
+  durationHours Decimal             @default(0) @db.Decimal(6, 2)
+  cost          Decimal             @default(0) @db.Decimal(18, 2)
+  sellingPrice  Decimal             @default(0) @db.Decimal(18, 2)
+  supplierId    String?
+  supplier      Supplier?           @relation(fields: [supplierId], references: [id])
+  status        String              @default("ACTIVE")
+  assignments   ZiyaratAssignment[]
+}
+
+model ZiyaratAssignment {
+  id        String        @id @default(cuid())
+  ziyaratId String
+  ziyarat   Ziyarat       @relation(fields: [ziyaratId], references: [id])
+  packageId String?
+  package   UmrahPackage? @relation(fields: [packageId], references: [id])
+  bookingId String?
+  booking   UmrahBooking? @relation(fields: [bookingId], references: [id])
+  groupId   String?
+  group     UmrahGroup?   @relation(fields: [groupId], references: [id])
+}
+
+model Intimation {
+  id          String        @id @default(cuid())
+  type        String
+  passengerId String?
+  passenger   Passenger?    @relation(fields: [passengerId], references: [id])
+  groupId     String?
+  group       UmrahGroup?   @relation(fields: [groupId], references: [id])
+  bookingId   String?
+  booking     UmrahBooking? @relation(fields: [bookingId], references: [id])
+  flightInfo  String?
+  hotelId     String?
+  hotel       Hotel?        @relation(fields: [hotelId], references: [id])
+  occurredAt  DateTime
+  location    String?
+  transport   String?
+  status      String        @default("PENDING")
+  remarks     String?
+  createdAt   DateTime      @default(now())
+}
+
+model Hotel {
+  id           String    @id @default(cuid())
+  hotelNumber  String    @unique
+  name         String
+  city         String
+  country      String
+  cityId       String?
+  cityRef      City?     @relation(fields: [cityId], references: [id])
+  countryId    String?
+  countryRef   Country?  @relation(fields: [countryId], references: [id])
+  category     String?
+  address      String?
+  distance     String?
+  contact      String?
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  contractInfo String?
+  checkInTime  String?   @default("14:00")
+  checkOutTime String?   @default("12:00")
+  status       String    @default("ACTIVE")
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  rooms         HotelRoomType[]
+  physicalRooms HotelRoom[]
+  bookings      HotelBooking[]
+  staySegments  HotelStaySegment[]
+  intimations   Intimation[]
+  starRooms     StarBookingRoom[]
+  makkahPkgs    UmrahPackage[]     @relation("MakkahHotel")
+  madinahPkgs   UmrahPackage[]     @relation("MadinahHotel")
+
+  @@index([city])
+  @@index([country])
+  @@index([cityId])
+  @@index([countryId])
+  @@index([supplierId])
+  @@index([deletedAt])
+}
+
+model HotelRoomType {
+  id                String              @id @default(cuid())
+  hotelId           String
+  hotel             Hotel               @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  catalogRoomTypeId String?
+  catalogRoomType   RoomType?           @relation(fields: [catalogRoomTypeId], references: [id])
+  name              String
+  occupancy         Int                 @default(2)
+  totalInventory    Int                 @default(0)
+  costRate          Decimal             @default(0) @db.Decimal(18, 2)
+  sellingRate       Decimal             @default(0) @db.Decimal(18, 2)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  days              HotelInventoryDay[]
+  bookings          HotelBooking[]
+  physicalRooms     HotelRoom[]
+  stayRooms         HotelStayRoom[]
+
+  @@index([hotelId])
+  @@index([catalogRoomTypeId])
+}
+
+model HotelRoom {
+  id         String          @id @default(cuid())
+  hotelId    String
+  hotel      Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  roomTypeId String?
+  roomType   HotelRoomType?  @relation(fields: [roomTypeId], references: [id])
+  roomNumber String
+  floor      String?
+  status     RoomStatus      @default(AVAILABLE)
+  notes      String?
+  deletedAt  DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  stayRooms  HotelStayRoom[]
+
+  @@unique([hotelId, roomNumber])
+  @@index([roomTypeId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model HotelInventoryDay {
+  id         String             @id @default(cuid())
+  roomTypeId String
+  roomType   HotelRoomType      @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  date       DateTime
+  total      Int
+  booked     Int                @default(0)
+  blocked    Int                @default(0)
+  kind       InventoryKind      @default(UMRAH_SALE)
+  status     InventoryDayStatus @default(AVAILABLE)
+
+  @@unique([roomTypeId, date, kind])
+}
+
+model HotelBooking {
+  id               String             @id @default(cuid())
+  bookingNumber    String             @unique
+  type             HotelBookingType   @default(TENTATIVE)
+  kind             String             @default("RESERVATION")
+  customerId       String?
+  customer         Customer?          @relation(fields: [customerId], references: [id])
+  passengerId      String?
+  passenger        Passenger?         @relation(fields: [passengerId], references: [id])
+  hotelId          String
+  hotel            Hotel              @relation(fields: [hotelId], references: [id])
+  roomTypeId       String?
+  roomType         HotelRoomType?     @relation(fields: [roomTypeId], references: [id])
+  checkIn          DateTime
+  checkOut         DateTime
+  nights           Int
+  rooms            Int                @default(1)
+  cost             Decimal            @default(0) @db.Decimal(18, 2)
+  sellingPrice     Decimal            @default(0) @db.Decimal(18, 2)
+  discount         Decimal            @default(0) @db.Decimal(18, 2)
+  tax              Decimal            @default(0) @db.Decimal(18, 2)
+  commission       Decimal            @default(0) @db.Decimal(18, 2)
+  net              Decimal            @default(0) @db.Decimal(18, 2)
+  paid             Decimal            @default(0) @db.Decimal(18, 2)
+  balance          Decimal            @default(0) @db.Decimal(18, 2)
+  supplierId       String?
+  supplier         Supplier?          @relation(fields: [supplierId], references: [id])
+  agentId          String?
+  agent            Agent?             @relation(fields: [agentId], references: [id])
+  branchId         String?
+  branch           Branch?            @relation(fields: [branchId], references: [id])
+  status           String             @default("TENTATIVE")
+  notes            String?
+  specialRequests  String?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  parentBookingId  String?
+  parentBooking    HotelBooking?      @relation("HotelSplit", fields: [parentBookingId], references: [id])
+  childBookings    HotelBooking[]     @relation("HotelSplit")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  vouchers         HotelVoucher[]
+  staySegments     HotelStaySegment[]
+  transports       TransportBooking[]
+
+  @@index([hotelId])
+  @@index([customerId])
+  @@index([passengerId])
+  @@index([roomTypeId])
+  @@index([kind])
+  @@index([parentBookingId])
+  @@index([cancelledAt])
+  @@index([checkIn])
+  @@index([status])
+}
+
+/// Additive multi-hotel stay (does not replace existing HotelBooking columns).
+model HotelStaySegment {
+  id               String          @id @default(cuid())
+  bookingId        String
+  booking          HotelBooking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  hotelId          String
+  hotel            Hotel           @relation(fields: [hotelId], references: [id])
+  supplierId       String?
+  supplier         Supplier?       @relation(fields: [supplierId], references: [id])
+  checkIn          DateTime
+  checkOut         DateTime
+  nights           Int
+  confirmationNo   String?
+  status           String          @default("Pending")
+  notes            String?
+  specialRequest   String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  rooms            HotelStayRoom[]
+
+  @@index([bookingId])
+  @@index([hotelId])
+  @@index([supplierId])
+  @@index([checkIn, checkOut])
+}
+
+model HotelStayRoom {
+  id             String             @id @default(cuid())
+  segmentId      String
+  segment        HotelStaySegment   @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  roomTypeId     String?
+  roomType       HotelRoomType?     @relation(fields: [roomTypeId], references: [id])
+  hotelRoomId    String?
+  hotelRoom      HotelRoom?         @relation(fields: [hotelRoomId], references: [id])
+  roomNumber     String?
+  occupancy      Int                @default(2)
+  status         String             @default("VACANT")
+  checkinAt      DateTime?
+  checkoutAt     DateTime?
+  supplierCost   Decimal            @default(0) @db.Decimal(18, 2)
+  sellingPrice   Decimal            @default(0) @db.Decimal(18, 2)
+  discount       Decimal            @default(0) @db.Decimal(18, 2)
+  tax            Decimal            @default(0) @db.Decimal(18, 2)
+  commission     Decimal            @default(0) @db.Decimal(18, 2)
+  createdAt      DateTime           @default(now())
+  pax            HotelStayRoomPax[]
+  transfersFrom  HotelStayTransfer[] @relation("TransferFrom")
+  transfersTo    HotelStayTransfer[] @relation("TransferTo")
+
+  @@index([segmentId])
+  @@index([roomTypeId])
+  @@index([hotelRoomId])
+  @@index([status])
+}
+
+model HotelStayTransfer {
+  id         String        @id @default(cuid())
+  fromRoomId String
+  fromRoom   HotelStayRoom @relation("TransferFrom", fields: [fromRoomId], references: [id], onDelete: Cascade)
+  toRoomId   String
+  toRoom     HotelStayRoom @relation("TransferTo", fields: [toRoomId], references: [id], onDelete: Cascade)
+  reason     String?
+  userId     String?
+  createdAt  DateTime      @default(now())
+
+  @@index([fromRoomId])
+  @@index([toRoomId])
+}
+
+/// STAR hotel-sale booking (not Reservation HotelBooking 1:1). Uses Hotel + Passenger masters.
+model StarBooking {
+  id              String            @id @default(cuid())
+  bookingNumber   String            @unique
+  customerId      String?
+  customer        Customer?         @relation(fields: [customerId], references: [id])
+  supplierId      String?
+  supplier        Supplier?         @relation(fields: [supplierId], references: [id])
+  groupName       String?
+  groupCode       String?
+  status          String            @default("Tentative Request")
+  autoAllocate    Boolean           @default(true)
+  unlockPackage   Boolean           @default(false)
+  unlockRoomType  Boolean           @default(false)
+  unlockNotes     String?
+  confirmationNo  String?
+  adults          Int               @default(0)
+  children        Int               @default(0)
+  infants         Int               @default(0)
+  totalBeds       Int               @default(0)
+  cost            Decimal           @default(0) @db.Decimal(18, 2)
+  sellingPrice    Decimal           @default(0) @db.Decimal(18, 2)
+  profit          Decimal           @default(0) @db.Decimal(18, 2)
+  paid            Decimal           @default(0) @db.Decimal(18, 2)
+  paymentStatus   PaymentStatus     @default(UNPAID)
+  branchId        String?
+  branch          Branch?           @relation(fields: [branchId], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  rooms           StarBookingRoom[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model StarBookingRoom {
+  id         String               @id @default(cuid())
+  bookingId  String
+  booking    StarBooking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  hotelId    String
+  hotel      Hotel                @relation(fields: [hotelId], references: [id])
+  roomType   String
+  roomNo     String?
+  qty        Int                  @default(1)
+  checkIn    DateTime
+  checkOut   DateTime
+  viewType   String?
+  mealPlan   String?
+  cost       Decimal              @default(0) @db.Decimal(18, 2)
+  sale       Decimal              @default(0) @db.Decimal(18, 2)
+  extra      String?
+  status     String               @default("ALLOCATED")
+  pax        StarBookingRoomPax[]
+
+  @@index([bookingId])
+  @@index([hotelId])
+  @@index([roomNo])
+}
+
+model StarBookingRoomPax {
+  roomId      String
+  passengerId String
+  room        StarBookingRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  passenger   Passenger       @relation(fields: [passengerId], references: [id])
+
+  @@id([roomId, passengerId])
+}
+
+model HotelStayRoomPax {
+  stayRoomId  String
+  passengerId String
+  stayRoom    HotelStayRoom @relation(fields: [stayRoomId], references: [id], onDelete: Cascade)
+  passenger   Passenger     @relation(fields: [passengerId], references: [id])
+
+  @@id([stayRoomId, passengerId])
+  @@index([passengerId])
+}
+
+model HotelVoucher {
+  id        String       @id @default(cuid())
+  voucherNo String       @unique
+  bookingId String
+  booking   HotelBooking @relation(fields: [bookingId], references: [id])
+  issuedAt  DateTime     @default(now())
+  notes     String?
+}
+
+model Supplier {
+  id           String    @id @default(cuid())
+  name         String
+  company      String?
+  contact      String?
+  email        String?
+  address      String?
+  contractInfo String?
+  currency     String    @default("PKR")
+  paymentTerms String?
+  kind         String    @default("GENERAL")
+  status       String    @default("ACTIVE")
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  hotels        Hotel[]
+  hotelBookings HotelBooking[]
+  hotelStays    HotelStaySegment[]
+  umrahVisas    UmrahVisa[]
+  ziyarats      Ziyarat[]
+  tickets       TicketSale[]
+  payments      Payment[]
+  expenses      Expense[]
+  vehicles      Vehicle[]
+  drivers       Driver[]
+  starBookings  StarBooking[]
+
+  @@index([kind])
+  @@index([name])
+  @@index([deletedAt])
+}
+
+model Airline {
+  id        String         @id @default(cuid())
+  name      String
+  code      String         @unique
+  status    String         @default("ACTIVE")
+  deletedAt DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  tickets   TicketSale[]
+  packages  UmrahPackage[]
+  groups    TicketGroup[]
+  pnrs      PnrRecord[]
+
+  @@index([name])
+  @@index([deletedAt])
+}
+
+model TicketSale {
+  id            String        @id @default(cuid())
+  ticketNumber  String?       @unique
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  passengerId   String?
+  passenger     Passenger?    @relation(fields: [passengerId], references: [id])
+  pnrId         String?
+  pnr           PnrRecord?    @relation(fields: [pnrId], references: [id])
+  airlineId     String?
+  airline       Airline?      @relation(fields: [airlineId], references: [id])
+  flightNumber  String?
+  sector        String?
+  departureAt   DateTime?
+  arrivalAt     DateTime?
+  fare          Decimal       @default(0) @db.Decimal(18, 2)
+  tax           Decimal       @default(0) @db.Decimal(18, 2)
+  commission    Decimal       @default(0) @db.Decimal(18, 2)
+  discount      Decimal       @default(0) @db.Decimal(18, 2)
+  net           Decimal       @default(0) @db.Decimal(18, 2)
+  cost          Decimal       @default(0) @db.Decimal(18, 2)
+  profit        Decimal       @default(0) @db.Decimal(18, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(18, 2)
+  cabin         String?
+  baggage       String?
+  sectors       Json?
+  currency      String        @default("PKR")
+  exchangeRate  Decimal       @default(1) @db.Decimal(18, 6)
+  agentId       String?
+  agent         Agent?        @relation(fields: [agentId], references: [id])
+  branchId      String?
+  branch        Branch?       @relation(fields: [branchId], references: [id])
+  supplierId    String?
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
+  paymentStatus PaymentStatus @default(UNPAID)
+  status        TicketStatus  @default(BOOKED)
+  groupId       String?
+  group         TicketGroup?  @relation(fields: [groupId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  refunds      TicketRefund[]
+  reissuesFrom TicketReissue[] @relation("OriginalTicket")
+  reissuesTo   TicketReissue[] @relation("NewTicket")
+}
+
+model TicketRefund {
+  id               String     @id @default(cuid())
+  ticketId         String
+  ticket           TicketSale @relation(fields: [ticketId], references: [id])
+  originalFare     Decimal    @db.Decimal(18, 2)
+  refundAmount     Decimal    @db.Decimal(18, 2)
+  airlineDeduction Decimal    @default(0) @db.Decimal(18, 2)
+  agencyDeduction  Decimal    @default(0) @db.Decimal(18, 2)
+  otherCharges     Decimal    @default(0) @db.Decimal(18, 2)
+  netRefund        Decimal    @db.Decimal(18, 2)
+  refundedAt       DateTime   @default(now())
+  reason           String?
+  approvedById     String?
+  journalId        String?
+}
+
+model TicketReissue {
+  id               String      @id @default(cuid())
+  originalTicketId String
+  originalTicket   TicketSale  @relation("OriginalTicket", fields: [originalTicketId], references: [id])
+  newTicketId      String?
+  newTicket        TicketSale? @relation("NewTicket", fields: [newTicketId], references: [id])
+  oldItinerary     String?
+  newItinerary     String?
+  airlineChangeFee Decimal     @default(0) @db.Decimal(18, 2)
+  agencyFee        Decimal     @default(0) @db.Decimal(18, 2)
+  fareDifference   Decimal     @default(0) @db.Decimal(18, 2)
+  totalAdditional  Decimal     @default(0) @db.Decimal(18, 2)
+  reason           String?
+  reissuedAt       DateTime    @default(now())
+  journalId        String?
+}
+
+model TicketGroup {
+  id            String       @id @default(cuid())
+  groupNumber   String       @unique
+  airlineId     String?
+  airline       Airline?     @relation(fields: [airlineId], references: [id])
+  sector        String?
+  departureDate DateTime?
+  returnDate    DateTime?
+  totalSeats    Int          @default(0)
+  reservedSeats Int          @default(0)
+  status        String       @default("OPEN")
+  tickets       TicketSale[]
+}
+
+model PnrRecord {
+  id             String       @id @default(cuid())
+  pnr            String       @unique
+  airlineId      String?
+  airline        Airline?     @relation(fields: [airlineId], references: [id])
+  passengerCount Int          @default(1)
+  status         String       @default("ACTIVE")
+  rawData        Json?
+  tickets        TicketSale[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Vehicle {
+  id          String             @id @default(cuid())
+  plateNumber String             @unique
+  type        String
+  capacity    Int
+  supplierId  String?
+  supplier    Supplier?          @relation(fields: [supplierId], references: [id])
+  status      String             @default("ACTIVE")
+  deletedAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  bookings    TransportBooking[]
+
+  @@index([supplierId])
+  @@index([deletedAt])
+}
+
+model Driver {
+  id         String             @id @default(cuid())
+  fullName   String
+  phone      String?
+  licenseNo  String?
+  supplierId String?
+  supplier   Supplier?          @relation(fields: [supplierId], references: [id])
+  status     String             @default("ACTIVE")
+  deletedAt  DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  bookings   TransportBooking[]
+
+  @@index([phone])
+  @@index([licenseNo])
+  @@index([supplierId])
+  @@index([deletedAt])
+}
+
+model TransportBooking {
+  id            String             @id @default(cuid())
+  bookingNumber String             @unique
+  customerId    String?
+  customer      Customer?          @relation(fields: [customerId], references: [id])
+  passengerId   String?
+  passenger     Passenger?         @relation(fields: [passengerId], references: [id])
+  vehicleId     String?
+  vehicle       Vehicle?           @relation(fields: [vehicleId], references: [id])
+  driverId      String?
+  driver        Driver?            @relation(fields: [driverId], references: [id])
+  vehicleType   String?
+  driverName    String?
+  driverContact String?
+  pickup        String?
+  dropoff       String?
+  route         String?
+  tripDate      DateTime
+  tripTime      String?
+  paxCount      Int                @default(1)
+  cost          Decimal            @default(0) @db.Decimal(18, 2)
+  sellingPrice  Decimal            @default(0) @db.Decimal(18, 2)
+  net           Decimal            @default(0) @db.Decimal(18, 2)
+  paid          Decimal            @default(0) @db.Decimal(18, 2)
+  paymentStatus PaymentStatus      @default(UNPAID)
+  umrahBookingId String?
+  umrahBooking   UmrahBooking?     @relation(fields: [umrahBookingId], references: [id])
+  hotelBookingId String?
+  hotelBooking   HotelBooking?     @relation(fields: [hotelBookingId], references: [id])
+  branchId      String?
+  branch        Branch?            @relation(fields: [branchId], references: [id])
+  status        String             @default("Reserved")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  vouchers      TransportVoucher[]
+
+  @@index([customerId])
+  @@index([umrahBookingId])
+  @@index([hotelBookingId])
+  @@index([tripDate])
+}
+
+model TransportVoucher {
+  id        String           @id @default(cuid())
+  voucherNo String           @unique
+  bookingId String
+  booking   TransportBooking @relation(fields: [bookingId], references: [id])
+  issuedAt  DateTime         @default(now())
+}
+
+model VisaApplication {
+  id            String       @id @default(cuid())
+  applicationNo String       @unique
+  category      VisaCategory
+  visaTypeId    String?
+  visaType      VisaType?    @relation(fields: [visaTypeId], references: [id])
+  customerId    String?
+  customer      Customer?    @relation(fields: [customerId], references: [id])
+  passengerId   String?
+  passenger     Passenger?   @relation(fields: [passengerId], references: [id])
+  country       String
+  submittedAt   DateTime?
+  visaNumber    String?
+  status        VisaStatus   @default(DOCUMENT_PENDING)
+  cost          Decimal      @default(0) @db.Decimal(18, 2)
+  sellingPrice  Decimal      @default(0) @db.Decimal(18, 2)
+  branchId      String?
+  branch        Branch?      @relation(fields: [branchId], references: [id])
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([visaTypeId])
+  @@index([passengerId])
+  @@index([customerId])
+}
+
+model Agent {
+  id        String   @id @default(cuid())
+  name      String
+  company   String?
+  phone     String?
+  email     String?
+  parentId  String?
+  parent    Agent?   @relation("SubAgents", fields: [parentId], references: [id])
+  children  Agent[]  @relation("SubAgents")
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads         Lead[]
+  customers     Customer[]
+  quotations    Quotation[]
+  bookings      UmrahBooking[]
+  groups        UmrahGroup[]
+  tickets       TicketSale[]
+  hotelBookings HotelBooking[]
+  commissions   AgentCommission[]
+}
+
+model AgentCommission {
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id])
+  sourceType String
+  sourceId   String
+  amount     Decimal  @db.Decimal(18, 2)
+  status     String   @default("ACCRUED")
+  createdAt  DateTime @default(now())
+}
+
+model ChartOfAccount {
+  id        String           @id @default(cuid())
+  code      String           @unique
+  name      String
+  type      AccountType
+  parentId  String?
+  parent    ChartOfAccount?  @relation("CoaTree", fields: [parentId], references: [id])
+  children  ChartOfAccount[] @relation("CoaTree")
+  isPosting Boolean          @default(true)
+  currency  String           @default("PKR")
+  status    String           @default("ACTIVE")
+  deletedAt DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  lines     JournalLine[]
+
+  @@index([type])
+  @@index([parentId])
+  @@index([deletedAt])
+}
+
+model JournalEntry {
+  id           String        @id @default(cuid())
+  entryNumber  String        @unique
+  date         DateTime
+  memo         String?
+  status       JournalStatus @default(DRAFT)
+  kind         String        @default("MANUAL")
+  module       String?
+  sourceId     String?
+  branchId     String?
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  postedAt     DateTime?
+  reversedOfId String?
+  createdAt    DateTime      @default(now())
+  lines        JournalLine[]
+
+  @@index([status])
+  @@index([kind])
+  @@index([module, sourceId])
+}
+
+model JournalLine {
+  id        String         @id @default(cuid())
+  journalId String
+  journal   JournalEntry   @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  accountId String
+  account   ChartOfAccount @relation(fields: [accountId], references: [id])
+  debit     Decimal        @default(0) @db.Decimal(18, 2)
+  credit    Decimal        @default(0) @db.Decimal(18, 2)
+  memo      String?
+  partyType String?
+  partyId   String?
+}
+
+model Payment {
+  id              String         @id @default(cuid())
+  paymentNo       String         @unique
+  supplierId      String?
+  supplier        Supplier?      @relation(fields: [supplierId], references: [id])
+  amount          Decimal        @db.Decimal(18, 2)
+  date            DateTime       @default(now())
+  method          String
+  paymentMethodId String?
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  bankAccountId   String?
+  cashAccountId   String?
+  branchId        String?
+  branch          Branch?        @relation(fields: [branchId], references: [id])
+  journalId       String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+
+  @@index([supplierId])
+  @@index([paymentMethodId])
+  @@index([date])
+}
+
+model Receipt {
+  id              String         @id @default(cuid())
+  receiptNo       String         @unique
+  customerId      String?
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  bookingId       String?
+  booking         UmrahBooking?  @relation(fields: [bookingId], references: [id])
+  amount          Decimal        @db.Decimal(18, 2)
+  date            DateTime       @default(now())
+  method          String
+  paymentMethodId String?
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  bankAccountId   String?
+  cashAccountId   String?
+  branchId        String?
+  branch          Branch?        @relation(fields: [branchId], references: [id])
+  journalId       String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+
+  @@index([customerId])
+  @@index([paymentMethodId])
+  @@index([date])
+}
+
+model Expense {
+  id         String    @id @default(cuid())
+  expenseNo  String    @unique
+  category   String
+  amount     Decimal   @db.Decimal(18, 2)
+  date       DateTime  @default(now())
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  branchId   String?
+  branch     Branch?   @relation(fields: [branchId], references: [id])
+  journalId  String?
+  notes      String?
+}
+
+model ServiceInvoice {
+  id            String               @id @default(cuid())
+  invoiceNumber String               @unique
+  customerId    String?
+  customer      Customer?            @relation(fields: [customerId], references: [id])
+  branchId      String?
+  branch        Branch?              @relation(fields: [branchId], references: [id])
+  date          DateTime             @default(now())
+  status        String               @default("UNPOSTED")
+  cost          Decimal              @default(0) @db.Decimal(18, 2)
+  sellingPrice  Decimal              @default(0) @db.Decimal(18, 2)
+  tax           Decimal              @default(0) @db.Decimal(18, 2)
+  discount      Decimal              @default(0) @db.Decimal(18, 2)
+  net           Decimal              @default(0) @db.Decimal(18, 2)
+  paid          Decimal              @default(0) @db.Decimal(18, 2)
+  journalId     String?
+  notes         String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  lines         ServiceInvoiceLine[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model ServiceInvoiceLine {
+  id          String         @id @default(cuid())
+  invoiceId   String
+  invoice     ServiceInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceId   String?
+  service     Service?       @relation(fields: [serviceId], references: [id])
+  description String
+  qty         Int            @default(1)
+  unitPrice   Decimal        @default(0) @db.Decimal(18, 2)
+  amount      Decimal        @default(0) @db.Decimal(18, 2)
+}
+
+model BankAccount {
+  id             String    @id @default(cuid())
+  name           String
+  accountNumber  String?
+  iban           String?
+  currency       String    @default("PKR")
+  openingBalance Decimal   @default(0) @db.Decimal(18, 2)
+  coaId          String?
+  status         String    @default("ACTIVE")
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([coaId])
+}
+
+model CashAccount {
+  id             String    @id @default(cuid())
+  name           String
+  currency       String    @default("PKR")
+  openingBalance Decimal   @default(0) @db.Decimal(18, 2)
+  coaId          String?
+  status         String    @default("ACTIVE")
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([coaId])
+}
+
+model Employee {
+  id          String         @id @default(cuid())
+  employeeNo  String         @unique
+  userId      String?        @unique
+  user        User?          @relation(fields: [userId], references: [id])
+  fullName    String
+  designation String?
+  department  String?
+  joinDate    DateTime?
+  basicSalary Decimal        @default(0) @db.Decimal(18, 2)
+  bankName    String?
+  bankAccount String?
+  status      EmployeeStatus @default(ACTIVE)
+  attendance  Attendance[]
+  slips       SalarySlip[]
+}
+
+model Attendance {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  date       DateTime
+  checkIn    DateTime?
+  checkOut   DateTime?
+  status     String    @default("PRESENT")
+
+  @@unique([employeeId, date])
+}
+
+model Holiday {
+  id       String   @id @default(cuid())
+  name     String
+  date     DateTime
+  branchId String?
+}
+
+model PayrollRun {
+  id      String       @id @default(cuid())
+  period  String
+  runDate DateTime     @default(now())
+  status  String       @default("DRAFT")
+  slips   SalarySlip[]
+}
+
+model SalarySlip {
+  id         String      @id @default(cuid())
+  slipNo     String      @unique
+  payrollId  String?
+  payroll    PayrollRun? @relation(fields: [payrollId], references: [id])
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+  basic      Decimal     @db.Decimal(18, 2)
+  allowances Decimal     @default(0) @db.Decimal(18, 2)
+  deductions Decimal     @default(0) @db.Decimal(18, 2)
+  net        Decimal     @db.Decimal(18, 2)
+  paid       Boolean     @default(false)
+}
+
+model CmsPage {
+  id        String        @id @default(cuid())
+  slug      String        @unique
+  title     String
+  body      String
+  status    CmsPageStatus @default(DRAFT)
+  updatedAt DateTime      @updatedAt
+}
+
+model CmsMedia {
+  id         String  @id @default(cuid())
+  documentId String
+  alt        String?
+}
+
+model CmsTestimonial {
+  id        String   @id @default(cuid())
+  author    String
+  quote     String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model CmsNews {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model CmsHtmlBlock {
+  id        String   @id @default(cuid())
+  name      String
+  html      String
+  updatedAt DateTime @updatedAt
+}

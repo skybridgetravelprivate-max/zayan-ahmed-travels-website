@@ -1,0 +1,534 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "../common/prisma.service";
+import { SequenceService } from "../common/sequence.service";
+import { AuditService } from "../common/audit.service";
+import { AuthUser, assertCan } from "../auth/auth.types";
+import { AccountingService } from "../finance/accounting.service";
+
+export type StayRoomInput = {
+  id?: string;
+  roomTypeId?: string;
+  hotelRoomId?: string;
+  roomNumber?: string;
+  occupancy?: number;
+  status?: string;
+  passengerIds?: string[];
+  supplierCost?: number;
+  sellingPrice?: number;
+  discount?: number;
+  tax?: number;
+  commission?: number;
+};
+
+export type StaySegmentInput = {
+  hotelId: string;
+  supplierId?: string;
+  checkIn: string;
+  checkOut: string;
+  confirmationNo?: string;
+  status?: string;
+  notes?: string;
+  specialRequest?: string;
+  rooms: StayRoomInput[];
+};
+
+export type ReservationInput = {
+  id?: string;
+  kind?: string;
+  customerId?: string;
+  passengerId?: string;
+  hotelId?: string;
+  checkIn?: string;
+  checkOut?: string;
+  supplierId?: string;
+  agentId?: string;
+  branchId?: string;
+  notes?: string;
+  specialRequests?: string;
+  paid?: number;
+  segments: StaySegmentInput[];
+};
+
+const money = (n: number) => new Prisma.Decimal(Number(n || 0).toFixed(2));
+
+export function nightsBetween(checkIn: Date, checkOut: Date) {
+  const ms = checkOut.getTime() - checkIn.getTime();
+  return Math.round(ms / 86400000);
+}
+
+export function datesOverlap(aIn: Date, aOut: Date, bIn: Date, bOut: Date) {
+  return aIn < bOut && bIn < aOut;
+}
+
+@Injectable()
+export class ReservationService {
+  constructor(
+    private prisma: PrismaService,
+    private seq: SequenceService,
+    private audit: AuditService,
+    private accounting: AccountingService,
+  ) {}
+
+  private totals(segments: StaySegmentInput[]) {
+    let cost = 0;
+    let selling = 0;
+    let discount = 0;
+    let tax = 0;
+    let commission = 0;
+    let rooms = 0;
+    for (const seg of segments) {
+      for (const rm of seg.rooms || []) {
+        rooms += 1;
+        cost += Number(rm.supplierCost || 0);
+        selling += Number(rm.sellingPrice || 0);
+        discount += Number(rm.discount || 0);
+        tax += Number(rm.tax || 0);
+        commission += Number(rm.commission || 0);
+      }
+    }
+    const net = selling - discount + tax;
+    const profit = net - cost - commission;
+    return { cost, selling, discount, tax, commission, net, profit, rooms };
+  }
+
+  private validateGraph(input: ReservationInput) {
+    if (!input.segments?.length) throw new BadRequestException("Add at least one hotel stay.");
+    const seenConf = new Set<string>();
+    for (const seg of input.segments) {
+      const cin = new Date(seg.checkIn);
+      const cout = new Date(seg.checkOut);
+      if (!(cout > cin)) throw new BadRequestException("Check-out must be after check-in.");
+      if (!seg.hotelId) throw new BadRequestException("Hotel is required on each stay.");
+      if (!seg.rooms?.length) throw new BadRequestException("Each hotel stay needs at least one room.");
+      const conf = String(seg.confirmationNo || "").trim().toLowerCase();
+      if (conf) {
+        if (seenConf.has(conf)) throw new BadRequestException("Duplicate confirmation number.");
+        seenConf.add(conf);
+      }
+      const assigned = new Set<string>();
+      for (const rm of seg.rooms) {
+        const occ = (rm.passengerIds || []).length;
+        const cap = Number(rm.occupancy || 4);
+        if (occ > cap) throw new BadRequestException("Room occupancy exceeds capacity.");
+        for (const pid of rm.passengerIds || []) {
+          const k = `${seg.hotelId}:${pid}`;
+          if (assigned.has(k)) throw new BadRequestException("A guest cannot be assigned twice in the same hotel.");
+          assigned.add(k);
+        }
+      }
+    }
+  }
+
+  async occupancyConflicts(
+    excludeBookingId: string | undefined,
+    segments: StaySegmentInput[],
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const conflicts: string[] = [];
+    for (const seg of segments) {
+      const cin = new Date(seg.checkIn);
+      const cout = new Date(seg.checkOut);
+      for (const rm of seg.rooms) {
+        if (!rm.hotelRoomId && !rm.roomNumber) continue;
+        const others = await db.hotelStayRoom.findMany({
+          where: {
+            status: { notIn: ["CHECKED_OUT", "TRANSFERRED", "CANCELLED"] },
+            hotelRoomId: rm.hotelRoomId || undefined,
+            roomNumber: rm.hotelRoomId ? undefined : rm.roomNumber || undefined,
+            segment: {
+              hotelId: seg.hotelId,
+              booking: { cancelledAt: null, id: excludeBookingId ? { not: excludeBookingId } : undefined },
+            },
+          },
+          include: { segment: { include: { booking: true } } },
+        });
+        for (const o of others) {
+          if (!datesOverlap(cin, cout, o.segment.checkIn, o.segment.checkOut)) continue;
+          if (rm.hotelRoomId && o.hotelRoomId && rm.hotelRoomId === o.hotelRoomId) {
+            conflicts.push(`Physical room already allocated on ${o.segment.booking.bookingNumber}.`);
+          } else if (!rm.hotelRoomId && rm.roomNumber && o.roomNumber === rm.roomNumber) {
+            conflicts.push(`Room ${rm.roomNumber} already allocated on ${o.segment.booking.bookingNumber}.`);
+          }
+        }
+      }
+    }
+    if (conflicts.length) throw new BadRequestException(conflicts[0]);
+  }
+
+  async save(user: AuthUser, input: ReservationInput, ip?: string) {
+    assertCan(user, "hotel.booking");
+    this.validateGraph(input);
+    const tot = this.totals(input.segments);
+    const paid = Number(input.paid || 0);
+    if (paid - tot.net > 0.5) throw new BadRequestException("Paid amount exceeds selling total.");
+    if (tot.cost < 0 || tot.net < 0) throw new BadRequestException("Financial totals cannot be negative.");
+    const first = input.segments[0];
+    const checkIn = new Date(first.checkIn);
+    const checkOut = new Date(input.segments[input.segments.length - 1].checkOut);
+    const nights = nightsBetween(checkIn, checkOut);
+    if (nights <= 0) throw new BadRequestException("Invalid stay dates.");
+
+    const persistSegments = async (bookingId: string, db: Prisma.TransactionClient) => {
+      await db.hotelStaySegment.deleteMany({ where: { bookingId } });
+      for (const seg of input.segments) {
+        const cin = new Date(seg.checkIn);
+        const cout = new Date(seg.checkOut);
+        await db.hotelStaySegment.create({
+          data: {
+            bookingId,
+            hotelId: seg.hotelId,
+            supplierId: seg.supplierId || null,
+            checkIn: cin,
+            checkOut: cout,
+            nights: nightsBetween(cin, cout),
+            confirmationNo: seg.confirmationNo || null,
+            status: seg.status || "Pending",
+            notes: seg.notes || null,
+            specialRequest: seg.specialRequest || null,
+            rooms: {
+              create: (seg.rooms || []).map((rm) => ({
+                roomTypeId: rm.roomTypeId || null,
+                hotelRoomId: rm.hotelRoomId || null,
+                roomNumber: rm.roomNumber || null,
+                occupancy: rm.occupancy || 2,
+                status: rm.status || ((rm.passengerIds || []).length ? "ALLOCATED" : "VACANT"),
+                supplierCost: money(rm.supplierCost || 0),
+                sellingPrice: money(rm.sellingPrice || 0),
+                discount: money(rm.discount || 0),
+                tax: money(rm.tax || 0),
+                commission: money(rm.commission || 0),
+                pax: {
+                  create: (rm.passengerIds || []).map((passengerId) => ({ passengerId })),
+                },
+              })),
+            },
+          },
+        });
+      }
+    };
+
+    const bookingId = await this.prisma.$transaction(
+      async (tx) => {
+        await this.occupancyConflicts(input.id, input.segments, tx);
+        if (input.id) {
+          const existing = await tx.hotelBooking.findUnique({ where: { id: input.id } });
+          if (!existing) throw new NotFoundException();
+          if (existing.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+          const row = await tx.hotelBooking.update({
+            where: { id: input.id },
+            data: {
+              kind: input.kind || existing.kind,
+              customerId: input.customerId || existing.customerId,
+              passengerId: input.passengerId || existing.passengerId,
+              hotelId: first.hotelId,
+              checkIn,
+              checkOut,
+              nights,
+              rooms: tot.rooms,
+              cost: money(tot.cost),
+              sellingPrice: money(tot.selling),
+              discount: money(tot.discount),
+              tax: money(tot.tax),
+              commission: money(tot.commission),
+              net: money(tot.net),
+              paid: money(paid),
+              balance: money(Math.max(tot.net - paid, 0)),
+              supplierId: input.supplierId || first.supplierId || existing.supplierId,
+              notes: input.notes,
+              specialRequests: input.specialRequests,
+              status: existing.status,
+            },
+          });
+          await persistSegments(row.id, tx);
+          await this.audit.log({ userId: user.id, action: "update", entity: "HotelBooking", entityId: row.id, after: row, ipAddress: ip, db: tx });
+          return row.id;
+        }
+
+        const bookingNumber = await this.seq.next("htl-bk", "HTL", tx);
+        const row = await tx.hotelBooking.create({
+          data: {
+            bookingNumber,
+            kind: input.kind || "RESERVATION",
+            type: "DEFINITE",
+            customerId: input.customerId,
+            passengerId: input.passengerId,
+            hotelId: first.hotelId,
+            checkIn,
+            checkOut,
+            nights,
+            rooms: tot.rooms,
+            cost: money(tot.cost),
+            sellingPrice: money(tot.selling),
+            discount: money(tot.discount),
+            tax: money(tot.tax),
+            commission: money(tot.commission),
+            net: money(tot.net),
+            paid: money(paid),
+            balance: money(Math.max(tot.net - paid, 0)),
+            supplierId: input.supplierId || first.supplierId,
+            agentId: input.agentId,
+            branchId: input.branchId,
+            notes: input.notes,
+            specialRequests: input.specialRequests,
+            status: "DEFINITE",
+          },
+        });
+        await persistSegments(row.id, tx);
+        await this.accounting.postSale({
+          userId: user.id,
+          module: "reservation",
+          sourceId: row.id,
+          amount: Number(tot.net),
+          customerId: input.customerId,
+          branchId: input.branchId,
+          memo: `Hotel ${row.bookingNumber}`,
+          db: tx,
+        });
+        await this.accounting.postCost({
+          userId: user.id,
+          module: "reservation",
+          sourceId: row.id,
+          amount: Number(tot.cost),
+          supplierId: input.supplierId || first.supplierId,
+          branchId: input.branchId,
+          memo: `Hotel cost ${row.bookingNumber}`,
+          db: tx,
+        });
+        await this.audit.log({ userId: user.id, action: "create", entity: "HotelBooking", entityId: row.id, after: row, ipAddress: ip, db: tx });
+        return row.id;
+      },
+      { maxWait: 10_000, timeout: 30_000 },
+    );
+
+    return this.get(user, bookingId);
+  }
+
+  private include() {
+    return {
+      staySegments: { include: { rooms: { include: { pax: true, hotelRoom: true } }, hotel: true } },
+      customer: true,
+      hotel: true,
+    } as const;
+  }
+
+  async get(user: AuthUser, id: string) {
+    assertCan(user, "hotel.booking");
+    const row = await this.prisma.hotelBooking.findUnique({ where: { id }, include: this.include() });
+    if (!row) throw new NotFoundException();
+    return row;
+  }
+
+  async list(user: AuthUser, q: { kind?: string; status?: string; hotelId?: string; pending?: string; tentative?: string }) {
+    assertCan(user, "hotel.booking");
+    return this.prisma.hotelBooking.findMany({
+      where: {
+        kind: q.kind || undefined,
+        hotelId: q.hotelId || undefined,
+        cancelledAt: q.status === "CANCELLED" ? { not: null } : q.status === "ACTIVE" ? null : undefined,
+        status: q.tentative === "1" ? { contains: "TENT", mode: "insensitive" } : q.pending === "1" ? { contains: "PEND", mode: "insensitive" } : undefined,
+      },
+      include: this.include(),
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
+  }
+
+  async dashboards(user: AuthUser) {
+    assertCan(user, "hotel.booking");
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const active = { segment: { booking: { cancelledAt: null } } };
+    const [voucherTotal, cancelled, inHouse, arriving, departing, vacantHint, hotelRows, preview] = await Promise.all([
+      this.prisma.hotelBooking.count(),
+      this.prisma.hotelBooking.count({ where: { cancelledAt: { not: null } } }),
+      this.prisma.hotelStayRoom.count({ where: { status: "CHECKED_IN", ...active } }),
+      this.prisma.hotelStayRoom.count({
+        where: {
+          status: { notIn: ["CHECKED_IN", "CHECKED_OUT", "CANCELLED", "TRANSFERRED"] },
+          segment: { booking: { cancelledAt: null }, checkIn: { gte: start, lt: end } },
+        },
+      }),
+      this.prisma.hotelStayRoom.count({
+        where: {
+          status: { notIn: ["CHECKED_OUT", "CANCELLED"] },
+          segment: { booking: { cancelledAt: null }, checkOut: { gte: start, lt: end } },
+        },
+      }),
+      this.prisma.hotelStayRoom.count({ where: { status: "VACANT", ...active } }),
+      this.prisma.hotelStayRoom.groupBy({
+        by: ["status"],
+        where: { segment: { booking: { cancelledAt: null } } },
+        _count: { _all: true },
+      }),
+      this.prisma.hotelBooking.findMany({
+        where: { cancelledAt: null },
+        include: this.include(),
+        orderBy: { checkIn: "desc" },
+        take: 500,
+      }),
+    ]);
+    void hotelRows;
+    const byHotel = new Map<string, { name: string; occupied: number; arriving: number; departing: number }>();
+    for (const b of preview) {
+      for (const s of b.staySegments) {
+        const key = s.hotelId;
+        const slot = byHotel.get(key) || { name: s.hotel.name, occupied: 0, arriving: 0, departing: 0 };
+        const cin = new Date(s.checkIn);
+        cin.setHours(0, 0, 0, 0);
+        const cout = new Date(s.checkOut);
+        cout.setHours(0, 0, 0, 0);
+        for (const r of s.rooms) {
+          if (r.status === "CHECKED_IN") slot.occupied += 1;
+          else if (cin.getTime() === start.getTime()) slot.arriving += 1;
+          else if (cout.getTime() === start.getTime()) slot.departing += 1;
+        }
+        byHotel.set(key, slot);
+      }
+    }
+    return {
+      voucher: { total: voucherTotal, cancelled },
+      reservation: { inHouse, arriving, departing, vacantHint },
+      hotels: [...byHotel.entries()].map(([hotelId, v]) => ({ hotelId, ...v })),
+      previewLimit: 500,
+      previewCount: preview.length,
+      kpiSource: "full-table-aggregates",
+    };
+  }
+
+  private async roomOrThrow(id: string) {
+    const room = await this.prisma.hotelStayRoom.findUnique({
+      where: { id },
+      include: { segment: { include: { booking: true } }, pax: true },
+    });
+    if (!room) throw new NotFoundException("Room unit not found.");
+    if (room.segment.booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+    return room;
+  }
+
+  async checkin(user: AuthUser, roomId: string, at?: string, roomNumber?: string, ip?: string) {
+    assertCan(user, "reservation.checkin");
+    const room = await this.roomOrThrow(roomId);
+    if (room.status === "CHECKED_OUT") throw new BadRequestException("Cannot check in a checked-out room.");
+    if (room.status === "CHECKED_IN") throw new BadRequestException("Room is already checked in.");
+    if (!room.pax.length) throw new BadRequestException("Assign PAX before check-in.");
+    const row = await this.prisma.hotelStayRoom.update({
+      where: { id: roomId },
+      data: { status: "CHECKED_IN", checkinAt: at ? new Date(at) : new Date(), roomNumber: roomNumber || room.roomNumber },
+    });
+    await this.audit.log({ userId: user.id, action: "checkin", entity: "HotelStayRoom", entityId: roomId, after: row, ipAddress: ip });
+    return row;
+  }
+
+  async checkout(user: AuthUser, roomId: string, at?: string, ip?: string) {
+    assertCan(user, "reservation.checkout");
+    const room = await this.roomOrThrow(roomId);
+    if (room.status !== "CHECKED_IN") throw new BadRequestException("Check-in required before checkout.");
+    const when = at ? new Date(at) : new Date();
+    if (room.checkinAt && when < room.checkinAt) throw new BadRequestException("Checkout cannot be before check-in.");
+    const row = await this.prisma.hotelStayRoom.update({
+      where: { id: roomId },
+      data: { status: "CHECKED_OUT", checkoutAt: when },
+    });
+    await this.audit.log({ userId: user.id, action: "checkout", entity: "HotelStayRoom", entityId: roomId, after: row, ipAddress: ip });
+    return row;
+  }
+
+  async transfer(user: AuthUser, fromRoomId: string, toRoomId: string | undefined, roomNumber: string | undefined, ip?: string) {
+    assertCan(user, "reservation.transfer");
+    const from = await this.roomOrThrow(fromRoomId);
+    let toId = toRoomId;
+    if (!toId) {
+      const created = await this.prisma.hotelStayRoom.create({
+        data: {
+          segmentId: from.segmentId,
+          roomTypeId: from.roomTypeId,
+          occupancy: from.occupancy,
+          roomNumber: roomNumber || "",
+          status: from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED",
+          checkinAt: from.checkinAt,
+          pax: { create: from.pax.map((p) => ({ passengerId: p.passengerId })) },
+        },
+      });
+      toId = created.id;
+    } else {
+      const to = await this.roomOrThrow(toId);
+      await this.prisma.hotelStayRoomPax.createMany({
+        data: from.pax.map((p) => ({ stayRoomId: to.id, passengerId: p.passengerId })),
+        skipDuplicates: true,
+      });
+      await this.prisma.hotelStayRoom.update({
+        where: { id: to.id },
+        data: {
+          roomNumber: roomNumber || to.roomNumber,
+          status: to.status === "VACANT" ? (from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED") : to.status,
+          checkinAt: to.checkinAt || from.checkinAt,
+        },
+      });
+    }
+    await this.prisma.hotelStayRoomPax.deleteMany({ where: { stayRoomId: from.id } });
+    await this.prisma.hotelStayRoom.update({ where: { id: from.id }, data: { status: "TRANSFERRED" } });
+    await this.prisma.hotelStayTransfer.create({ data: { fromRoomId: from.id, toRoomId: toId, userId: user.id } });
+    await this.audit.log({ userId: user.id, action: "transfer", entity: "HotelStayRoom", entityId: from.id, after: { toId }, ipAddress: ip });
+    return { fromId: from.id, toId };
+  }
+
+  async cancel(user: AuthUser, bookingId: string, reason: string, ip?: string) {
+    assertCan(user, "reservation.cancel");
+    const booking = await this.get(user, bookingId);
+    if (booking.cancelledAt) throw new BadRequestException("Already cancelled.");
+    if (!String(reason || "").trim()) throw new BadRequestException("Cancellation reason is required.");
+    const inHouse = booking.staySegments.some((s) => s.rooms.some((r) => r.status === "CHECKED_IN"));
+    if (inHouse) throw new BadRequestException("Cannot cancel while rooms are checked in.");
+    const row = await this.prisma.hotelBooking.update({
+      where: { id: bookingId },
+      data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED" },
+    });
+    await this.audit.log({ userId: user.id, action: "cancel", entity: "HotelBooking", entityId: bookingId, before: booking, after: row, ipAddress: ip });
+    return row;
+  }
+
+  async split(user: AuthUser, bookingId: string, roomIds: string[], ip?: string) {
+    assertCan(user, "reservation.split");
+    if (!roomIds?.length) throw new BadRequestException("Select at least one room to split.");
+    const booking = await this.get(user, bookingId);
+    if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+    const move = new Set(roomIds);
+    const childSegs: StaySegmentInput[] = [];
+    for (const seg of booking.staySegments) {
+      const rooms = seg.rooms.filter((r) => move.has(r.id));
+      if (!rooms.length) continue;
+      childSegs.push({
+        hotelId: seg.hotelId,
+        supplierId: undefined,
+        checkIn: seg.checkIn.toISOString(),
+        checkOut: seg.checkOut.toISOString(),
+        rooms: rooms.map((r) => ({
+          roomTypeId: r.roomTypeId || undefined,
+          hotelRoomId: r.hotelRoomId || undefined,
+          roomNumber: r.roomNumber || undefined,
+          occupancy: r.occupancy,
+          passengerIds: r.pax.map((p) => p.passengerId),
+          supplierCost: Number(r.supplierCost),
+          sellingPrice: Number(r.sellingPrice),
+          discount: Number(r.discount),
+          tax: Number(r.tax),
+          commission: Number(r.commission),
+        })),
+      });
+    }
+    if (!childSegs.length) throw new BadRequestException("Selected rooms were not found on this booking.");
+    const child = await this.save(user, {
+      kind: booking.kind,
+      customerId: booking.customerId || undefined,
+      hotelId: childSegs[0].hotelId,
+      segments: childSegs,
+    }, ip);
+    await this.prisma.hotelBooking.update({ where: { id: child.id }, data: { parentBookingId: bookingId } });
+    await this.prisma.hotelStayRoom.deleteMany({ where: { id: { in: roomIds } } });
+    await this.audit.log({ userId: user.id, action: "split", entity: "HotelBooking", entityId: bookingId, after: { childId: child.id }, ipAddress: ip });
+    return { parentId: bookingId, child };
+  }
+}

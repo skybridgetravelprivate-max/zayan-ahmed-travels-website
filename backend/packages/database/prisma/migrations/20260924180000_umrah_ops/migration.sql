@@ -1,0 +1,10 @@
+-- Phase 6 Umrah lifecycle + cross-module links
+
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "commission" DECIMAL(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "iataCode" TEXT;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "iataLocked" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "visaStatus" TEXT;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "hotelBookingId" TEXT;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "ticketSaleId" TEXT;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "transportId" TEXT;
+ALTER TABLE "UmrahBooking" ADD COLUMN IF NOT EXISTS "groupName" TEXT;
