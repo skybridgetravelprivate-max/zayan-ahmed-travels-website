@@ -34,7 +34,7 @@ Set these server-side environment variables in the production process. Do not pr
 - `CUSTOMER_BOOKINGS_INTERNAL_TOKEN`
 - `CUSTOMER_DATABASE_PATH`
 
-The CRM credentials enable lead submission, and the internal token enables customer-booking retrieval. Set `CUSTOMER_DATABASE_PATH` to an absolute path on writable, persistent VPS storage. The app creates its parent directory, but the database file must survive application restarts and deployments. Back it up separately; it is the website's SQLite customer database, not the CRM database.
+Set `CRM_API_URL` to the backend's HTTP(S) origin. The website uses it for server-side CRM requests and proxies otherwise-unmatched `/api/*` requests to the backend on the same public domain. Website-owned `/api/account/*` and `/api/inquiries` routes continue to be handled by Next.js. The CRM credentials enable lead submission, and the internal token enables customer-booking retrieval. Set `CUSTOMER_DATABASE_PATH` to an absolute path on writable, persistent VPS storage. The app creates its parent directory, but the database file must survive application restarts and deployments. Back it up separately; it is the website's SQLite customer database, not the CRM database.
 
 Start the production server with:
 
