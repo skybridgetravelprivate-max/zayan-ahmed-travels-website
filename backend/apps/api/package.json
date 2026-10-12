@@ -35,7 +35,7 @@
     "dotenv": "^16.6.1",
     "ioredis": "^5.7.0",
     "multer": "^2.0.1",
-    "nodemailer": "^7.0.5",
+    "nodemailer": "^10.0.9",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pdfkit": "^0.17.1",
