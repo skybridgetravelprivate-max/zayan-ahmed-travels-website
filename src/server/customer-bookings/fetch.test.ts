@@ -12,7 +12,7 @@ function customer(id: string) {
     id,
     email: `${id}@example.test`,
     displayName: `Test ${id}`,
-    crmCustomerId: null,
+    crmCustomerId: id,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-02T00:00:00.000Z",
   };
