@@ -37,12 +37,14 @@ jobs:
         run: npm install --package-lock-only --ignore-scripts --legacy-peer-deps
 
       - name: Apply compatible root dependency security updates
+        continue-on-error: true
         run: npm audit fix --ignore-scripts --legacy-peer-deps
 
       - name: Synchronize backend workspace lockfile
         run: npm install --package-lock-only --prefix backend --ignore-scripts --legacy-peer-deps
 
       - name: Apply compatible backend dependency security updates
+        continue-on-error: true
         run: npm audit fix --prefix backend --ignore-scripts --legacy-peer-deps
 
       - name: Verify root dependency audit
