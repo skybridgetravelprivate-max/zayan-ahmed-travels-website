@@ -6,6 +6,7 @@ on:
       - agents/connect-travel-website-backend
     paths:
       - package.json
+      - backend/package.json
       - .github/workflows/dependency-security-fix.yml
 
 permissions:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   fix-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
@@ -32,14 +33,23 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Apply compatible security updates
+      - name: Apply compatible root dependency security updates
         run: npm audit fix --ignore-scripts
 
-      - name: Verify no moderate-or-higher root dependency advisories remain
+      - name: Apply compatible backend dependency security updates
+        run: npm audit fix --prefix backend --ignore-scripts
+
+      - name: Verify root dependency audit
         run: npm audit --audit-level=moderate
 
-      - name: Install exact locked dependencies
+      - name: Verify backend dependency audit
+        run: npm audit --prefix backend --audit-level=moderate
+
+      - name: Install exact root locked dependencies
         run: npm ci
+
+      - name: Install exact backend locked dependencies
+        run: npm ci --prefix backend
 
       - name: Build website and API
         run: npm run build
@@ -49,12 +59,12 @@ jobs:
 
       - name: Commit verified lockfile updates
         run: |
-          if git diff --quiet -- package-lock.json; then
+          if git diff --quiet -- package-lock.json backend/package-lock.json; then
             echo "No lockfile changes were needed."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
+          git add package-lock.json backend/package-lock.json
           git commit -m "security: fix vulnerable npm dependencies"
           git push origin HEAD:agents/connect-travel-website-backend
