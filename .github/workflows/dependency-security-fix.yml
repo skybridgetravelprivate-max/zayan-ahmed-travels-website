@@ -50,6 +50,7 @@ jobs:
         run: npm audit fix --prefix backend --ignore-scripts --legacy-peer-deps
 
       - name: Commit lockfile remediation before strict checks
+        continue-on-error: true
         run: |
           if ! git diff --quiet -- package-lock.json backend/package-lock.json; then
             git config user.name "github-actions[bot]"
