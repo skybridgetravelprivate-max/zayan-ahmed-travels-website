@@ -7,6 +7,17 @@ import type { CustomerBookingsResult } from "./fetch";
 const SECRET_TOKEN = "website-customer-bookings-internal-token-32chars";
 const ORIGIN = "https://crm.example.test";
 
+function customer(id: string) {
+  return {
+    id,
+    email: `${id}@example.test`,
+    displayName: `Test ${id}`,
+    crmCustomerId: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-02T00:00:00.000Z",
+  };
+}
+
 let originalFetch: typeof globalThis.fetch;
 const envKeys = ["CRM_API_URL", "CUSTOMER_BOOKINGS_INTERNAL_TOKEN"] as const;
 let savedEnv: Record<string, string | undefined> = {};
@@ -43,7 +54,7 @@ test("signed-out resolveAccountBookings → 401 without calling CRM", async () =
 
 test("signed-in customer A → CRM request uses A's customer id", async () => {
   let usedId = "";
-  const resolved = await resolveAccountBookings({ id: "customer-a" }, async (id) => {
+  const resolved = await resolveAccountBookings(customer("customer-a"), async (id) => {
     usedId = id;
     return {
       ok: true,
@@ -126,7 +137,7 @@ test("CRM failure → sanitized 503 without token or CRM internals", async () =>
         status,
         headers: { "Content-Type": "application/json" },
       })) as typeof fetch;
-    const resolved = await resolveAccountBookings({ id: "cust-a" });
+    const resolved = await resolveAccountBookings(customer("cust-a"));
     assert.equal(resolved.status, 503);
     assert.equal(resolved.body.ok, false);
     const text = JSON.stringify(resolved.body);
