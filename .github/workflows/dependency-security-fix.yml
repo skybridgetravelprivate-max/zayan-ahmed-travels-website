@@ -1,0 +1,60 @@
+name: Remediate npm dependency vulnerabilities
+
+on:
+  push:
+    branches:
+      - agents/connect-travel-website-backend
+    paths:
+      - package.json
+      - .github/workflows/dependency-security-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependency-security-fix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agents/connect-travel-website-backend
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply compatible security updates
+        run: npm audit fix --ignore-scripts
+
+      - name: Verify no moderate-or-higher root dependency advisories remain
+        run: npm audit --audit-level=moderate
+
+      - name: Install exact locked dependencies
+        run: npm ci
+
+      - name: Build website and API
+        run: npm run build
+
+      - name: Run customer-booking tests
+        run: npm run test:customer-bookings
+
+      - name: Commit verified lockfile updates
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "No lockfile changes were needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "security: fix vulnerable npm dependencies"
+          git push origin HEAD:agents/connect-travel-website-backend
