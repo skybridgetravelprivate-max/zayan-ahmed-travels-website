@@ -33,8 +33,14 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Synchronize root lockfile with reviewed manifest changes
+        run: npm install --package-lock-only --ignore-scripts
+
       - name: Apply compatible root dependency security updates
         run: npm audit fix --ignore-scripts
+
+      - name: Synchronize backend workspace lockfile
+        run: npm install --package-lock-only --prefix backend --ignore-scripts
 
       - name: Apply compatible backend dependency security updates
         run: npm audit fix --prefix backend --ignore-scripts
