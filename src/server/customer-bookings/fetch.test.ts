@@ -81,7 +81,7 @@ test("browser-supplied customer id cannot override session identity", async () =
   // Simulate a handler that only receives session customer; query "customer-b" is never passed in.
   const browserQueryCustomerId = "customer-b";
   void browserQueryCustomerId;
-  await resolveAccountBookings({ id: "customer-a" }, async (id) => {
+  await resolveAccountBookings(customer("customer-a"), async (id) => {
     usedId = id;
     return { ok: true, bookings: [] };
   });
