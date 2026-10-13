@@ -99,6 +99,13 @@ function requestPathname(req) {
 
 const { isApiPathname } = require("./hostinger-api-path.cjs");
 
+class MissingApiArtifactError extends Error {
+  constructor(relativePath) {
+    super(`Required API build artifact is missing: ${relativePath}`);
+    this.name = "MissingApiArtifactError";
+  }
+}
+
 function isApiPath(req) {
   const pathOnly = typeof req === "string" ? req.split("?")[0] : requestPathname(req);
   return isApiPathname(pathOnly);
@@ -141,8 +148,8 @@ function listenGateway() {
 async function embedApi() {
   const dist = path.join(root, "apps", "api", "dist", "create-app.js");
   if (!fs.existsSync(dist)) {
-    console.error("API build missing:", dist);
-    return;
+    const relativePath = path.relative(root, dist).split(path.sep).join("/");
+    throw new MissingApiArtifactError(relativePath);
   }
   require("reflect-metadata");
   const { createNestApp } = require(dist);
@@ -181,6 +188,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  const message =
+    err instanceof MissingApiArtifactError
+      ? err.message
+      : "An unexpected error occurred.";
+  console.error(`Hostinger startup failed: ${message}`);
   process.exit(1);
 });
