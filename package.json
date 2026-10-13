@@ -31,7 +31,7 @@
   },
   "overrides": {
     "postcss": "^8.5.30",
-    "braces": "^3.0.3",
+    "braces": "npm:@dieub/braces-depth-guard@3.0.3-pn.0",
     "postcss-selector-parser": "^7.1.6"
   }
 }
