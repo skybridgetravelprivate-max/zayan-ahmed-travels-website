@@ -4,6 +4,7 @@ loadEnv({ path: resolve(process.cwd(), "../../.env") });
 import { PrismaClient, AccountType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { createPostgresConnectionConfig } from "@zat/config/postgres-tls";
 import { hashPassword } from "../src/password";
 
 function createPrisma() {
@@ -12,9 +13,8 @@ function createPrisma() {
   return new PrismaClient({
     adapter: new PrismaPg(
       new Pool({
-        connectionString: url,
+        ...createPostgresConnectionConfig(url),
         max: 5,
-        ssl: /sslmode=require|neon\.tech|supabase\.co/i.test(url) ? { rejectUnauthorized: false } : undefined,
       }),
     ),
   });

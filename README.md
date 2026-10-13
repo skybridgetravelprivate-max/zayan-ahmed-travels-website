@@ -38,6 +38,8 @@ For Hostinger, use the repository root as the app root and use `npm run build` a
 
 Set `DATABASE_URL` to the Supabase PostgreSQL connection string and configure strong, unique `JWT_SECRET` and `JWT_REFRESH_SECRET` values in Hostinger's environment variables. Use `APP_URL=https://www.zayanahmedtravels.com` so the API accepts the live site's origin, and set `CRM_API_URL` to that same public origin for the website's server-to-server CRM calls. Set `CUSTOMER_BOOKINGS_INTERNAL_TOKEN` to the same value for the website and backend. The CRM credentials enable lead submission, and the internal token enables customer-booking retrieval. Set `CUSTOMER_DATABASE_PATH` to an absolute path on writable, persistent VPS storage. The app creates its parent directory, but the database file must survive application restarts and deployments. Back it up separately; it is the website's SQLite customer database, not the CRM database.
 
+The backend verifies the TLS certificate and hostname for remote PostgreSQL connections. The default trust store is Node.js's system CA set. If the approved provider requires a private CA, set `DATABASE_SSL_CA` to its PEM-encoded CA certificate; escaped `\n` line breaks are accepted. Do not use unverified TLS modes in the connection URL: TLS URL parameters are ignored so they cannot weaken verification. Localhost PostgreSQL connections remain unencrypted for development.
+
 Start the production server with:
 
 ```

@@ -3,16 +3,17 @@ import { afterEach, beforeEach, test } from "node:test";
 import { resolveAccountBookings } from "./resolve";
 import { fetchCustomerBookingsForWebsiteCustomer } from "./fetch";
 import type { CustomerBookingsResult } from "./fetch";
+import type { CurrentCustomer } from "../customer-auth/session";
 
 const SECRET_TOKEN = "website-customer-bookings-internal-token-32chars";
 const ORIGIN = "https://crm.example.test";
 
-function customer(id: string) {
+function customer(id: string, crmCustomerId: string): CurrentCustomer {
   return {
     id,
     email: `${id}@example.test`,
-    displayName: `Test ${id}`,
-    crmCustomerId: id,
+    displayName: "Test Customer",
+    crmCustomerId,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-02T00:00:00.000Z",
   };
@@ -54,7 +55,7 @@ test("signed-out resolveAccountBookings → 401 without calling CRM", async () =
 
 test("signed-in customer A → CRM request uses A's customer id", async () => {
   let usedId = "";
-  const resolved = await resolveAccountBookings(customer("customer-a"), async (id) => {
+  const resolved = await resolveAccountBookings(customer("customer-a", "crm-customer-a"), async (id) => {
     usedId = id;
     return {
       ok: true,
@@ -81,7 +82,7 @@ test("browser-supplied customer id cannot override session identity", async () =
   // Simulate a handler that only receives session customer; query "customer-b" is never passed in.
   const browserQueryCustomerId = "customer-b";
   void browserQueryCustomerId;
-  await resolveAccountBookings(customer("customer-a"), async (id) => {
+  await resolveAccountBookings(customer("customer-a", "crm-customer-a"), async (id) => {
     usedId = id;
     return { ok: true, bookings: [] };
   });
@@ -137,7 +138,7 @@ test("CRM failure → sanitized 503 without token or CRM internals", async () =>
         status,
         headers: { "Content-Type": "application/json" },
       })) as typeof fetch;
-    const resolved = await resolveAccountBookings(customer("cust-a"));
+    const resolved = await resolveAccountBookings(customer("cust-a", "crm-cust-a"));
     assert.equal(resolved.status, 503);
     assert.equal(resolved.body.ok, false);
     const text = JSON.stringify(resolved.body);
