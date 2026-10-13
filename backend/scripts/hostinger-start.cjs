@@ -6,6 +6,12 @@ const path = require("path");
 const { parse } = require("url");
 
 const root = path.join(__dirname, "..");
+const repositoryRoot = path.join(root, "..");
+const webRoot = process.env.HOSTINGER_WEB_DIR
+  ? path.resolve(process.env.HOSTINGER_WEB_DIR)
+  : fs.existsSync(path.join(repositoryRoot, "next.config.ts"))
+    ? repositoryRoot
+    : path.join(root, "apps", "web");
 loadEnvTree(root);
 if (
   (!process.env.DATABASE_URL || /@HOST[:/]/i.test(process.env.DATABASE_URL)) &&
@@ -150,11 +156,11 @@ async function prepareNext() {
   try {
     nextFactory = require("next");
   } catch {
-    nextFactory = require(path.join(root, "apps", "web", "node_modules", "next"));
+    nextFactory = require(path.join(webRoot, "node_modules", "next"));
   }
   const nxt = nextFactory({
     dev: false,
-    dir: path.join(root, "apps", "web"),
+    dir: webRoot,
     hostname: "0.0.0.0",
     port: publicPort,
   });
@@ -169,11 +175,7 @@ async function prepareNext() {
 async function main() {
   listenGateway();
   if (mode === "api" || mode === "all") {
-    try {
-      await embedApi();
-    } catch (err) {
-      console.error("Failed to embed API:", err);
-    }
+    await embedApi();
   }
   if (mode === "web" || mode === "all") await prepareNext();
 }
