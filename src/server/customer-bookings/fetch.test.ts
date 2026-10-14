@@ -53,7 +53,7 @@ test("signed-out resolveAccountBookings → 401 without calling CRM", async () =
   assert.equal(JSON.stringify(resolved.body).includes(SECRET_TOKEN), false);
 });
 
-test("signed-in customer A → CRM request uses A's customer id", async () => {
+test("signed-in customer A → CRM request uses A's linked CRM customer id", async () => {
   let usedId = "";
   const resolved = await resolveAccountBookings(customer("customer-a", "crm-customer-a"), async (id) => {
     usedId = id;
@@ -72,12 +72,12 @@ test("signed-in customer A → CRM request uses A's customer id", async () => {
       ],
     };
   });
-  assert.equal(usedId, "customer-a");
+  assert.equal(usedId, "crm-customer-a");
   assert.equal(resolved.status, 200);
   assert.equal(resolved.body.ok, true);
 });
 
-test("browser-supplied customer id cannot override session identity", async () => {
+test("resolver uses the session-linked CRM id instead of a browser-supplied selector", async () => {
   let usedId = "";
   // Simulate a handler that only receives session customer; query "customer-b" is never passed in.
   const browserQueryCustomerId = "customer-b";
@@ -86,7 +86,7 @@ test("browser-supplied customer id cannot override session identity", async () =
     usedId = id;
     return { ok: true, bookings: [] };
   });
-  assert.equal(usedId, "customer-a");
+  assert.equal(usedId, "crm-customer-a");
   assert.notEqual(usedId, "customer-b");
 });
 
