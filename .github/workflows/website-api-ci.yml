@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - cursor/customer-account-bookings
+      - agents/integration-review-20261013
   push:
     branches:
       - agents/connect-travel-website-backend
+      - agents/integration-review-20261013
   workflow_dispatch:
 
 permissions:
@@ -17,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  dependency-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -30,10 +32,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-
-      - name: Install website dependencies
-        run: npm ci --legacy-peer-deps
 
       - name: Verify root dependency audit
         run: npm audit --audit-level=moderate --legacy-peer-deps
@@ -41,8 +39,60 @@ jobs:
       - name: Verify backend dependency audit
         run: npm audit --prefix backend --audit-level=moderate --legacy-peer-deps
 
-      - name: Build website and API
-        run: npm run build
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      - name: Install website dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend --legacy-peer-deps
+
+      - name: Validate Prisma schema
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+        run: npm run validate --workspace=@zat/database
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npm run db:generate
+
+      - name: Build API
+        working-directory: backend
+        run: npm run build --workspace=@zat/api
+
+      - name: Typecheck API
+        working-directory: backend
+        run: npx tsc -p apps/api/tsconfig.json --noEmit
+
+      - name: Lint backend
+        working-directory: backend
+        run: npm run lint
+
+      - name: Lint website
+        run: npm run lint
+
+      - name: Build website
+        run: npm run build:website
+
+      - name: Run backend unit tests
+        run: npm test --prefix backend
 
       - name: Run customer-booking tests
         env:
