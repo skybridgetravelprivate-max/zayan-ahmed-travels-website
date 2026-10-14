@@ -47,3 +47,5 @@ HOST=0.0.0.0 PORT=3000 npm start
 ```
 
 The combined server binds to `0.0.0.0` and uses `PORT` for its listening port. Put a reverse proxy in front of the app and terminate HTTPS there. Use a process manager such as systemd or an equivalent supervisor to keep the Node.js process running and restart it after failures or reboots. Run `npm run db:migrate:deploy --prefix backend` after setting `DATABASE_URL` and before serving production traffic.
+
+The public website login and registration endpoints share a limit of 10 requests per client IP per 15 minutes. Public inquiry submissions have a separate limit of 10 per client IP per 15 minutes. These limits use in-process memory and rely on the reverse proxy to provide a valid `X-Forwarded-For` header; they reset on process restart and are not shared across multiple app instances.

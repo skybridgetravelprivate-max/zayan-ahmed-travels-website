@@ -23,7 +23,7 @@
     "db:seed": "npm run seed -w @zat/database",
     "db:push": "npm run push -w @zat/database",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit",
+    "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p ../tsconfig.json --noEmit",
     "test": "node scripts/run-tests.mjs",
     "test:e2e": "npx tsx scripts/e2e-api.mjs",
     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs"

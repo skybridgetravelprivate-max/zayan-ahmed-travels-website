@@ -122,6 +122,17 @@ async function liveCheck(prisma: PrismaClient): Promise<string[]> {
     if (!fkSet.has(key)) failures.push(`missing FK ${key}`);
   }
 
+  const unvalidatedFks = await prisma.$queryRaw<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE contype = 'f'
+      AND convalidated = false
+      AND connamespace = 'public'::regnamespace
+  `;
+  for (const fk of unvalidatedFks) {
+    failures.push(`unvalidated FK ${fk.conname}`);
+  }
+
   const uniqueCols = await prisma.$queryRaw<{ table_name: string; column_name: string }[]>`
     SELECT tc.table_name, kcu.column_name
     FROM information_schema.table_constraints AS tc
@@ -146,15 +157,6 @@ async function liveCheck(prisma: PrismaClient): Promise<string[]> {
     "Customer.customerNumber",
   ]) {
     if (!uniqueSet.has(col)) failures.push(`missing unique ${col}`);
-  }
-
-  try {
-    await prisma.city.create({
-      data: { name: "__integrity_orphan_city__", countryId: "nonexistent-country-id" },
-    });
-    failures.push("orphan City insert was allowed (FK not enforced)");
-  } catch {
-    // expected
   }
 
   const checkConstraint = await prisma.$queryRaw<{ conname: string }[]>`

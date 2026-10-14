@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - agents/connect-travel-website-backend
+      - agents/integration-review-20261013
+      - cursor/customer-account-bookings
     paths:
       - package.json
       - package-lock.json
@@ -27,7 +29,6 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: agents/connect-travel-website-backend
           persist-credentials: false
 
       - name: Set up Node.js

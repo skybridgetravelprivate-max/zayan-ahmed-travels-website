@@ -1,5 +1,6 @@
 import { acceptInquiry, validateInquiry } from "@/lib/inquiries";
 import { createInquiryLead, CrmNotConfiguredError, CrmRequestError } from "@/server/crm-lead";
+import { publicRateLimitResponse } from "@/server/public-rate-limit";
 
 const crmLeadTypes = new Set(["contact", "group-booking", "corporate", "umrah", "visa", "tour", "transport"]);
 
@@ -24,6 +25,9 @@ const successMessage: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  const rateLimited = publicRateLimitResponse(request, "inquiries");
+  if (rateLimited) return rateLimited;
+
   let body: unknown;
   try {
     body = await request.json();

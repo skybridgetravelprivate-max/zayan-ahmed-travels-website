@@ -4,6 +4,7 @@ import { resolveAccountBookings } from "./resolve";
 import { fetchCustomerBookingsForWebsiteCustomer } from "./fetch";
 import type { CustomerBookingsResult } from "./fetch";
 import type { CurrentCustomer } from "../customer-auth/session";
+import { parseCrmPublicOrigin } from "../crm-public";
 
 const SECRET_TOKEN = "website-customer-bookings-internal-token-32chars";
 const ORIGIN = "https://crm.example.test";
@@ -160,4 +161,13 @@ test("missing configuration → 503 and no outbound CRM call", async () => {
   if (result.ok) return;
   assert.equal(result.status, 503);
   assert.equal(fetchCalled, false);
+});
+
+test("CRM server origins require HTTPS except for loopback development", () => {
+  assert.equal(parseCrmPublicOrigin("https://crm.example.test/api"), "https://crm.example.test");
+  assert.equal(parseCrmPublicOrigin("http://localhost:3000"), "http://localhost:3000");
+  assert.equal(parseCrmPublicOrigin("http://127.0.0.1:3000"), "http://127.0.0.1:3000");
+  assert.equal(parseCrmPublicOrigin("http://[::1]:3000"), "http://[::1]:3000");
+  assert.equal(parseCrmPublicOrigin("http://crm.example.test"), "");
+  assert.equal(parseCrmPublicOrigin("https://user:pass@crm.example.test"), "");
 });

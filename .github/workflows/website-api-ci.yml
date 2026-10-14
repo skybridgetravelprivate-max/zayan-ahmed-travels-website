@@ -98,3 +98,6 @@ jobs:
         env:
           NODE_OPTIONS: --conditions=react-server
         run: npm run test:customer-bookings
+
+      - name: Run public rate-limit tests
+        run: npm run test:public-rate-limit
