@@ -18,6 +18,7 @@ export type SessionRecord = {
   customerId: string;
   tokenHash: string;
   expiresAt: string;
+  revokedAt: string | null;
   createdAt: string;
 };
 
@@ -36,16 +37,17 @@ type CustomerRow = {
   password_hash: string;
   display_name: string;
   crm_customer_id: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: Date | string;
+  updated_at: Date | string;
 };
 
 type SessionRow = {
   id: string;
   customer_id: string;
   token_hash: string;
-  expires_at: string;
-  created_at: string;
+  expires_at: Date | string;
+  revoked_at: Date | string | null;
+  created_at: Date | string;
 };
 
 function text(value: string, label: string) {
@@ -58,8 +60,20 @@ function normalizeEmail(email: string) {
   return text(email, "Email").toLowerCase();
 }
 
-function isUniqueConstraint(error: unknown) {
-  return error instanceof Error && "errcode" in error && error.errcode === 2067;
+function isUniqueConstraint(error: unknown, constraint: string) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505" &&
+    "constraint" in error &&
+    error.constraint === constraint
+  );
+}
+
+function timestamp(value: Date | string | null) {
+  if (value === null) return null;
+  return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
 function customerFromRow(row: CustomerRow): CustomerRecord {
@@ -70,8 +84,8 @@ function customerFromRow(row: CustomerRow): CustomerRecord {
     passwordHash: row.password_hash,
     displayName: row.display_name,
     crmCustomerId: crm || null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: timestamp(row.created_at)!,
+    updatedAt: timestamp(row.updated_at)!,
   };
 }
 
@@ -80,18 +94,19 @@ function sessionFromRow(row: SessionRow): SessionRecord {
     id: row.id,
     customerId: row.customer_id,
     tokenHash: row.token_hash,
-    expiresAt: row.expires_at,
-    createdAt: row.created_at,
+    expiresAt: timestamp(row.expires_at)!,
+    revokedAt: timestamp(row.revoked_at),
+    createdAt: timestamp(row.created_at)!,
   };
 }
 
 const customerSelect = `id, email, password_hash, display_name, crm_customer_id, created_at, updated_at`;
 
-export function insertCustomer(input: {
+export async function insertCustomer(input: {
   email: string;
   passwordHash: string;
   displayName: string;
-}): CustomerRecord {
+}): Promise<CustomerRecord> {
   const email = normalizeEmail(input.email);
   const passwordHash = text(input.passwordHash, "Password hash");
   const displayName = text(input.displayName, "Display name");
@@ -105,15 +120,15 @@ export function insertCustomer(input: {
     createdAt: now,
     updatedAt: now,
   };
-  const db = customerDatabase();
 
   try {
-    db.prepare(
-      `INSERT INTO customers (id, email, password_hash, display_name, crm_customer_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, ?, ?)`,
-    ).run(record.id, record.email, record.passwordHash, record.displayName, record.createdAt, record.updatedAt);
+    await customerDatabase().query(
+      `INSERT INTO website_customers (id, email, password_hash, display_name, crm_customer_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NULL, $5, $6)`,
+      [record.id, record.email, record.passwordHash, record.displayName, record.createdAt, record.updatedAt],
+    );
   } catch (error) {
-    if (isUniqueConstraint(error)) {
+    if (isUniqueConstraint(error, "website_customers_email_key")) {
       throw new CustomerRecordError("A customer with this email already exists.", "email-taken");
     }
     throw error;
@@ -122,52 +137,58 @@ export function insertCustomer(input: {
   return record;
 }
 
-export function findCustomerById(id: string): CustomerRecord | null {
-  const row = customerDatabase()
-    .prepare(`SELECT ${customerSelect} FROM customers WHERE id = ?`)
-    .get(text(id, "Customer id")) as CustomerRow | undefined;
+export async function findCustomerById(id: string): Promise<CustomerRecord | null> {
+  const result = await customerDatabase().query<CustomerRow>(
+    `SELECT ${customerSelect} FROM website_customers WHERE id = $1`,
+    [text(id, "Customer id")],
+  );
+  const row = result.rows[0];
   return row ? customerFromRow(row) : null;
 }
 
-export function findCustomerByEmail(email: string): CustomerRecord | null {
-  const row = customerDatabase()
-    .prepare(`SELECT ${customerSelect} FROM customers WHERE email = ?`)
-    .get(normalizeEmail(email)) as CustomerRow | undefined;
+export async function findCustomerByEmail(email: string): Promise<CustomerRecord | null> {
+  const result = await customerDatabase().query<CustomerRow>(
+    `SELECT ${customerSelect} FROM website_customers WHERE email = $1`,
+    [normalizeEmail(email)],
+  );
+  const row = result.rows[0];
   return row ? customerFromRow(row) : null;
 }
 
-export function setCustomerCrmId(customerId: string, crmCustomerId: string): void {
+export async function setCustomerCrmId(customerId: string, crmCustomerId: string): Promise<void> {
   const id = text(customerId, "Customer id");
   const crmId = text(crmCustomerId, "CRM customer id");
   if (crmId.length > 64) throw new CustomerRecordError("CRM customer id is invalid.");
   const now = new Date().toISOString();
-  const result = customerDatabase()
-    .prepare(`UPDATE customers SET crm_customer_id = ?, updated_at = ? WHERE id = ?`)
-    .run(crmId, now, id);
-  if (result.changes !== 1) throw new CustomerRecordError("Customer could not be updated.");
+  const result = await customerDatabase().query(
+    `UPDATE website_customers SET crm_customer_id = $1, updated_at = $2 WHERE id = $3`,
+    [crmId, now, id],
+  );
+  if (result.rowCount !== 1) throw new CustomerRecordError("Customer could not be updated.");
 }
 
-export function insertSession(input: {
+export async function insertSession(input: {
   customerId: string;
   tokenHash: string;
   expiresAt: string;
-}): SessionRecord {
+}): Promise<SessionRecord> {
   const record: SessionRecord = {
     id: randomUUID(),
     customerId: text(input.customerId, "Customer id"),
     tokenHash: text(input.tokenHash, "Token hash"),
     expiresAt: text(input.expiresAt, "Expiry"),
+    revokedAt: null,
     createdAt: new Date().toISOString(),
   };
-  const db = customerDatabase();
 
   try {
-    db.prepare(
-      `INSERT INTO sessions (id, customer_id, token_hash, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(record.id, record.customerId, record.tokenHash, record.expiresAt, record.createdAt);
+    await customerDatabase().query(
+      `INSERT INTO website_customer_sessions (id, customer_id, token_hash, expires_at, revoked_at, created_at)
+       VALUES ($1, $2, $3, $4, NULL, $5)`,
+      [record.id, record.customerId, record.tokenHash, record.expiresAt, record.createdAt],
+    );
   } catch (error) {
-    if (isUniqueConstraint(error)) {
+    if (isUniqueConstraint(error, "website_customer_sessions_token_hash_key")) {
       throw new CustomerRecordError("A session with this token hash already exists.", "session-token-taken");
     }
     throw error;
@@ -176,20 +197,28 @@ export function insertSession(input: {
   return record;
 }
 
-export function deleteSessionByTokenHash(tokenHash: string) {
-  customerDatabase().prepare(`DELETE FROM sessions WHERE token_hash = ?`).run(text(tokenHash, "Token hash"));
+export async function revokeSessionByTokenHash(tokenHash: string): Promise<void> {
+  await customerDatabase().query(
+    `UPDATE website_customer_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW())
+     WHERE token_hash = $1 AND revoked_at IS NULL`,
+    [text(tokenHash, "Token hash")],
+  );
 }
 
-export function deleteExpiredSessions(nowIso: string) {
-  customerDatabase().prepare(`DELETE FROM sessions WHERE expires_at <= ?`).run(text(nowIso, "Expiry"));
+export async function deleteExpiredSessions(nowIso: string): Promise<void> {
+  await customerDatabase().query(
+    `DELETE FROM website_customer_sessions WHERE expires_at <= $1`,
+    [text(nowIso, "Expiry")],
+  );
 }
 
-export function findSessionByTokenHash(tokenHash: string): SessionRecord | null {
-  const row = customerDatabase()
-    .prepare(
-      `SELECT id, customer_id, token_hash, expires_at, created_at
-       FROM sessions WHERE token_hash = ?`,
-    )
-    .get(text(tokenHash, "Token hash")) as SessionRow | undefined;
+export async function findSessionByTokenHash(tokenHash: string): Promise<SessionRecord | null> {
+  const result = await customerDatabase().query<SessionRow>(
+    `SELECT id, customer_id, token_hash, expires_at, revoked_at, created_at
+     FROM website_customer_sessions WHERE token_hash = $1`,
+    [text(tokenHash, "Token hash")],
+  );
+  const row = result.rows[0];
   return row ? sessionFromRow(row) : null;
 }

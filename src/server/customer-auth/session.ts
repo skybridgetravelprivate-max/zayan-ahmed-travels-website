@@ -3,15 +3,8 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
-import { CustomerDatabaseNotConfiguredError } from "@/server/customer-db/db";
-import {
-  CustomerRecordError,
-  deleteExpiredSessions,
-  deleteSessionByTokenHash,
-  findCustomerById,
-  findSessionByTokenHash,
-  insertSession,
-} from "@/server/customer-db/repository";
+import { CustomerRecordError, type CustomerRecord, type SessionRecord } from "@/server/customer-db/repository";
+import * as customerRepository from "@/server/customer-db/repository";
 
 /** Customer session cookie. This is not the CRM access_token cookie. */
 export const customerSessionCookie = "customer_session";
@@ -37,6 +30,70 @@ function sessionCookieOptions(maxAge: number) {
   };
 }
 
+type SessionResolutionRepository = {
+  findSessionByTokenHash: (tokenHash: string) => Promise<SessionRecord | null>;
+  findCustomerById: (id: string) => Promise<CustomerRecord | null>;
+  revokeSessionByTokenHash: (tokenHash: string) => Promise<void>;
+};
+
+const sessionResolutionRepository: SessionResolutionRepository = {
+  findSessionByTokenHash: customerRepository.findSessionByTokenHash,
+  findCustomerById: customerRepository.findCustomerById,
+  revokeSessionByTokenHash: customerRepository.revokeSessionByTokenHash,
+};
+
+export async function resolveCustomerSession(
+  tokenHash: string,
+  nowIso = new Date().toISOString(),
+  repository: SessionResolutionRepository = sessionResolutionRepository,
+): Promise<CurrentCustomer | null> {
+  const session = await repository.findSessionByTokenHash(tokenHash);
+  if (!session || session.revokedAt || session.expiresAt <= nowIso) return null;
+
+  const customer = await repository.findCustomerById(session.customerId);
+  if (!customer) {
+    await repository.revokeSessionByTokenHash(tokenHash);
+    return null;
+  }
+
+  return {
+    id: customer.id,
+    email: customer.email,
+    displayName: customer.displayName,
+    crmCustomerId: customer.crmCustomerId,
+    createdAt: customer.createdAt,
+    updatedAt: customer.updatedAt,
+  };
+}
+
+type SessionRevocationRepository = {
+  revokeSessionByTokenHash: (tokenHash: string) => Promise<void>;
+};
+
+export async function revokeCustomerSession(
+  tokenHash: string | null,
+  repository: SessionRevocationRepository = customerRepository,
+): Promise<void> {
+  if (tokenHash) await repository.revokeSessionByTokenHash(tokenHash);
+}
+
+type LogoutRepository = SessionRevocationRepository & {
+  deleteExpiredSessions: (nowIso: string) => Promise<void>;
+};
+
+export async function logoutCustomer(
+  tokenHash: string | null,
+  clearCookie: () => Promise<void>,
+  repository: LogoutRepository = customerRepository,
+): Promise<void> {
+  try {
+    await repository.deleteExpiredSessions(new Date().toISOString());
+    await revokeCustomerSession(tokenHash, repository);
+  } finally {
+    await clearCookie();
+  }
+}
+
 function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -53,22 +110,22 @@ async function clearSessionCookie() {
   cookieStore.set(customerSessionCookie, "", sessionCookieOptions(0));
 }
 
-function removeExpiredSessions() {
-  deleteExpiredSessions(new Date().toISOString());
+async function removeExpiredSessions() {
+  await customerRepository.deleteExpiredSessions(new Date().toISOString());
 }
 
 /** Creates a new customer session and sets the session cookie. */
 export async function createSession(customerId: string) {
-  removeExpiredSessions();
+  await removeExpiredSessions();
   const previousHash = await currentTokenHash();
-  if (previousHash) deleteSessionByTokenHash(previousHash);
+  if (previousHash) await customerRepository.revokeSessionByTokenHash(previousHash);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const token = randomBytes(32).toString("base64url");
     const tokenHash = hashSessionToken(token);
     const expiresAt = new Date(Date.now() + sessionSeconds * 1000).toISOString();
     try {
-      insertSession({ customerId, tokenHash, expiresAt });
+      await customerRepository.insertSession({ customerId, tokenHash, expiresAt });
     } catch (error) {
       if (error instanceof CustomerRecordError && error.code === "session-token-taken") continue;
       throw error;
@@ -84,44 +141,13 @@ export async function createSession(customerId: string) {
 /** Returns the signed-in customer, without the password hash. */
 export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   await connection();
-  try {
-    const tokenHash = await currentTokenHash();
-    removeExpiredSessions();
-    if (!tokenHash) return null;
-
-    const session = findSessionByTokenHash(tokenHash);
-    if (!session || session.expiresAt <= new Date().toISOString()) {
-      if (session) deleteSessionByTokenHash(tokenHash);
-      return null;
-    }
-
-    const customer = findCustomerById(session.customerId);
-    if (!customer) {
-      deleteSessionByTokenHash(tokenHash);
-      return null;
-    }
-
-    return {
-      id: customer.id,
-      email: customer.email,
-      displayName: customer.displayName,
-      crmCustomerId: customer.crmCustomerId,
-      createdAt: customer.createdAt,
-      updatedAt: customer.updatedAt,
-    };
-  } catch (error) {
-    if (error instanceof CustomerDatabaseNotConfiguredError) return null;
-    return null;
-  }
+  const tokenHash = await currentTokenHash();
+  await removeExpiredSessions();
+  if (!tokenHash) return null;
+  return resolveCustomerSession(tokenHash);
 }
 
 /** Deletes the current customer session and clears its cookie. */
 export async function destroySession() {
-  try {
-    removeExpiredSessions();
-    const tokenHash = await currentTokenHash();
-    if (tokenHash) deleteSessionByTokenHash(tokenHash);
-  } finally {
-    await clearSessionCookie();
-  }
+  await logoutCustomer(await currentTokenHash(), clearSessionCookie);
 }

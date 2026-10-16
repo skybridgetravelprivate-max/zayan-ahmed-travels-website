@@ -3,24 +3,25 @@ import { afterEach, beforeEach, test } from "node:test";
 import { resolveAccountBookings } from "./resolve";
 import { fetchCustomerBookingsForWebsiteCustomer } from "./fetch";
 import type { CustomerBookingsResult } from "./fetch";
+import type { CurrentCustomer } from "../customer-auth/session";
 
 const SECRET_TOKEN = "website-customer-bookings-internal-token-32chars";
 const ORIGIN = "https://crm.example.test";
 
-function customer(id: string) {
-  return {
-    id,
-    email: `${id}@example.test`,
-    displayName: `Test ${id}`,
-    crmCustomerId: id,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-02T00:00:00.000Z",
-  };
-}
-
 let originalFetch: typeof globalThis.fetch;
 const envKeys = ["CRM_API_URL", "CUSTOMER_BOOKINGS_INTERNAL_TOKEN"] as const;
 let savedEnv: Record<string, string | undefined> = {};
+
+function customer(id: string, crmCustomerId = id): CurrentCustomer {
+  return {
+    id,
+    email: `${id}@example.test`,
+    displayName: "Test Customer",
+    crmCustomerId,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
 
 beforeEach(() => {
   originalFetch = globalThis.fetch;
@@ -54,7 +55,7 @@ test("signed-out resolveAccountBookings → 401 without calling CRM", async () =
 
 test("signed-in customer A → CRM request uses A's customer id", async () => {
   let usedId = "";
-  const resolved = await resolveAccountBookings(customer("customer-a"), async (id) => {
+  const resolved = await resolveAccountBookings(customer("customer-a", "crm-customer-a"), async (id) => {
     usedId = id;
     return {
       ok: true,
@@ -71,22 +72,36 @@ test("signed-in customer A → CRM request uses A's customer id", async () => {
       ],
     };
   });
-  assert.equal(usedId, "customer-a");
+  assert.equal(usedId, "crm-customer-a");
   assert.equal(resolved.status, 200);
   assert.equal(resolved.body.ok, true);
 });
 
-test("browser-supplied customer id cannot override session identity", async () => {
+test("customer A cannot use a browser-supplied customer B id to fetch B's bookings", async () => {
   let usedId = "";
-  // Simulate a handler that only receives session customer; query "customer-b" is never passed in.
   const browserQueryCustomerId = "customer-b";
-  void browserQueryCustomerId;
-  await resolveAccountBookings(customer("customer-a"), async (id) => {
+  const result = await resolveAccountBookings(customer("customer-a", "crm-customer-a"), async (id) => {
     usedId = id;
-    return { ok: true, bookings: [] };
+    return {
+      ok: true,
+      bookings: [
+        {
+          reference: "BOOKING-A",
+          service: "Flight",
+          destination: "Dubai",
+          travelDate: "2026-12-01",
+          status: "Upcoming",
+          createdAt: "2026-10-01T00:00:00.000Z",
+          updatedAt: "2026-10-02T00:00:00.000Z",
+        },
+      ],
+    };
   });
-  assert.equal(usedId, "customer-a");
-  assert.notEqual(usedId, "customer-b");
+  assert.equal(usedId, "crm-customer-a");
+  assert.notEqual(usedId, browserQueryCustomerId);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+  if (result.body.ok) assert.deepEqual(result.body.bookings.map(({ reference }) => reference), ["BOOKING-A"]);
 });
 
 test("fetch uses internal token header and strips CRM financial fields", async () => {
@@ -137,7 +152,7 @@ test("CRM failure → sanitized 503 without token or CRM internals", async () =>
         status,
         headers: { "Content-Type": "application/json" },
       })) as typeof fetch;
-    const resolved = await resolveAccountBookings(customer("cust-a"));
+    const resolved = await resolveAccountBookings(customer("cust-a", "crm-cust-a"));
     assert.equal(resolved.status, 503);
     assert.equal(resolved.body.ok, false);
     const text = JSON.stringify(resolved.body);
