@@ -4,7 +4,11 @@ import { validateRegistration, registrationSuccessMessage, registrationUnavailab
 import { linkWebsiteCustomerToCrm } from "@/server/customer-auth/crm-link";
 import { hashPassword } from "@/server/customer-auth/password";
 import { CustomerDatabaseNotConfiguredError } from "@/server/customer-db/db";
-import { CustomerRecordError, insertCustomer } from "@/server/customer-db/repository";
+import {
+  CustomerRecordError,
+  insertCustomer,
+  type CustomerRecord,
+} from "@/server/customer-db/repository";
 
 export type RegistrationResponse =
   | { ok: true; message: string }
@@ -12,7 +16,22 @@ export type RegistrationResponse =
 
 const bcryptByteLimit = 72;
 
-export async function registerCustomer(body: unknown): Promise<{ status: number; body: RegistrationResponse }> {
+type RegisterDependencies = {
+  hashPassword: typeof hashPassword;
+  insertCustomer: typeof insertCustomer;
+  linkWebsiteCustomerToCrm: typeof linkWebsiteCustomerToCrm;
+};
+
+const defaultDependencies: RegisterDependencies = {
+  hashPassword,
+  insertCustomer,
+  linkWebsiteCustomerToCrm,
+};
+
+export async function registerCustomer(
+  body: unknown,
+  dependencies: RegisterDependencies = defaultDependencies,
+): Promise<{ status: number; body: RegistrationResponse }> {
   const parsed = validateRegistration(body);
   if (!parsed.ok) return { status: 400, body: parsed };
 
@@ -29,19 +48,19 @@ export async function registerCustomer(body: unknown): Promise<{ status: number;
 
   let passwordHash: string;
   try {
-    passwordHash = await hashPassword(parsed.data.password);
+    passwordHash = await dependencies.hashPassword(parsed.data.password);
   } catch {
     return { status: 500, body: { ok: false, error: registrationUnavailableMessage } };
   }
 
   try {
-    const customer = insertCustomer({
+    const customer: CustomerRecord = await dependencies.insertCustomer({
       email: parsed.data.email,
       displayName: parsed.data.displayName,
       passwordHash,
     });
     // Soft link — registration succeeds even if Nest is unavailable.
-    await linkWebsiteCustomerToCrm({
+    await dependencies.linkWebsiteCustomerToCrm({
       websiteCustomerId: customer.id,
       email: customer.email,
       displayName: customer.displayName,

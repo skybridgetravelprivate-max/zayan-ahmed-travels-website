@@ -374,6 +374,33 @@ model Session {
   createdAt        DateTime  @default(now())
 }
 
+model WebsiteCustomer {
+  id            String                   @id
+  email         String                   @unique(map: "website_customers_email_key")
+  passwordHash  String                   @map("password_hash")
+  displayName   String                   @map("display_name")
+  crmCustomerId String?                  @map("crm_customer_id")
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(3)
+  sessions      WebsiteCustomerSession[]
+
+  @@map("website_customers")
+}
+
+model WebsiteCustomerSession {
+  id         String          @id
+  customerId String          @map("customer_id")
+  customer   WebsiteCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tokenHash  String          @unique(map: "website_customer_sessions_token_hash_key") @map("token_hash")
+  expiresAt  DateTime        @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime?       @map("revoked_at") @db.Timestamptz(3)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([customerId], map: "website_customer_sessions_customer_id_idx")
+  @@index([expiresAt], map: "website_customer_sessions_expires_at_idx")
+  @@map("website_customer_sessions")
+}
+
 model LoginAttempt {
   id         String   @id @default(cuid())
   userId     String?

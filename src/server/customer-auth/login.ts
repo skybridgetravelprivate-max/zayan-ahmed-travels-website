@@ -5,7 +5,7 @@ import { linkWebsiteCustomerToCrm } from "@/server/customer-auth/crm-link";
 import { hashPassword, verifyPassword } from "@/server/customer-auth/password";
 import { createSession } from "@/server/customer-auth/session";
 import { CustomerDatabaseNotConfiguredError } from "@/server/customer-db/db";
-import { findCustomerByEmail } from "@/server/customer-db/repository";
+import { findCustomerByEmail, type CustomerRecord } from "@/server/customer-db/repository";
 
 export type LoginResponse =
   | { ok: true; message: string }
@@ -13,12 +13,29 @@ export type LoginResponse =
 
 let timingHash: Promise<string> | null = null;
 
+type LoginDependencies = {
+  findCustomerByEmail: typeof findCustomerByEmail;
+  verifyPassword: typeof verifyPassword;
+  createSession: typeof createSession;
+  linkWebsiteCustomerToCrm: typeof linkWebsiteCustomerToCrm;
+};
+
+const defaultDependencies: LoginDependencies = {
+  findCustomerByEmail,
+  verifyPassword,
+  createSession,
+  linkWebsiteCustomerToCrm,
+};
+
 function passwordTimingHash() {
   timingHash ??= hashPassword("timing-only-placeholder");
   return timingHash;
 }
 
-export async function loginCustomer(body: unknown): Promise<{ status: number; body: LoginResponse }> {
+export async function loginCustomer(
+  body: unknown,
+  dependencies: LoginDependencies = defaultDependencies,
+): Promise<{ status: number; body: LoginResponse }> {
   const parsed = validateLogin(body);
   if (!parsed.ok) return { status: 400, body: parsed };
 
@@ -34,15 +51,15 @@ export async function loginCustomer(body: unknown): Promise<{ status: number; bo
   }
 
   try {
-    const customer = findCustomerByEmail(parsed.data.email);
+    const customer: CustomerRecord | null = await dependencies.findCustomerByEmail(parsed.data.email);
     const passwordHash = customer ? customer.passwordHash : await passwordTimingHash();
-    const passwordMatches = await verifyPassword(parsed.data.password, passwordHash);
+    const passwordMatches = await dependencies.verifyPassword(parsed.data.password, passwordHash);
     if (!customer || !passwordMatches) {
       return { status: 401, body: { ok: false, error: loginFailureMessage } };
     }
-    await createSession(customer.id);
+    await dependencies.createSession(customer.id);
     if (!customer.crmCustomerId) {
-      await linkWebsiteCustomerToCrm({
+      await dependencies.linkWebsiteCustomerToCrm({
         websiteCustomerId: customer.id,
         email: customer.email,
         displayName: customer.displayName,

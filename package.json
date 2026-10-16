@@ -8,15 +8,17 @@
     "build:website": "next build --webpack",
     "build:hostinger": "npm ci --prefix backend && npm run build --prefix backend && npm run build:website",
     "start": "node backend/server.js",
-    "lint": "eslint",
-    "test:customer-bookings": "npx --yes tsx --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts"
+    "lint": "eslint src",
+    "test:customer-bookings": "npx --yes tsx --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts",
+    "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -27,7 +29,8 @@
     "eslint-config-next": "16.3.8",
     "postcss": "^8.5.30",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@types/pg": "^8.23.1"
   },
   "overrides": {
     "postcss": "^8.5.30",

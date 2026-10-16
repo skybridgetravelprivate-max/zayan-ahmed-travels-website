@@ -64,7 +64,7 @@ export async function linkWebsiteCustomerToCrm(input: {
   if (!crmId || crmId.length > 64) return null;
 
   try {
-    setCustomerCrmId(input.websiteCustomerId, crmId);
+    await setCustomerCrmId(input.websiteCustomerId, crmId);
   } catch {
     return null;
   }
