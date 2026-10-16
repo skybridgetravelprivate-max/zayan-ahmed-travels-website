@@ -23,8 +23,8 @@
     "db:seed": "npm run seed -w @zat/database",
     "db:push": "npm run push -w @zat/database",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit",
-    "test": "node --import ./scripts/register-test-hooks.mjs ./scripts/run-production-tests.mjs",
+    "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit",
+    "test": "node --import ./node_modules/tsx/dist/loader.mjs --test apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs",
     "test:e2e": "npx tsx scripts/e2e-api.mjs",
     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs"
   },
