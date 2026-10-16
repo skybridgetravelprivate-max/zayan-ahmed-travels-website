@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { createPostgresConnectionConfig } from "../../../../packages/config/postgres-tls.cjs";
 
 function databaseUrl() {
   const raw =
@@ -26,20 +27,13 @@ export function databaseUrlProblem() {
   return null;
 }
 
-function needsSsl(url: string) {
-  if (!url) return false;
-  if (/localhost|127\.0\.0\.1/i.test(url)) return false;
-  return true;
-}
-
 function prismaOptions() {
   const url = databaseUrl();
   if (!url) return {};
   const pool = new Pool({
-    connectionString: url,
+    ...createPostgresConnectionConfig(url),
     max: 5,
     connectionTimeoutMillis: 15000,
-    ssl: needsSsl(url) ? { rejectUnauthorized: false } : undefined,
   });
   return { adapter: new PrismaPg(pool) };
 }

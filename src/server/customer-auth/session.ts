@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { CustomerRecordError, type CustomerRecord, type SessionRecord } from "@/server/customer-db/repository";
 import * as customerRepository from "@/server/customer-db/repository";
+import { assertCustomerWritesEnabled, customerWritesEnabled } from "@/server/customer-auth/write-access";
 
 /** Customer session cookie. This is not the CRM access_token cookie. */
 export const customerSessionCookie = "customer_session";
@@ -52,7 +53,7 @@ export async function resolveCustomerSession(
 
   const customer = await repository.findCustomerById(session.customerId);
   if (!customer) {
-    await repository.revokeSessionByTokenHash(tokenHash);
+    if (customerWritesEnabled()) await repository.revokeSessionByTokenHash(tokenHash);
     return null;
   }
 
@@ -74,6 +75,7 @@ export async function revokeCustomerSession(
   tokenHash: string | null,
   repository: SessionRevocationRepository = customerRepository,
 ): Promise<void> {
+  assertCustomerWritesEnabled();
   if (tokenHash) await repository.revokeSessionByTokenHash(tokenHash);
 }
 
@@ -86,6 +88,7 @@ export async function logoutCustomer(
   clearCookie: () => Promise<void>,
   repository: LogoutRepository = customerRepository,
 ): Promise<void> {
+  assertCustomerWritesEnabled();
   try {
     await revokeCustomerSession(tokenHash, repository);
     await repository.deleteExpiredSessions(new Date().toISOString());
@@ -116,6 +119,7 @@ async function removeExpiredSessions() {
 
 /** Creates a new customer session and sets the session cookie. */
 export async function createSession(customerId: string) {
+  assertCustomerWritesEnabled();
   await removeExpiredSessions();
   const previousHash = await currentTokenHash();
   if (previousHash) await customerRepository.revokeSessionByTokenHash(previousHash);
@@ -142,7 +146,7 @@ export async function createSession(customerId: string) {
 export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   await connection();
   const tokenHash = await currentTokenHash();
-  await removeExpiredSessions();
+  if (customerWritesEnabled()) await removeExpiredSessions();
   if (!tokenHash) return null;
   return resolveCustomerSession(tokenHash);
 }

@@ -1,11 +1,11 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, Inject, ServiceUnavailableException } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 import { PrismaService, sanitizeDbError } from "./common/prisma.service";
 
 @SkipThrottle()
 @Controller()
 export class HealthController {
-  constructor(private prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private prisma: Pick<PrismaService, "ping">) {}
 
   @Get("health")
   async health() {
@@ -19,10 +19,18 @@ export class HealthController {
       dbError = sanitizeDbError(err);
       console.error("DB ping failed:", dbError);
     }
+    if (!db) {
+      throw new ServiceUnavailableException({
+        ok: false,
+        db: false,
+        dbConfigured: Boolean(process.env.DATABASE_URL),
+        service: "zat-api",
+      });
+    }
     return {
       ok: true,
-      db,
-      dbConfigured: Boolean(process.env.DATABASE_URL),
+      db: true,
+      dbConfigured: true,
       service: "zat-api",
       time: new Date().toISOString(),
     };

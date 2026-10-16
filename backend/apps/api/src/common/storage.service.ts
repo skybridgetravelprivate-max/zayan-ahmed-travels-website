@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -14,6 +14,13 @@ const ALLOWED_MIME: Record<string, { ext: string[]; magic: number[][] }> = {
 
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
+export function uploadWritesEnabled() {
+  if (process.env.NODE_ENV === "production") return false;
+  const configured = process.env.UPLOAD_WRITES_ENABLED;
+  if (configured === undefined) return true;
+  return configured.trim().toLowerCase() === "true";
+}
+
 function hasMagic(buffer: Buffer, patterns: number[][]) {
   if (!patterns.length) return true;
   return patterns.some((p) => p.every((b, i) => buffer[i] === b));
@@ -21,7 +28,6 @@ function hasMagic(buffer: Buffer, patterns: number[][]) {
 
 @Injectable()
 export class StorageService {
-  private driver = process.env.STORAGE_DRIVER ?? "local";
   private localRoot = process.env.LOCAL_STORAGE_PATH ?? "./uploads";
 
   private safeName(originalName: string) {
@@ -40,6 +46,9 @@ export class StorageService {
   }
 
   async put(buffer: Buffer, originalName: string, mimeType: string) {
+    if (!uploadWritesEnabled()) {
+      throw new ServiceUnavailableException("File uploads are temporarily unavailable.");
+    }
     if (!buffer || buffer.length === 0) throw new BadRequestException("Empty file");
     if (buffer.length > MAX_UPLOAD_BYTES) throw new BadRequestException("File must be 8 MB or smaller");
     const mime = String(mimeType || "").toLowerCase();
@@ -53,7 +62,6 @@ export class StorageService {
     }
     const key = `${new Date().getFullYear()}/${randomUUID()}${ext}`;
     await this.putLocal(key, buffer);
-    void this.driver;
     return { key, mimeType: mime, size: buffer.length, fileName: `${stem}${ext}` };
   }
 

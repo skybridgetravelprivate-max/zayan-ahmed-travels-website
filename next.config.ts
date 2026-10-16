@@ -7,43 +7,20 @@ const privateNoStore = [
   },
 ];
 
-function crmApiOrigin() {
-  const configured = process.env.CRM_API_URL?.trim();
-  if (!configured) return null;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(configured);
-  } catch {
-    throw new Error("CRM_API_URL must be an absolute HTTP or HTTPS URL.");
-  }
-
-  if (
-    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-    parsed.username ||
-    parsed.password
-  ) {
-    throw new Error("CRM_API_URL must use HTTP or HTTPS and must not contain credentials.");
-  }
-
-  return parsed.origin;
-}
-
 const nextConfig: NextConfig = {
+  output: "standalone",
+  outputFileTracingIncludes: {
+    "/*": [
+      "./backend/apps/api/dist/**/*",
+      "./backend/node_modules/**/*",
+      "./backend/packages/config/**/*",
+    ],
+  },
   async headers() {
     return [
       { source: "/account", headers: privateNoStore },
       { source: "/my-bookings", headers: privateNoStore },
       { source: "/api/account/:path*", headers: privateNoStore },
-    ];
-  },
-  async rewrites() {
-    const origin = crmApiOrigin();
-    if (!origin) return [];
-
-    return [
-      { source: "/api", destination: `${origin}/api` },
-      { source: "/api/:path*", destination: `${origin}/api/:path*` },
     ];
   },
 };

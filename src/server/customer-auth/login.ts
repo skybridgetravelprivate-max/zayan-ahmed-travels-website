@@ -6,6 +6,10 @@ import { hashPassword, verifyPassword } from "@/server/customer-auth/password";
 import { createSession } from "@/server/customer-auth/session";
 import { CustomerDatabaseNotConfiguredError } from "@/server/customer-db/db";
 import { findCustomerByEmail, type CustomerRecord } from "@/server/customer-db/repository";
+import {
+  CustomerWritesDisabledError,
+  customerWritesEnabled,
+} from "@/server/customer-auth/write-access";
 
 export type LoginResponse =
   | { ok: true; message: string }
@@ -36,6 +40,10 @@ export async function loginCustomer(
   body: unknown,
   dependencies: LoginDependencies = defaultDependencies,
 ): Promise<{ status: number; body: LoginResponse }> {
+  if (!customerWritesEnabled()) {
+    return { status: 503, body: { ok: false, error: loginUnavailableMessage } };
+  }
+
   const parsed = validateLogin(body);
   if (!parsed.ok) return { status: 400, body: parsed };
 
@@ -66,6 +74,9 @@ export async function loginCustomer(
       });
     }
   } catch (error) {
+    if (error instanceof CustomerWritesDisabledError) {
+      return { status: 503, body: { ok: false, error: loginUnavailableMessage } };
+    }
     if (error instanceof CustomerDatabaseNotConfiguredError) {
       return { status: 503, body: { ok: false, error: loginUnavailableMessage } };
     }

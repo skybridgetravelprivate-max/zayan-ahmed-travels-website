@@ -9,6 +9,7 @@ import {
   insertCustomer,
   type CustomerRecord,
 } from "@/server/customer-db/repository";
+import { customerWritesEnabled } from "@/server/customer-auth/write-access";
 
 export type RegistrationResponse =
   | { ok: true; message: string }
@@ -32,6 +33,10 @@ export async function registerCustomer(
   body: unknown,
   dependencies: RegisterDependencies = defaultDependencies,
 ): Promise<{ status: number; body: RegistrationResponse }> {
+  if (!customerWritesEnabled()) {
+    return { status: 503, body: { ok: false, error: registrationUnavailableMessage } };
+  }
+
   const parsed = validateRegistration(body);
   if (!parsed.ok) return { status: 400, body: parsed };
 

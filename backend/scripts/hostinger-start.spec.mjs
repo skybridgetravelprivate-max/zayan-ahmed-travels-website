@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,8 @@ for (const mode of ["api", "all"]) {
       assert.equal(result.status, 1);
       assert.match(output, /Hostinger startup failed: Required API build artifact is missing: apps\/api\/dist\/create-app\.js/);
       assert.ok(!output.includes(secretMarker), "startup output must not include environment values");
+      assert.equal(existsSync(path.join(fixtureRoot, "backend", "packages", "database", ".env")), false);
+      assert.equal(existsSync(path.join(fixtureRoot, "backend", "apps", "api", ".env")), false);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

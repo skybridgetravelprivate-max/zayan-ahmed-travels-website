@@ -2,6 +2,7 @@ import "server-only";
 
 import { crmPublicOrigin } from "@/server/crm-public";
 import { setCustomerCrmId } from "@/server/customer-db/repository";
+import { assertCustomerWritesEnabled } from "@/server/customer-auth/write-access";
 
 function readInternalToken() {
   const token = process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN?.trim() ?? "";
@@ -24,6 +25,7 @@ export async function linkWebsiteCustomerToCrm(input: {
   email: string;
   displayName: string;
 }): Promise<string | null> {
+  assertCustomerWritesEnabled();
   const origin = crmPublicOrigin();
   const token = readInternalToken();
   if (!origin || !token) return null;

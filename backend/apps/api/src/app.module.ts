@@ -41,6 +41,7 @@ import { WebsiteCustomerBookingsService } from "./website/website-customer-booki
 import { WebsiteLeadsController } from "./website/website-leads.controller";
 import { WebsiteCustomerUpsertController } from "./website/website-customer-upsert.controller";
 import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.service";
+import { WebsiteCustomerWriteGuard } from "./website/website-customer-write.guard";
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     DocumentPdfService,
     WebsiteCustomerBookingsService,
     WebsiteCustomerUpsertService,
+    WebsiteCustomerWriteGuard,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })

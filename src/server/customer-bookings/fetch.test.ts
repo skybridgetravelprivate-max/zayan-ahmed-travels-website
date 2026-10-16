@@ -9,10 +9,15 @@ const SECRET_TOKEN = "website-customer-bookings-internal-token-32chars";
 const ORIGIN = "https://crm.example.test";
 
 let originalFetch: typeof globalThis.fetch;
-const envKeys = ["CRM_API_URL", "CUSTOMER_BOOKINGS_INTERNAL_TOKEN"] as const;
+const envKeys = [
+  "CRM_API_URL",
+  "CUSTOMER_BOOKINGS_INTERNAL_TOKEN",
+  "CUSTOMER_WRITES_ENABLED",
+  "NODE_ENV",
+] as const;
 let savedEnv: Record<string, string | undefined> = {};
 
-function customer(id: string, crmCustomerId = id): CurrentCustomer {
+function customer(id: string, crmCustomerId: string | null = id): CurrentCustomer {
   return {
     id,
     email: `${id}@example.test`,
@@ -46,6 +51,25 @@ test("signed-out resolveAccountBookings → 401 without calling CRM", async () =
   const resolved = await resolveAccountBookings(null, async () => {
     fetchCalled = true;
     return { ok: true, bookings: [] };
+  });
+
+  test("unlinked customer bookings return 503 while account writes are paused", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.CUSTOMER_WRITES_ENABLED;
+    let fetchCalled = false;
+    globalThis.fetch = (async () => {
+      fetchCalled = true;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const result = await resolveAccountBookings(customer("cust-a", null));
+
+    assert.equal(result.status, 503);
+    assert.deepEqual(result.body, {
+      ok: false,
+      error: "Bookings are temporarily unavailable.",
+    });
+    assert.equal(fetchCalled, false);
   });
   assert.equal(resolved.status, 401);
   assert.equal(resolved.body.ok, false);

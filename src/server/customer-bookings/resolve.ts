@@ -1,4 +1,5 @@
 import { linkWebsiteCustomerToCrm } from "@/server/customer-auth/crm-link";
+import { CustomerWritesDisabledError } from "@/server/customer-auth/write-access";
 import type { CurrentCustomer } from "@/server/customer-auth/session";
 import {
   fetchCustomerBookingsForWebsiteCustomer,
@@ -29,12 +30,19 @@ export async function resolveAccountBookings(
 
   let crmId = customer.crmCustomerId?.trim() || "";
   if (!crmId) {
-    crmId =
-      (await linkWebsiteCustomerToCrm({
-        websiteCustomerId: customer.id,
-        email: customer.email,
-        displayName: customer.displayName,
-      })) ?? "";
+    try {
+      crmId =
+        (await linkWebsiteCustomerToCrm({
+          websiteCustomerId: customer.id,
+          email: customer.email,
+          displayName: customer.displayName,
+        })) ?? "";
+    } catch (error) {
+      if (error instanceof CustomerWritesDisabledError) {
+        return { status: 503, body: { ok: false, error: "Bookings are temporarily unavailable." } };
+      }
+      throw error;
+    }
   }
 
   if (!crmId) {

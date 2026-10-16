@@ -1,13 +1,15 @@
-import { Body, Controller, Headers, Post, ServiceUnavailableException } from "@nestjs/common";
+import { Body, Controller, Headers, Post, ServiceUnavailableException, UseGuards } from "@nestjs/common";
 import {
   assertWebsiteInternalToken,
   readWebsiteBookingsInternalToken,
   websiteInternalTokenHeaderName,
 } from "./website-internal-token";
 import { WebsiteCustomerUpsertService } from "./website-customer-upsert.service";
+import { WebsiteCustomerWriteGuard } from "./website-customer-write.guard";
 
 /** Website S2S — path is /v1/customer/upsert-by-email (no /api prefix). */
 @Controller("v1/customer")
+@UseGuards(WebsiteCustomerWriteGuard)
 export class WebsiteCustomerUpsertController {
   constructor(private upsert: WebsiteCustomerUpsertService) {}
 

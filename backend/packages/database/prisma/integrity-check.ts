@@ -6,6 +6,7 @@ loadEnv({ path: resolve(process.cwd(), ".env") });
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { createPostgresConnectionConfig } from "../../config/postgres-tls.cjs";
 
 const REQUIRED_TABLES = [
   "User",
@@ -86,9 +87,8 @@ function createPrisma() {
   return new PrismaClient({
     adapter: new PrismaPg(
       new Pool({
-        connectionString: url,
+        ...createPostgresConnectionConfig(url),
         max: 5,
-        ssl: /sslmode=require|neon\.tech|supabase\.co/i.test(url) ? { rejectUnauthorized: false } : undefined,
       }),
     ),
   });

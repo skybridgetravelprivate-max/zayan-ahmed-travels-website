@@ -5,6 +5,7 @@ import { PrismaClient, AccountType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { hashPassword } from "../src/password";
+import { createPostgresConnectionConfig } from "../../config/postgres-tls.cjs";
 
 function createPrisma() {
   const url = process.env.DATABASE_URL;
@@ -12,9 +13,8 @@ function createPrisma() {
   return new PrismaClient({
     adapter: new PrismaPg(
       new Pool({
-        connectionString: url,
+        ...createPostgresConnectionConfig(url),
         max: 5,
-        ssl: /sslmode=require|neon\.tech|supabase\.co/i.test(url) ? { rejectUnauthorized: false } : undefined,
       }),
     ),
   });

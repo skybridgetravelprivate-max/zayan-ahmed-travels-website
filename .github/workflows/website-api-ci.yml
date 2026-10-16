@@ -33,16 +33,25 @@ jobs:
       - name: Install website dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
       - name: Verify root dependency audit
         run: npm audit --audit-level=moderate --legacy-peer-deps
 
       - name: Verify backend dependency audit
         run: npm audit --prefix backend --audit-level=moderate --legacy-peer-deps
 
-      - name: Build website and API
-        run: npm run build
+      - name: Run website server tests
+        run: npm run test:website-server
+
+      - name: Run backend tests
+        run: npm test --prefix backend
 
       - name: Run customer-booking tests
         env:
           NODE_OPTIONS: --conditions=react-server
         run: npm run test:customer-bookings
+
+      - name: Build website and API
+        run: npm run build

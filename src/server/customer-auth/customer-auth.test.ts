@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { loginCustomer } from "@/server/customer-auth/login";
 import { hashPassword, verifyPassword } from "@/server/customer-auth/password";
 import {
+  createSession,
   logoutCustomer,
   resolveCustomerSession,
 } from "@/server/customer-auth/session";
@@ -164,4 +165,79 @@ test("logout revokes the active session even when expired-session cleanup fails"
 
   assert.equal(revokedToken, session.tokenHash);
   assert.equal(cookieCleared, true);
+});
+
+test("paused customer writes block registration, login, linking, and session cleanup", async () => {
+  const previousWrites = process.env.CUSTOMER_WRITES_ENABLED;
+  process.env.CUSTOMER_WRITES_ENABLED = "false";
+  let writes = 0;
+
+  try {
+    const registration = await registerCustomer(
+      {
+        email: "new@example.test",
+        password: "long-enough-password",
+        confirmPassword: "long-enough-password",
+        displayName: "Customer",
+      },
+      {
+        hashPassword: async () => "hash",
+        insertCustomer: async () => {
+          writes += 1;
+          return customer;
+        },
+        linkWebsiteCustomerToCrm: async () => {
+          writes += 1;
+          return null;
+        },
+      },
+    );
+    assert.equal(registration.status, 503);
+
+    const login = await loginCustomer(
+      { email: customer.email, password: "correct-password" },
+      {
+        findCustomerByEmail: async () => {
+          writes += 1;
+          return customer;
+        },
+        verifyPassword: async () => true,
+        createSession: async () => {
+          writes += 1;
+        },
+        linkWebsiteCustomerToCrm: async () => {
+          writes += 1;
+          return null;
+        },
+      },
+    );
+    assert.equal(login.status, 503);
+
+    let revoked = 0;
+    const resolved = await resolveCustomerSession(
+      session.tokenHash,
+      "2026-01-02T00:00:00.000Z",
+      {
+        findSessionByTokenHash: async () => session,
+        findCustomerById: async () => null,
+        revokeSessionByTokenHash: async () => {
+          revoked += 1;
+        },
+      },
+    );
+    assert.equal(resolved, null);
+    assert.equal(revoked, 0);
+
+    await assert.rejects(createSession(customer.id), /temporarily unavailable/);
+    await assert.rejects(
+      logoutCustomer(session.tokenHash, async () => {
+        writes += 1;
+      }),
+      /temporarily unavailable/,
+    );
+    assert.equal(writes, 0);
+  } finally {
+    if (previousWrites === undefined) delete process.env.CUSTOMER_WRITES_ENABLED;
+    else process.env.CUSTOMER_WRITES_ENABLED = previousWrites;
+  }
 });

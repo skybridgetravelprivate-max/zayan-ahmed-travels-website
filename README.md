@@ -14,34 +14,22 @@ npm run build
 
 Open [http://localhost:3000](http://localhost:3000) after starting the development server.
 
-## Self-hosted production
+## Production deployment
 
-Use Node.js 22.13 or newer. The customer account database uses the built-in `node:sqlite` API; Node.js 24 LTS is recommended.
+The website's customer accounts and sessions use dedicated PostgreSQL tables; they do not use SQLite. The NestJS API is compiled before the Next.js standalone build and started by Next.js instrumentation on a private, per-process loopback port. Same-origin `/api/*` requests are proxied to that instance, so Hostinger can use its generated standalone `server.js` without a second public service or an `example.invalid` rewrite. The standalone bundle includes only production backend dependencies.
 
-From the website repository, install and build with:
+Hostinger's build command is `build` (`npm run build` at the repository root). It compiles the API and builds the website. Hostinger must launch the generated standalone `server.js`; `npm start` uses the same artifact for local production checks. Do not start the legacy backend gateway for the website. Build and startup do not migrate, import, seed, reset, or push database schema.
 
-```
-npm ci
-npm run lint
-npm run build
-```
+Configure these server-only variables privately in Hostinger:
 
-Set these server-side environment variables in the production process. Do not prefix them with `NEXT_PUBLIC_`; `.env.example` contains names and empty values only.
+- `DATABASE_URL` and `DATABASE_SSL_CA` for the existing Supabase PostgreSQL project. Remote PostgreSQL connections use certificate and hostname verification.
+- Stable, unique `JWT_SECRET` and `JWT_REFRESH_SECRET` values for staff sessions.
+- `APP_URL` with every served public site origin, comma-separated and including `https://` (both apex and `www` are currently served).
+- The existing `CUSTOMER_BOOKINGS_INTERNAL_TOKEN`, unchanged and shared by website and backend code.
+- `CRM_API_IDENTIFIER` and `CRM_API_PASSWORD` for website inquiry-to-CRM authentication.
+- `CUSTOMER_WRITES_ENABLED=false` during initial deployment; enable only after database health and account smoke tests pass.
+- `UPLOAD_WRITES_ENABLED=false`; production uploads remain unavailable because the current local driver is not a verified durable private provider.
 
-- `CRM_API_URL`
-- `CRM_API_IDENTIFIER`
-- `CRM_API_PASSWORD`
-- `CUSTOMER_BOOKINGS_INTERNAL_TOKEN`
-- `CUSTOMER_DATABASE_PATH`
+Do not add these values to `NEXT_PUBLIC_*`, source control, build artifacts, or support messages. Keep cookie settings secure in production. Do not add seed-admin settings or run seeds. The reviewed customer-account migration is already applied; subsequent deployments must not run migrations automatically.
 
-For Hostinger, use the repository root as the app root and use `npm run build` and `npm start`. The build installs and compiles the NestJS backend before building Next.js. The root start command runs both from one process; API routes go to Nest, except website-owned `/api/account/*` and `/api/inquiries`, which continue to go to Next.js. The two explicitly supported `/v1/customer/*` routes also go to Nest.
-
-Set `DATABASE_URL` to the Supabase PostgreSQL connection string and configure strong, unique `JWT_SECRET` and `JWT_REFRESH_SECRET` values in Hostinger's environment variables. Use `APP_URL=https://www.zayanahmedtravels.com` so the API accepts the live site's origin, and set `CRM_API_URL` to that same public origin for the website's server-to-server CRM calls. Set `CUSTOMER_BOOKINGS_INTERNAL_TOKEN` to the same value for the website and backend. The CRM credentials enable lead submission, and the internal token enables customer-booking retrieval. Set `CUSTOMER_DATABASE_PATH` to an absolute path on writable, persistent VPS storage. The app creates its parent directory, but the database file must survive application restarts and deployments. Back it up separately; it is the website's SQLite customer database, not the CRM database.
-
-Start the production server with:
-
-```
-HOST=0.0.0.0 PORT=3000 npm start
-```
-
-The combined server binds to `0.0.0.0` and uses `PORT` for its listening port. Put a reverse proxy in front of the app and terminate HTTPS there. Use a process manager such as systemd or an equivalent supervisor to keep the Node.js process running and restart it after failures or reboots. Run `npm run db:migrate:deploy --prefix backend` after setting `DATABASE_URL` and before serving production traffic.
+The local filesystem storage driver can serve existing files only when they are present at the configured private path. Production upload writes always return HTTP 503; setting `UPLOAD_WRITES_ENABLED=true` cannot override the production safeguard. Do not enable upload writes or change storage configuration until a durable private provider and existing document references are verified.

@@ -1,8 +1,11 @@
 import "server-only";
 
-/** Shared public CRM origin. Staff credentials are not read. */
+/** Resolve the current process-local API first; fall back to the configured API for local setups. */
 export function crmPublicOrigin() {
-  const url = process.env.CRM_API_URL?.trim() ?? "";
+  const url =
+    process.env.ZAT_INTERNAL_API_ORIGIN?.trim() ||
+    process.env.CRM_API_URL?.trim() ||
+    "";
   if (!url) return "";
 
   try {

@@ -1,5 +1,6 @@
 import "server-only";
 import type { InquiryInput } from "@/lib/inquiries";
+import { crmPublicOrigin } from "@/server/crm-public";
 
 type CrmConfig = {
   url: string;
@@ -22,21 +23,11 @@ export class CrmRequestError extends Error {
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function readConfig(): CrmConfig | null {
-  const url = process.env.CRM_API_URL?.trim() ?? "";
+  const url = crmPublicOrigin();
   const identifier = process.env.CRM_API_IDENTIFIER?.trim() ?? "";
   const password = process.env.CRM_API_PASSWORD ?? "";
   if (!url || !identifier || !password.trim()) return null;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-  if (parsed.username || parsed.password) return null;
-
-  return { url: parsed.origin, identifier, password };
+  return { url, identifier, password };
 }
 
 function leadNotes(input: InquiryInput) {
