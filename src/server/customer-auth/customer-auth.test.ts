@@ -140,3 +140,28 @@ test("logout revokes the current token hash and does nothing without a session",
   assert.equal(cleanupCalls, 2);
   assert.equal(cookieClears, 2);
 });
+
+test("logout revokes the active session even when expired-session cleanup fails", async () => {
+  let revokedToken: string | null = null;
+  let cookieCleared = false;
+  await assert.rejects(
+    logoutCustomer(
+      session.tokenHash,
+      async () => {
+        cookieCleared = true;
+      },
+      {
+        revokeSessionByTokenHash: async (tokenHash) => {
+          revokedToken = tokenHash;
+        },
+        deleteExpiredSessions: async () => {
+          throw new Error("database cleanup unavailable");
+        },
+      },
+    ),
+    /database cleanup unavailable/,
+  );
+
+  assert.equal(revokedToken, session.tokenHash);
+  assert.equal(cookieCleared, true);
+});

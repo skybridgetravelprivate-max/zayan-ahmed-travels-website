@@ -87,8 +87,8 @@ export async function logoutCustomer(
   repository: LogoutRepository = customerRepository,
 ): Promise<void> {
   try {
-    await repository.deleteExpiredSessions(new Date().toISOString());
     await revokeCustomerSession(tokenHash, repository);
+    await repository.deleteExpiredSessions(new Date().toISOString());
   } finally {
     await clearCookie();
   }
