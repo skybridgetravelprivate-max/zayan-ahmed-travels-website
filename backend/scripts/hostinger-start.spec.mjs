@@ -11,8 +11,10 @@ import vm from "node:vm";
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const secretMarker = "FIXTURE_SECRET_DO_NOT_LOG";
 
-test("cold-start web and API responses cannot be cached and advertise retry", () => {
+test("gateway waits for website readiness before accepting requests", async () => {
   let handleRequest;
+  let release;
+  const prepared = new Promise(resolve => { release = resolve; });
   const server = { on() {}, listen() {} };
   const dependencies = {
     http: { createServer(handler) { handleRequest = handler; return server; } },
@@ -20,30 +22,23 @@ test("cold-start web and API responses cannot be cached and advertise retry", ()
     path,
     url: { parse: () => ({}) },
     "./hostinger-api-path.cjs": { isApiPathname: p => p.startsWith("/api/") },
-    // Keep Next unready to exercise the real gateway's startup window.
-    next: () => ({ prepare: () => new Promise(() => {}) }),
+    next: () => ({ prepare: () => prepared, getRequestHandler: () => (_req, res) => { res.writeHead(200, {}); res.end("ready"); } }),
   };
-  vm.runInNewContext(readFileSync(path.join(scriptsDir, "hostinger-start.cjs"), "utf8"), {
-    require(name) {
-      assert.ok(name in dependencies, `unexpected dependency: ${name}`);
-      return dependencies[name];
-    },
-    __dirname: scriptsDir,
-    process: { env: { START_MODE: "web" } },
-    console: { log() {}, error() {} },
-    URL,
-  });
-  for (const url of ["/admin", "/api/auth/me"]) {
-    let status, headers, body;
-    handleRequest({ url }, {
-      writeHead(code, values) { status = code; headers = values; },
-      end(value) { body = JSON.parse(value); },
-    });
-    assert.equal(status, 503);
-    assert.equal(headers["cache-control"], "no-store");
-    assert.equal(headers["retry-after"], "3");
-    assert.equal(body.ok, false);
-  }
+  const context = { require(name) { assert.ok(name in dependencies); return dependencies[name]; }, __dirname: scriptsDir, process: { env: { START_MODE: "web" } }, console: { log() {}, error() {} }, URL };
+  const startup = vm.runInNewContext(readFileSync(path.join(scriptsDir, "hostinger-start.cjs"), "utf8"), context);
+  assert.equal(handleRequest, undefined, "cold requests must wait for initialization rather than get a startup 503");
+  release();
+  await startup;
+  let status, headers, body;
+  const response = { writeHead(code, values) { status = code; headers = values; }, end(value) { body = value; } };
+  handleRequest({ url: "/admin" }, response);
+  assert.equal(status, 200);
+  assert.equal(body, "ready");
+  // In web-only mode the unavailable API fallback must remain uncached.
+  handleRequest({ url: "/api/auth/me" }, response);
+  assert.equal(status, 503);
+  assert.equal(headers["cache-control"], "no-store");
+  assert.equal(headers["retry-after"], "3");
 });
 
 for (const mode of ["api", "all"]) {
@@ -84,4 +79,3 @@ for (const mode of ["api", "all"]) {
     }
   });
 }
-
