@@ -22,6 +22,7 @@ test("audit records and finance records cannot be changed through generic CRUD",
     await assert.rejects(service.update(resource, "id", admin, {}), { status: 403 });
     await assert.rejects(service.remove(resource, "id", admin), { status: 403 });
   }
+  await assert.rejects(service.update("users", "super-admin", { ...user, permissions: ["user.manage"] }, { password: "fixture-password" }), { status: 403 });
   await assert.rejects(service.update("roles", "id", { ...user, permissions: ["role.manage"] }, { name: "SUPER_ADMIN" }), { status: 403 });
 });
 
@@ -91,7 +92,7 @@ test("receipt rejects a customer mismatch before any financial posting", async (
 
 test("journal reversal claims original once and posts in the same transaction", async () => {
   let claimed = false;
-  const tx = { journalEntry: { findUnique: async () => ({ id: "journal", status: "POSTED", entryNumber: "J1", lines: [{ accountId: "a", debit: 10, credit: 0 }, { accountId: "b", debit: 0, credit: 10 }] }), updateMany: async () => ({ count: claimed ? 0 : (claimed = true, 1) }), update: async () => ({}) } };
+  const tx = { journalEntry: { findUnique: async () => ({ id: "journal", status: "POSTED", entryNumber: "J1", kind: "MANUAL", lines: [{ accountId: "a", debit: 10, credit: 0 }, { accountId: "b", debit: 0, credit: 10 }] }), updateMany: async () => ({ count: claimed ? 0 : (claimed = true, 1) }), update: async () => ({}) } };
   const service = new AccountingService({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, {} as never);
   service.postJournal = async (input) => { assert.equal(input.db, tx); assert.equal(input.lines[0].credit, 10); return { id: "reversal" } as never; };
   await service.reverse("journal", "staff");
@@ -127,4 +128,18 @@ test("reversed original and reversal cancel to zero in the trial balance", async
   const result = await service.trialBalance();
   assert.equal(result.rows[0].balance, 0);
   assert.equal(result.totals.balanced, true);
+});
+
+test("business journals cannot be reversed independently of their source records", async () => {
+  const tx = { journalEntry: { findUnique: async () => ({ status: "POSTED", kind: "RECEIPT" }) } };
+  const service = new AccountingService({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, {} as never);
+  await assert.rejects(service.reverse("receipt-journal", "staff"), /source module/);
+});
+
+test("a stale draft-post request cannot overwrite a concurrently changed journal", async () => {
+  let auditCalled = false;
+  const tx = { journalEntry: { findUnique: async () => ({ status: "DRAFT", lines: [{ debit: 10, credit: 0 }, { debit: 0, credit: 10 }] }), updateMany: async () => ({ count: 0 }) } };
+  const service = new AccountingService({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, { log: async () => { auditCalled = true; } } as never);
+  await assert.rejects(service.postExisting("changed-journal", "staff"), /status changed/);
+  assert.equal(auditCalled, false);
 });

@@ -50,7 +50,7 @@ export class ResourcesService {
   private assert(user: AuthUser, resource: string, action: "view" | "create" | "edit" | "delete") {
     if (resource === "audit-logs" && action !== "view") throw new ForbiddenException("Audit records are read-only");
     if (["journals", "receipts", "payments", "expenses"].includes(resource) && action !== "view") throw new ForbiddenException("Use the transactional finance endpoints");
-    if (resource === "roles" && action !== "view" && !user.isSuperAdmin) throw new ForbiddenException("Only super administrators may modify roles");
+    if (["roles", "users"].includes(resource) && action !== "view" && !user.isSuperAdmin) throw new ForbiddenException("Only super administrators may modify roles");
     const perm = actionPermission(this.meta(resource), action);
     if (!can(user, perm) && !can(user, `${this.meta(resource).permission}.${action}`)) {
       if (perm === "user.manage" && can(user, "user.manage")) return;

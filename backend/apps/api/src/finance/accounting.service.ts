@@ -122,24 +122,24 @@ export class AccountingService {
   }
 
   async postExisting(id: string, userId: string) {
-    const j = await this.prisma.journalEntry.findUnique({ where: { id }, include: { lines: true } });
-    if (!j) throw new BadRequestException("Journal not found");
-    if (j.status !== "DRAFT") throw new BadRequestException("Only draft journals can be posted");
-    const debit = j.lines.reduce((s, l) => s + Number(l.debit), 0);
-    const credit = j.lines.reduce((s, l) => s + Number(l.credit), 0);
-    if (Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
-    const updated = await this.prisma.journalEntry.update({
-      where: { id },
-      data: { status: "POSTED", postedAt: new Date() },
+    return this.prisma.$transaction(async tx => {
+      const j = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } });
+      if (!j || j.status !== "DRAFT") throw new BadRequestException("Only draft journals can be posted");
+      const debit = j.lines.reduce((sum, line) => sum + Number(line.debit), 0);
+      const credit = j.lines.reduce((sum, line) => sum + Number(line.credit), 0);
+      if (j.lines.length < 2 || !Number.isFinite(debit) || !Number.isFinite(credit) || debit <= 0 || Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
+      const claimed = await tx.journalEntry.updateMany({ where: { id, status: "DRAFT" }, data: { status: "POSTED", postedAt: new Date() } });
+      if (claimed.count !== 1) throw new BadRequestException("Journal status changed");
+      await this.audit.log({ userId, action: "POST", entity: "journalEntry", entityId: id, db: tx });
+      return tx.journalEntry.findUnique({ where: { id } });
     });
-    await this.audit.log({ userId, action: "POST", entity: "journalEntry", entityId: id });
-    return updated;
   }
 
   async reverse(id: string, userId: string) {
     return this.prisma.$transaction(async tx => {
     const j = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } });
     if (!j || j.status !== "POSTED") throw new BadRequestException("Only posted journals can be reversed");
+    if (!["MANUAL", "OPENING", "ADJUSTMENT"].includes(j.kind)) throw new BadRequestException("Use the source module refund or cancellation workflow for business journals");
     const claimed = await tx.journalEntry.updateMany({ where: { id, status: "POSTED" }, data: { status: "REVERSED" } });
     if (claimed.count !== 1) throw new BadRequestException("Journal already reversed");
     const rev = await this.postJournal({
