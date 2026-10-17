@@ -39,6 +39,7 @@ import { AdminService } from "./admin/admin.service";
 import { WebsiteCustomerBookingsController } from "./website/website-customer-bookings.controller";
 import { WebsiteCustomerBookingsService } from "./website/website-customer-bookings.service";
 import { WebsiteLeadsController } from "./website/website-leads.controller";
+import { WebsiteInquiriesController } from "./website/website-inquiries.controller";
 import { WebsiteCustomerUpsertController } from "./website/website-customer-upsert.controller";
 import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.service";
 
@@ -68,6 +69,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     ReservationController,
     ComplaintsController,
     WebsiteLeadsController,
+    WebsiteInquiriesController,
     WebsiteCustomerBookingsController,
     WebsiteCustomerUpsertController,
     ResourcesController,

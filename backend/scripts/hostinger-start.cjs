@@ -19,7 +19,6 @@ if (
 ) {
   process.env.DATABASE_URL = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL || process.env.DIRECT_URL;
 }
-syncPrismaEnv();
 
 process.env.ZAT_GATEWAY = "1";
 const mode = process.env.START_MODE || "all";
@@ -67,24 +66,6 @@ function loadEnvTree(start) {
   loadDotEnv(path.join(start, "apps", "api", ".env"));
   loadDotEnv(path.join(start, "packages", "database", ".env"));
   loadDotEnv(path.join(start, "packages", "database", "prisma", ".env"));
-}
-
-function syncPrismaEnv() {
-  const url = process.env.DATABASE_URL;
-  if (!url) return;
-  const line = `DATABASE_URL=${JSON.stringify(url)}\n`;
-  for (const d of [
-    path.join(root, "packages", "database"),
-    path.join(root, "packages", "database", "prisma"),
-    path.join(root, "apps", "api"),
-  ]) {
-    try {
-      fs.mkdirSync(d, { recursive: true });
-      fs.writeFileSync(path.join(d, ".env"), line, { mode: 0o600 });
-    } catch (err) {
-      console.warn("Could not write Prisma .env in", d, err.message);
-    }
-  }
 }
 
 function requestPathname(req) {

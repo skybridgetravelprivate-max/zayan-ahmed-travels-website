@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run build:hostinger",
-    "build:website": "next build --webpack",
+    "build:website": "next build --webpack && node scripts/package-hostinger.cjs",
+    "test:inquiries": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/crm-lead.test.ts",
     "build:hostinger": "npm ci --prefix backend && npm run build --prefix backend && npm run build:website",
     "start": "node backend/server.js",
     "lint": "eslint src",
-    "test:customer-bookings": "npx --yes tsx --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts",
+    "test:customer-bookings": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts",
     "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts"
   },
   "dependencies": {

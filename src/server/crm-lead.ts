@@ -123,6 +123,26 @@ async function postLead(config: CrmConfig, token: string, input: InquiryInput) {
 
 /** Creates one CRM lead. Call this only from the website server, after validation. */
 export async function createInquiryLead(input: InquiryInput) {
+  const internalToken = process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN?.trim() ?? "";
+  const origin = process.env.CRM_API_URL?.trim();
+  if (origin && internalToken.length >= 32) {
+    try {
+      const url = new URL(origin);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new CrmNotConfiguredError();
+      const response = await fetch(new URL("/api/v1/website/inquiries", url.origin), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Zat-Internal-Token": internalToken },
+        body: JSON.stringify({ fullName: input.name, mobile: input.phone, email: input.email, notes: leadNotes(input) }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok || !confirmedLead(await response.json())) throw new CrmRequestError();
+      return;
+    } catch (error) {
+      if (error instanceof CrmNotConfiguredError) throw error;
+      throw new CrmRequestError();
+    }
+  }
   const config = readConfig();
   if (!config) throw new CrmNotConfiguredError();
 
