@@ -5,9 +5,46 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const secretMarker = "FIXTURE_SECRET_DO_NOT_LOG";
+
+test("cold-start web and API responses cannot be cached and advertise retry", () => {
+  let handleRequest;
+  const server = { on() {}, listen() {} };
+  const dependencies = {
+    http: { createServer(handler) { handleRequest = handler; return server; } },
+    fs: { existsSync: () => false },
+    path,
+    url: { parse: () => ({}) },
+    "./hostinger-api-path.cjs": { isApiPathname: p => p.startsWith("/api/") },
+    // Keep Next unready to exercise the real gateway's startup window.
+    next: () => ({ prepare: () => new Promise(() => {}) }),
+  };
+  vm.runInNewContext(readFileSync(path.join(scriptsDir, "hostinger-start.cjs"), "utf8"), {
+    require(name) {
+      assert.ok(name in dependencies, `unexpected dependency: ${name}`);
+      return dependencies[name];
+    },
+    __dirname: scriptsDir,
+    process: { env: { START_MODE: "web" } },
+    console: { log() {}, error() {} },
+    URL,
+  });
+  for (const url of ["/admin", "/api/auth/me"]) {
+    let status, headers, body;
+    handleRequest({ url }, {
+      writeHead(code, values) { status = code; headers = values; },
+      end(value) { body = JSON.parse(value); },
+    });
+    assert.equal(status, 503);
+    assert.equal(headers["cache-control"], "no-store");
+    assert.equal(headers["retry-after"], "3");
+    assert.equal(body.ok, false);
+  }
+});
 
 for (const mode of ["api", "all"]) {
   test(`missing API artifact fails startup in ${mode} mode`, () => {
@@ -47,3 +84,4 @@ for (const mode of ["api", "all"]) {
     }
   });
 }
+
