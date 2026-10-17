@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-connected.cjs",
     "build": "npm run build:hostinger",
     "build:website": "next build --webpack && node scripts/package-hostinger.cjs",
     "test:inquiries": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/crm-lead.test.ts",
@@ -11,7 +11,9 @@
     "start": "node backend/server.js",
     "lint": "eslint src",
     "test:customer-bookings": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts",
-    "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts"
+    "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts",
+    "dev:website": "next dev",
+    "test:dev-connected": "node --test scripts/dev-connected.spec.cjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

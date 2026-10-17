@@ -1,47 +1,40 @@
 # Zayan Ahmed Travels
 
-Standalone website foundation for Zayan Ahmed Travels (Pvt.) Ltd.
+Standalone website and CRM API for Zayan Ahmed Travels (Pvt.) Ltd.
 
 Tagline: Your Journey, Our Responsibility
 
-## Scripts
+## Local development
 
-```bash
-npm run dev
-npm run lint
-npm run build
-```
+Install website and backend dependencies with `npm ci` and `npm ci --prefix backend`.
+Configure the approved development database privately in the ignored root
+`.env.local`, then run `npm run dev`. It compiles and starts the API at
+127.0.0.1:4000 and the website at http://localhost:3000.
 
-Open [http://localhost:3000](http://localhost:3000) after starting the development server.
+See [LOCAL-DEVELOPMENT.md](./LOCAL-DEVELOPMENT.md) for configuration, tests and
+local-only first-admin setup. Setup requires a private token and an empty staff
+table; it cannot change an existing administrator or run in production. This
+feature does not provide a staff dashboard. Use `npm run dev:website` only when
+running the API separately with matching private configuration.
 
-## Self-hosted production
+Useful checks: `npm run lint`, `npm test --prefix backend`,
+`npm run test:dev-connected`, `npm run test:customer-auth`,
+`npm run test:customer-bookings`, `npm run test:inquiries`, and `npm run build`.
 
-Use Node.js 22.13 or newer. The customer account database uses the built-in `node:sqlite` API; Node.js 24 LTS is recommended.
+## Production
 
-From the website repository, install and build with:
+Use Node.js 22.13 or newer. Website customers and sessions use PostgreSQL tables
+separate from staff and CRM customers. Customer accounts no longer use SQLite.
 
-```
-npm ci
-npm run lint
-npm run build
-```
+Build with `npm run build`. Hostinger publishes the Next standalone artifact,
+which is packaged with the combined website/API gateway. See
+[HOSTINGER-RUNTIME.md](./HOSTINGER-RUNTIME.md) for the reviewed runtime behavior,
+private settings, health checks and disabled document uploads.
 
-Set these server-side environment variables in the production process. Do not prefix them with `NEXT_PUBLIC_`; `.env.example` contains names and empty values only.
+See [CUSTOMER-ACCOUNT-MIGRATION.md](./CUSTOMER-ACCOUNT-MIGRATION.md) for the applied
+migration, preserved legacy SQLite evidence and rollback limitations. Do not
+reapply migrations, import rows, seed, reset, or restore automatically. Preserve
+new PostgreSQL writes and original recovery copies. Private settings must never
+be committed or exposed through `NEXT_PUBLIC_*`.
 
-- `CRM_API_URL`
-- `CRM_API_IDENTIFIER`
-- `CRM_API_PASSWORD`
-- `CUSTOMER_BOOKINGS_INTERNAL_TOKEN`
-- `CUSTOMER_DATABASE_PATH`
-
-For Hostinger, use the repository root as the app root and use `npm run build` and `npm start`. The build installs and compiles the NestJS backend before building Next.js. The root start command runs both from one process; API routes go to Nest, except website-owned `/api/account/*` and `/api/inquiries`, which continue to go to Next.js. The two explicitly supported `/v1/customer/*` routes also go to Nest.
-
-Set `DATABASE_URL` to the Supabase PostgreSQL connection string and configure strong, unique `JWT_SECRET` and `JWT_REFRESH_SECRET` values in Hostinger's environment variables. Use `APP_URL=https://www.zayanahmedtravels.com` so the API accepts the live site's origin, and set `CRM_API_URL` to that same public origin for the website's server-to-server CRM calls. Set `CUSTOMER_BOOKINGS_INTERNAL_TOKEN` to the same value for the website and backend. The CRM credentials enable lead submission, and the internal token enables customer-booking retrieval. Set `CUSTOMER_DATABASE_PATH` to an absolute path on writable, persistent VPS storage. The app creates its parent directory, but the database file must survive application restarts and deployments. Back it up separately; it is the website's SQLite customer database, not the CRM database.
-
-Start the production server with:
-
-```
-HOST=0.0.0.0 PORT=3000 npm start
-```
-
-The combined server binds to `0.0.0.0` and uses `PORT` for its listening port. Put a reverse proxy in front of the app and terminate HTTPS there. Use a process manager such as systemd or an equivalent supervisor to keep the Node.js process running and restart it after failures or reboots. Run `npm run db:migrate:deploy --prefix backend` after setting `DATABASE_URL` and before serving production traffic.
+This local development change does not deploy, restart or configure Hostinger.
