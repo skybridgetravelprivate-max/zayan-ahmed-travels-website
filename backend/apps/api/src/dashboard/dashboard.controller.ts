@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
+import { ForbiddenException, Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { Prisma } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/jwt.guard";
@@ -52,6 +52,7 @@ export class DashboardController {
     @Query() q: { preset?: string; from?: string; to?: string; branchId?: string; agentId?: string; currency?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
+    if (!req.user.isSuperAdmin) throw new ForbiddenException("Global financial summary requires super-admin access");
     const createdAt = range(q.preset, q.from, q.to);
     const branchFilter = (field = "branchId") => {
       if (q.branchId) return { [field]: q.branchId };
@@ -164,7 +165,7 @@ export class DashboardController {
     const acc = await this.prisma.chartOfAccount.findUnique({ where: { code } });
     if (!acc) return 0;
     const agg = await this.prisma.journalLine.aggregate({
-      where: { accountId: acc.id, journal: { status: "POSTED" } },
+      where: { accountId: acc.id, journal: { status: { in: ["POSTED", "REVERSED"] } } },
       _sum: { debit: true, credit: true },
     });
     return Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0);
@@ -173,6 +174,7 @@ export class DashboardController {
   @Get("charts")
   @RequirePermission("dashboard.view")
   async charts(@Query() _q: { branchId?: string }, @Req() _req: Request & { user: AuthUser }) {
+    if (!_req.user.isSuperAdmin) throw new ForbiddenException("Global financial charts require super-admin access");
     const year = new Date().getFullYear();
     const months = Array.from({ length: 12 }, (_, i) => i);
     const byMonth = async (model: "ticketSale" | "umrahBooking" | "hotelBooking" | "expense" | "lead") => {

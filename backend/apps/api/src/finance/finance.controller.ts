@@ -1,3 +1,5 @@
+import { GlobalFinanceGuard } from "../auth/global-finance.guard";
+import { Prisma } from "@prisma/client";
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
@@ -9,7 +11,7 @@ import { AuthUser } from "../auth/auth.types";
 import { AccountingService } from "./accounting.service";
 
 @Controller("v1/finance")
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, GlobalFinanceGuard)
 export class FinanceController {
   constructor(
     private prisma: PrismaService,
@@ -62,79 +64,25 @@ export class FinanceController {
     @Body() body: { customerId?: string; bookingId?: string; amount: number; method: string; branchId?: string; notes?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    const journal = await this.accounting.postReceipt({
-      userId: req.user.id,
-      amount: Number(body.amount),
-      method: body.method,
-      customerId: body.customerId,
-      branchId: body.branchId || req.user.defaultBranchId,
-      sourceId: body.bookingId,
-      module: "umrah",
-    });
-    const receiptNo = await this.seq.next("rec", "ZAT-REC");
-    const rec = await this.prisma.receipt.create({
-      data: {
-        receiptNo,
-        customerId: body.customerId,
-        bookingId: body.bookingId,
-        amount: body.amount,
-        method: body.method,
-        branchId: body.branchId,
-        notes: body.notes,
-        journalId: journal.id,
-      },
-    });
-    if (body.bookingId) {
-      const b = await this.prisma.umrahBooking.findUnique({ where: { id: body.bookingId } });
-      if (b) {
-        const paid = Number(b.paid) + Number(body.amount);
-        const balance = Number(b.net) - paid;
-        await this.prisma.umrahBooking.update({
-          where: { id: b.id },
-          data: { paid, balance, status: paid > 0 && b.status === "DRAFT" ? "CONFIRMED" : b.status, workflowStep: "ADVANCE_PAYMENT" },
-        });
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Receipt amount must be positive");
+    return this.prisma.$transaction(async tx => {
+      const booking = body.bookingId ? await tx.umrahBooking.findUnique({ where: { id: body.bookingId } }) : null;
+      if (body.bookingId && !booking) throw new BadRequestException("Umrah booking not found");
+      if (booking && body.customerId && booking.customerId !== body.customerId) throw new BadRequestException("Customer does not own booking");
+      const customerId = booking?.customerId || body.customerId;
+      const branchId = booking?.branchId || body.branchId || req.user.defaultBranchId;
+      if (!req.user.isSuperAdmin && (!branchId || ![...req.user.branchIds, req.user.defaultBranchId].includes(branchId))) throw new BadRequestException("Unauthorized branch");
+      const journal = await this.accounting.postReceipt({ db: tx, userId: req.user.id, amount, method: body.method, customerId, branchId, sourceId: body.bookingId, module: "umrah" });
+      const receiptNo = await this.seq.next("rec", "ZAT-REC", tx);
+      const receipt = await tx.receipt.create({ data: { receiptNo, customerId, bookingId: body.bookingId, amount, method: body.method, branchId, notes: body.notes, journalId: journal.id } });
+      if (booking) {
+        const paid = new Prisma.Decimal(booking.paid).plus(amount);
+        await tx.umrahBooking.update({ where: { id: booking.id }, data: { paid, balance: new Prisma.Decimal(booking.net).minus(paid), status: paid.greaterThan(0) && booking.status === "DRAFT" ? "CONFIRMED" : booking.status, workflowStep: "ADVANCE_PAYMENT" } });
       }
-      const ticket = await this.prisma.ticketSale.findUnique({ where: { id: body.bookingId } });
-      if (ticket) {
-        const paidAmount = Number(ticket.paidAmount || 0) + Number(body.amount);
-        await this.prisma.ticketSale.update({
-          where: { id: ticket.id },
-          data: { paidAmount, paymentStatus: paidAmount >= Number(ticket.net) ? "PAID" : "PARTIAL" },
-        });
-      }
-      const hotel = await this.prisma.hotelBooking.findUnique({ where: { id: body.bookingId } });
-      if (hotel) {
-        const paid = Number(hotel.paid) + Number(body.amount);
-        await this.prisma.hotelBooking.update({
-          where: { id: hotel.id },
-          data: { paid, balance: Number(hotel.net) - paid },
-        });
-      }
-      const trn = await this.prisma.transportBooking.findUnique({ where: { id: body.bookingId } });
-      if (trn) {
-        const paid = Number(trn.paid) + Number(body.amount);
-        await this.prisma.transportBooking.update({
-          where: { id: trn.id },
-          data: { paid, paymentStatus: paid >= Number(trn.sellingPrice) ? "PAID" : "PARTIAL" },
-        });
-      }
-      const star = await this.prisma.starBooking.findUnique({ where: { id: body.bookingId } });
-      if (star) {
-        const paid = Number(star.paid) + Number(body.amount);
-        await this.prisma.starBooking.update({
-          where: { id: star.id },
-          data: { paid, paymentStatus: paid >= Number(star.sellingPrice) ? "PAID" : "PARTIAL" },
-        });
-      }
-      const inv = await this.prisma.serviceInvoice.findUnique({ where: { id: body.bookingId } });
-      if (inv) {
-        await this.prisma.serviceInvoice.update({
-          where: { id: inv.id },
-          data: { paid: Number(inv.paid) + Number(body.amount) },
-        });
-      }
-    }
-    return rec;
+      await this.audit.log({ userId: req.user.id, action: "CREATE", entity: "Receipt", entityId: receipt.id, db: tx });
+      return receipt;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   @Post("payments")
@@ -143,7 +91,9 @@ export class FinanceController {
     @Body() body: { supplierId?: string; amount: number; method: string; branchId?: string; notes?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
+    return this.prisma.$transaction(async tx => {
     const journal = await this.accounting.postPayment({
+      db: tx,
       userId: req.user.id,
       amount: Number(body.amount),
       method: body.method,
@@ -151,17 +101,18 @@ export class FinanceController {
       branchId: body.branchId || req.user.defaultBranchId,
       module: "accounts",
     });
-    const paymentNo = await this.seq.next("pay", "ZAT-PAY");
-    return this.prisma.payment.create({
+    const paymentNo = await this.seq.next("pay", "ZAT-PAY", tx);
+    return tx.payment.create({
       data: {
         paymentNo,
         supplierId: body.supplierId,
         amount: body.amount,
         method: body.method,
-        branchId: body.branchId,
+        branchId: body.branchId || req.user.defaultBranchId,
         notes: body.notes,
         journalId: journal.id,
       },
+    });
     });
   }
 
@@ -171,23 +122,26 @@ export class FinanceController {
     @Body() body: { category: string; amount: number; supplierId?: string; branchId?: string; notes?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
+    return this.prisma.$transaction(async tx => {
     const journal = await this.accounting.postExpense({
+      db: tx,
       userId: req.user.id,
       amount: Number(body.amount),
       category: body.category,
       branchId: body.branchId || req.user.defaultBranchId,
     });
-    const expenseNo = await this.seq.next("exp", "ZAT-EXP");
-    return this.prisma.expense.create({
+    const expenseNo = await this.seq.next("exp", "ZAT-EXP", tx);
+    return tx.expense.create({
       data: {
         expenseNo,
         category: body.category,
         amount: body.amount,
         supplierId: body.supplierId,
-        branchId: body.branchId,
+        branchId: body.branchId || req.user.defaultBranchId,
         notes: body.notes,
         journalId: journal.id,
       },
+    });
     });
   }
 
@@ -198,7 +152,7 @@ export class FinanceController {
       where: {
         accountId: q.accountId,
         journal: {
-          status: "POSTED",
+          status: { in: ["POSTED", "REVERSED"] },
           date: {
             gte: q.from ? new Date(q.from) : undefined,
             lte: q.to ? new Date(q.to) : undefined,
@@ -299,7 +253,7 @@ export class FinanceController {
   async dayBook(@Query() q: { from?: string; to?: string }) {
     return this.prisma.journalEntry.findMany({
       where: {
-        status: "POSTED",
+        status: { in: ["POSTED", "REVERSED"] },
         date: {
           gte: q.from ? new Date(q.from) : undefined,
           lte: q.to ? new Date(q.to) : undefined,
@@ -369,13 +323,14 @@ export class FinanceController {
     },
     @Req() req: Request & { user: AuthUser },
   ) {
+    return this.prisma.$transaction(async tx => {
     const lines = body.lines || [];
     if (!lines.length) throw new BadRequestException("Add at least one service line");
     const sellingPrice = lines.reduce((s, l) => s + Number(l.unitPrice || 0) * Number(l.qty || 1), 0);
     const cost = lines.reduce((s, l) => s + Number(l.cost || 0) * Number(l.qty || 1), 0);
     const net = sellingPrice - Number(body.discount || 0) + Number(body.tax || 0);
-    const invoiceNumber = await this.seq.next("inv", "INV");
-    const rec = await this.prisma.serviceInvoice.create({
+    const invoiceNumber = await this.seq.next("inv", "INV", tx);
+    const rec = await tx.serviceInvoice.create({
       data: {
         invoiceNumber,
         customerId: body.customerId,
@@ -400,6 +355,7 @@ export class FinanceController {
       include: { lines: true },
     });
     const sale = await this.accounting.postSale({
+      db: tx,
       userId: req.user.id,
       module: "service",
       sourceId: rec.id,
@@ -410,6 +366,7 @@ export class FinanceController {
     });
     if (cost > 0) {
       await this.accounting.postCost({
+        db: tx,
         userId: req.user.id,
         module: "service",
         sourceId: rec.id,
@@ -418,10 +375,11 @@ export class FinanceController {
         memo: `Service cost ${rec.invoiceNumber}`,
       });
     }
-    return this.prisma.serviceInvoice.update({
+    return tx.serviceInvoice.update({
       where: { id: rec.id },
       data: { journalId: sale?.id },
       include: { lines: true, customer: true },
+    });
     });
   }
 

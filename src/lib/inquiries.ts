@@ -110,7 +110,7 @@ export function validateInquiry(body: unknown): { ok: true; data: InquiryInput }
   if (record.travelDate !== undefined && record.travelDate !== "") {
     travelDate = text(record.travelDate);
     const parsed = travelDate ? new Date(`${travelDate}T00:00:00Z`) : null;
-    if (!travelDate || !datePattern.test(travelDate) || !parsed || Number.isNaN(parsed.getTime())) {
+    if (!travelDate || !datePattern.test(travelDate) || !parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== travelDate) {
       fields.travelDate = "Use a travel date in YYYY-MM-DD format.";
     }
   }

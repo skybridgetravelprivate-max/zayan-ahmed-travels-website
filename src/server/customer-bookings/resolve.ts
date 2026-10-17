@@ -1,4 +1,4 @@
-import { linkWebsiteCustomerToCrm } from "@/server/customer-auth/crm-link";
+import { hasVerifiedCrmLink } from "@/server/customer-db/repository";
 import type { CurrentCustomer } from "@/server/customer-auth/session";
 import {
   fetchCustomerBookingsForWebsiteCustomer,
@@ -22,23 +22,19 @@ type FetchBookings = (
 export async function resolveAccountBookings(
   customer: CurrentCustomer | null,
   fetchBookings: FetchBookings = fetchCustomerBookingsForWebsiteCustomer,
+  verifyLink: typeof hasVerifiedCrmLink = hasVerifiedCrmLink,
 ): Promise<{ status: number; body: AccountBookingsBody }> {
   if (!customer) {
     return { status: 401, body: { ok: false, error: "Sign in to view your bookings." } };
   }
 
-  let crmId = customer.crmCustomerId?.trim() || "";
-  if (!crmId) {
-    crmId =
-      (await linkWebsiteCustomerToCrm({
-        websiteCustomerId: customer.id,
-        email: customer.email,
-        displayName: customer.displayName,
-      })) ?? "";
-  }
-
-  if (!crmId) {
+  const crmId = customer.crmCustomerId?.trim() || "";
+  let verified = false;
+  try { verified = !!crmId && await verifyLink(customer.id, crmId); } catch {
     return { status: 503, body: { ok: false, error: "Bookings are temporarily unavailable." } };
+  }
+  if (!verified) {
+    return { status: 403, body: { ok: false, error: "Contact our staff to verify your account before viewing bookings." } };
   }
 
   const result = await fetchBookings(crmId);

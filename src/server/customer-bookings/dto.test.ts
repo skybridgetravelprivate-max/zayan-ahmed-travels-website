@@ -68,7 +68,7 @@ test("sanitizeCustomerBooking excludes incomplete or inferred rows", () => {
   );
 });
 
-test("sanitizeCustomerBookingsResponse drops bad envelope and bad rows", () => {
+test("sanitizeCustomerBookingsResponse rejects bad envelopes and any invalid booking rows", () => {
   assert.equal(sanitizeCustomerBookingsResponse(null), null);
   assert.equal(sanitizeCustomerBookingsResponse({ items: [] }), null);
   const list = sanitizeCustomerBookingsResponse({
@@ -86,8 +86,6 @@ test("sanitizeCustomerBookingsResponse drops bad envelope and bad rows", () => {
       { reference: "B", service: "Flight" },
     ],
   });
-  assert.ok(list);
-  assert.equal(list!.length, 1);
-  assert.equal(list![0].reference, "A");
-  assert.equal(list![0].status, "Completed");
+  assert.equal(list, null);
+  assert.deepEqual(sanitizeCustomerBookingsResponse({ bookings: [] }), []);
 });

@@ -222,3 +222,14 @@ export async function findSessionByTokenHash(tokenHash: string): Promise<Session
   const row = result.rows[0];
   return row ? sessionFromRow(row) : null;
 }
+
+/** Only an explicit staff verification audit authorizes an existing CRM link. */
+export async function hasVerifiedCrmLink(websiteCustomerId: string, crmCustomerId: string): Promise<boolean> {
+  const result = await customerDatabase().query<{ verified: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM "AuditLog"
+      WHERE action = 'VERIFY_WEBSITE_CUSTOMER_LINK' AND entity = 'WebsiteCustomer'
+        AND "entityId" = $1 AND "after"->>'crmCustomerId' = $2) AS verified`,
+    [websiteCustomerId, crmCustomerId],
+  );
+  return result.rows[0]?.verified === true;
+}

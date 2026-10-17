@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookingList } from "@/components/account/BookingList";
+import { AccountState } from "@/components/account/AccountState";
 import {
   parseAccountBookingsResponse,
   type AccountBooking,
@@ -11,6 +12,7 @@ import {
 type ViewState =
   | { status: "loading" }
   | { status: "ready"; bookings: AccountBooking[] }
+  | { status: "verification" }
   | { status: "error" };
 
 export function MyBookingsClient() {
@@ -32,6 +34,7 @@ export function MyBookingsClient() {
         });
         const body: unknown = await response.json().catch(() => null);
         if (!active) return;
+        if (response.status === 403) { setView({ status: "verification" }); return; }
 
         const parsed = parseAccountBookingsResponse(response.status, body);
         if (!parsed.ok) {
@@ -56,6 +59,10 @@ export function MyBookingsClient() {
       controller.abort();
     };
   }, [router]);
+
+  if (view.status === "verification") {
+    return <AccountState status="empty" title="Verify your account with our staff" message="Contact our travel desk to confirm ownership before we display your booking details." />;
+  }
 
   if (view.status === "loading") {
     return <BookingList bookings={[]} status="loading" />;

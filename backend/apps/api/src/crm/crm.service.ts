@@ -31,12 +31,16 @@ export class CrmService {
     private wa: WhatsAppService,
   ) {}
 
+  private branchIds(user: AuthUser) {
+    return [...new Set([...user.branchIds, ...(user.defaultBranchId ? [user.defaultBranchId] : [])])];
+  }
+
   async pipeline(
     user: AuthUser,
     filters: { q?: string; source?: string; priority?: string; assignedUserId?: string; archived?: string } = {},
   ) {
     const branch =
-      !user.isSuperAdmin && user.branchIds.length ? { branchId: { in: user.branchIds } } : {};
+      !user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {};
     const where: Record<string, unknown> = {
       ...branch,
       archivedAt: filters.archived === "1" ? { not: null } : null,
@@ -87,7 +91,7 @@ export class CrmService {
 
   async stats(user: AuthUser) {
     const branch =
-      !user.isSuperAdmin && user.branchIds.length ? { branchId: { in: user.branchIds } } : {};
+      !user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {};
     const [open, overdue, quoted, confirmed, bySource] = await Promise.all([
       this.prisma.lead.count({ where: { archivedAt: null, status: { notIn: ["LOST", "CANCELLED", "CONFIRMED"] }, ...branch } }),
       this.prisma.followUp.count({
@@ -100,7 +104,7 @@ export class CrmService {
     return { open, overdueFollowUps: overdue, quoted, confirmed, bySource };
   }
 
-  async duplicates(mobile?: string, email?: string, cnic?: string, excludeId?: string) {
+  async duplicates(user: AuthUser, mobile?: string, email?: string, cnic?: string, excludeId?: string) {
     const or = [];
     if (mobile) or.push({ mobile });
     if (email) or.push({ email });
@@ -109,6 +113,7 @@ export class CrmService {
     return this.prisma.lead.findMany({
       where: {
         OR: or,
+        ...(!user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {}),
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
       select: { id: true, leadNumber: true, fullName: true, mobile: true, email: true, status: true },
@@ -116,7 +121,7 @@ export class CrmService {
     });
   }
 
-  async customerDuplicates(phone?: string, email?: string, cnic?: string, passport?: string, excludeId?: string) {
+  async customerDuplicates(user: AuthUser, phone?: string, email?: string, cnic?: string, passport?: string, excludeId?: string) {
     const or = [];
     if (phone) or.push({ phone }, { whatsapp: phone });
     if (email) or.push({ email });
@@ -126,6 +131,7 @@ export class CrmService {
     const customers = await this.prisma.customer.findMany({
       where: {
         OR: or,
+        ...(!user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {}),
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
       select: { id: true, customerNumber: true, fullName: true, phone: true, email: true, passportNumber: true, cnic: true },
@@ -133,6 +139,7 @@ export class CrmService {
     });
     const pax = await this.prisma.passenger.findMany({
       where: {
+        ...(!user.isSuperAdmin ? { customer: { branchId: { in: this.branchIds(user) } } } : {}),
         OR: [
           ...(phone ? [{ mobile: phone }, { whatsapp: phone }] : []),
           ...(cnic ? [{ cnic }] : []),
@@ -529,12 +536,11 @@ export class CrmService {
 
   async upcomingFollowUps(user: AuthUser) {
     const branchScope =
-      !user.isSuperAdmin && user.branchIds.length
+      !user.isSuperAdmin
         ? {
             OR: [
-              { lead: { branchId: { in: user.branchIds } } },
-              { customer: { branchId: { in: user.branchIds } } },
-              { leadId: null, customerId: null },
+              { lead: { branchId: { in: this.branchIds(user) } } },
+              { customer: { branchId: { in: this.branchIds(user) } } },
             ],
           }
         : {};
@@ -799,7 +805,7 @@ export class CrmService {
 
   async listQuotations(user: AuthUser, q?: string, status?: string) {
     const branch =
-      !user.isSuperAdmin && user.branchIds.length ? { branchId: { in: user.branchIds } } : {};
+      !user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {};
     return this.prisma.quotation.findMany({
       where: {
         ...branch,
@@ -828,7 +834,7 @@ export class CrmService {
 
   async listPassengers(user: AuthUser, q?: string) {
     const branch =
-      !user.isSuperAdmin && user.branchIds.length ? { customer: { branchId: { in: user.branchIds } } } : {};
+      !user.isSuperAdmin ? { customer: { branchId: { in: this.branchIds(user) } } } : {};
     return this.prisma.passenger.findMany({
       where: {
         ...branch,
@@ -864,10 +870,10 @@ export class CrmService {
 
   async today(user: AuthUser) {
     const branch =
-      !user.isSuperAdmin && user.branchIds.length ? { branchId: { in: user.branchIds } } : {};
+      !user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {};
     const followScope =
-      !user.isSuperAdmin && user.branchIds.length
-        ? { lead: { branchId: { in: user.branchIds } } }
+      !user.isSuperAdmin
+        ? { lead: { branchId: { in: this.branchIds(user) } } }
         : {};
     const start = new Date();
     start.setHours(0, 0, 0, 0);

@@ -71,7 +71,7 @@ export function sanitizeCustomerBookingsResponse(body: unknown): CustomerBooking
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const bookings = (body as { bookings?: unknown }).bookings;
   if (!Array.isArray(bookings)) return null;
-  return bookings
-    .map((row) => sanitizeCustomerBooking(row))
-    .filter((row): row is CustomerBookingDto => row != null);
+  const rows = bookings.map((row) => sanitizeCustomerBooking(row));
+  if (rows.some(row => row === null)) return null;
+  return rows as CustomerBookingDto[];
 }
