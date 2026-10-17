@@ -10,6 +10,8 @@ import { StorageService } from "./common/storage.service";
 import { MailService } from "./common/mail.service";
 import { WhatsAppService } from "./common/whatsapp.service";
 import { AuthController } from "./auth/auth.controller";
+import { FirstAdminSetupController } from "./auth/first-admin-setup.controller";
+import { FirstAdminSetupService } from "./auth/first-admin-setup.service";
 import { JwtAuthGuard } from "./auth/jwt.guard";
 import { PermissionGuard } from "./auth/permission.guard";
 import { ResourcesService } from "./resources/resources.service";
@@ -50,6 +52,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
   ],
   controllers: [
     AuthController,
+    FirstAdminSetupController,
     DashboardController,
     FinanceController,
     WorkflowsController,
@@ -77,6 +80,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
   ],
   providers: [
     PrismaService,
+    FirstAdminSetupService,
     SequenceService,
     AuditService,
     NotifyService,
