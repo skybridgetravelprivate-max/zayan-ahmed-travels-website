@@ -11,7 +11,8 @@
     "start": "node backend/server.js",
     "lint": "eslint src",
     "test:customer-bookings": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts",
-    "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts"
+    "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts",
+    "test:staff": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/staff-api.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -53,3 +53,4 @@ jobs:
           npm run test:customer-auth
           npm run test:inquiries
           node --test scripts/package-hostinger.spec.cjs
+          npm run test:staff

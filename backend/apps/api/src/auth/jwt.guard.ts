@@ -16,6 +16,11 @@ export class JwtAuthGuard implements CanActivate {
     if (!token || !process.env.JWT_SECRET) throw new UnauthorizedException();
     try {
       const payload = await this.jwt.verifyAsync(token, { secret: process.env.JWT_SECRET });
+      if (typeof payload.sub !== "string" || typeof payload.sid !== "string") throw new UnauthorizedException();
+      const session = await this.prisma.session.findUnique({ where: { id: payload.sid } });
+      if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt <= new Date()) {
+        throw new UnauthorizedException();
+      }
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         include: {
