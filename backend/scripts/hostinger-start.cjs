@@ -161,11 +161,11 @@ async function prepareNext() {
 }
 
 async function main() {
-  listenGateway();
   if (mode === "api" || mode === "all") {
     await embedApi();
   }
   if (mode === "web" || mode === "all") await prepareNext();
+  listenGateway();
 }
 
 main().catch((err) => {
