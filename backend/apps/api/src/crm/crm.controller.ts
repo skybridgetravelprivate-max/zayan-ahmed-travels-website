@@ -3,11 +3,12 @@ import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
+import { CrmScopeGuard } from "./crm-scope.guard";
 import { CrmService } from "./crm.service";
 import { LeadStatus } from "@prisma/client";
 
 @Controller("v1/crm")
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, CrmScopeGuard)
 export class CrmController {
   constructor(private crm: CrmService) {}
 
@@ -28,16 +29,17 @@ export class CrmController {
 
   @Get("duplicates")
   @RequirePermission("lead.view")
-  duplicates(@Query() q: { mobile?: string; email?: string; cnic?: string; excludeId?: string }) {
-    return this.crm.duplicates(q.mobile, q.email, q.cnic, q.excludeId);
+  duplicates(@Req() req: Request & { user: AuthUser }, @Query() q: { mobile?: string; email?: string; cnic?: string; excludeId?: string }) {
+    return this.crm.duplicates(req.user, q.mobile, q.email, q.cnic, q.excludeId);
   }
 
   @Get("customer-duplicates")
   @RequirePermission("customer.view")
   customerDuplicates(
+    @Req() req: Request & { user: AuthUser },
     @Query() q: { phone?: string; email?: string; cnic?: string; passport?: string; excludeId?: string },
   ) {
-    return this.crm.customerDuplicates(q.phone, q.email, q.cnic, q.passport, q.excludeId);
+    return this.crm.customerDuplicates(req.user, q.phone, q.email, q.cnic, q.passport, q.excludeId);
   }
 
   @Get("quotations")

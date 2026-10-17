@@ -1,3 +1,4 @@
+import { GlobalFinanceGuard } from "../auth/global-finance.guard";
 import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { PrismaService } from "../common/prisma.service";
@@ -11,7 +12,7 @@ import { WhatsAppService } from "../common/whatsapp.service";
 import { ReportsService } from "./reports.service";
 
 @Controller("v1/reports")
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, GlobalFinanceGuard)
 export class ReportsController {
   constructor(
     private prisma: PrismaService,
@@ -147,7 +148,8 @@ export class RbacController {
 
   @Post("roles/:id/permissions")
   @RequirePermission("role.manage")
-  async setPerms(@Param("id") id: string, @Body() body: { permissionIds: string[] }) {
+  async setPerms(@Param("id") id: string, @Body() body: { permissionIds: string[] }, @Req() req: Request & { user: AuthUser }) {
+    if (!req.user.isSuperAdmin) throw new ForbiddenException();
     await this.prisma.rolePermission.deleteMany({ where: { roleId: id } });
     await this.prisma.rolePermission.createMany({
       data: (body.permissionIds ?? []).map((permissionId) => ({ roleId: id, permissionId })),
@@ -162,6 +164,7 @@ export class RbacController {
     @Body() body: { roleIds: string[] },
     @Req() req: Request & { user: AuthUser },
   ) {
+    if (!req.user.isSuperAdmin) throw new ForbiddenException();
     const superRoles = await this.prisma.role.findMany({
       where: { name: { in: ["SUPER_ADMIN", "Super Admin"] } },
       select: { id: true },
@@ -178,7 +181,8 @@ export class RbacController {
 
   @Post("users/:id/branches")
   @RequirePermission("user.manage")
-  async setBranches(@Param("id") id: string, @Body() body: { branchIds: string[] }) {
+  async setBranches(@Param("id") id: string, @Body() body: { branchIds: string[] }, @Req() req: Request & { user: AuthUser }) {
+    if (!req.user.isSuperAdmin) throw new ForbiddenException();
     await this.prisma.userBranch.deleteMany({ where: { userId: id } });
     await this.prisma.userBranch.createMany({
       data: (body.branchIds ?? []).map((branchId) => ({ userId: id, branchId })),

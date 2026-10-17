@@ -9,11 +9,13 @@ import { hashPassword, assertPasswordPolicy } from "../common/password";
 function redactSecrets(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(redactSecrets);
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
   const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
   delete out.password;
   delete out.passwordHash;
   delete out.refreshTokenHash;
   delete out.tokenHash;
+  for (const key of Object.keys(out)) out[key] = redactSecrets(out[key]);
   return out;
 }
 
@@ -46,6 +48,9 @@ export class ResourcesService {
   }
 
   private assert(user: AuthUser, resource: string, action: "view" | "create" | "edit" | "delete") {
+    if (resource === "audit-logs" && action !== "view") throw new ForbiddenException("Audit records are read-only");
+    if (["journals", "receipts", "payments", "expenses"].includes(resource) && action !== "view") throw new ForbiddenException("Use the transactional finance endpoints");
+    if (["roles", "users"].includes(resource) && action !== "view" && !user.isSuperAdmin) throw new ForbiddenException("Only super administrators may modify roles");
     const perm = actionPermission(this.meta(resource), action);
     if (!can(user, perm) && !can(user, `${this.meta(resource).permission}.${action}`)) {
       if (perm === "user.manage" && can(user, "user.manage")) return;
@@ -75,7 +80,7 @@ export class ResourcesService {
     if (!meta.branchField || user.isSuperAdmin) return;
     const ids = this.allowedBranchIds(user) ?? [];
     const bid = row[meta.branchField];
-    if (typeof bid === "string" && !ids.includes(bid)) throw new NotFoundException();
+    if (typeof bid !== "string" || !ids.includes(bid)) throw new NotFoundException();
   }
 
   async list(resource: string, user: AuthUser, query: Record<string, string>) {
@@ -113,7 +118,7 @@ export class ResourcesService {
       d.count({ where }),
     ]);
     const sanitized = resource === "users" ? data.map((u) => ({ ...u, passwordHash: undefined })) : data;
-    return { data: sanitized, total, page, pageSize };
+    return { data: redactSecrets(sanitized), total, page, pageSize };
   }
 
   async get(resource: string, id: string, user: AuthUser) {
@@ -132,7 +137,7 @@ export class ResourcesService {
     if (!row) throw new NotFoundException();
     this.assertRowBranch(user, meta, row as Record<string, unknown>);
     if (resource === "users") delete (row as { passwordHash?: string }).passwordHash;
-    return row;
+    return redactSecrets(row);
   }
 
   async create(resource: string, user: AuthUser, body: Record<string, unknown>, ip?: string) {
@@ -155,7 +160,7 @@ export class ResourcesService {
     const allowed = this.allowedBranchIds(user);
     if (meta.branchField && allowed) {
       const bid = data[meta.branchField];
-      if (typeof bid === "string" && !allowed.includes(bid)) throw new ForbiddenException();
+      if (typeof bid !== "string" || !allowed.includes(bid)) throw new ForbiddenException();
     }
     if (resource === "quotations") {
       const selling = Number(data.sellingTotal ?? 0);
@@ -193,6 +198,9 @@ export class ResourcesService {
     if (!before) throw new NotFoundException();
     this.assertRowBranch(user, meta, before as Record<string, unknown>);
     const data = this.sanitize(body, false);
+    if (meta.branchField && Object.hasOwn(data, meta.branchField)) {
+      this.assertRowBranch(user, meta, data);
+    }
     delete data.id;
     meta.omitOnWrite?.forEach((k) => delete data[k]);
     delete data.passwordHash;
@@ -212,7 +220,7 @@ export class ResourcesService {
       ipAddress: ip,
     });
     if (resource === "users") delete (updated as { passwordHash?: string }).passwordHash;
-    return updated;
+    return redactSecrets(updated);
   }
 
   async remove(resource: string, id: string, user: AuthUser, ip?: string) {
@@ -263,11 +271,16 @@ export class ResourcesService {
   }
 
   async bulk(resource: string, user: AuthUser, ids: string[], action: string) {
+    if (!Array.isArray(ids) || ids.length > 100 || ids.some(id => typeof id !== "string")) throw new BadRequestException("Invalid record ids");
+    if (action !== "delete" && !(action === "archive" && resource === "leads")) throw new BadRequestException("Unsupported bulk action");
     if (action === "delete") {
       for (const id of ids) await this.remove(resource, id, user);
     }
     if (action === "archive" && resource === "leads") {
-      await this.prisma.lead.updateMany({ where: { id: { in: ids } }, data: { archivedAt: new Date() } });
+      this.assert(user, resource, "edit");
+      const result = await this.prisma.lead.updateMany({ where: this.branchWhere(user, this.meta(resource), { id: { in: ids } }), data: { archivedAt: new Date() } });
+      await this.audit.log({ userId: user.id, action: "ARCHIVE", entity: "Lead", after: { count: result.count } });
+      return { ok: true, count: result.count };
     }
     return { ok: true, count: ids.length };
   }

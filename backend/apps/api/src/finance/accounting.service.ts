@@ -83,7 +83,8 @@ export class AccountingService {
     sourceId?: string;
     status?: "DRAFT" | "POSTED";
     db?: Db;
-  }) {
+  }): Promise<Prisma.JournalEntryGetPayload<{ include: { lines: true } }>> {
+    if (!params.db) return this.prisma.$transaction(tx => this.postJournal({ ...params, db: tx }));
     const db = this.store(params.db);
     const lines = (params.lines || []).map((l) => ({
       ...l,
@@ -92,7 +93,7 @@ export class AccountingService {
     }));
     if (lines.length < 2) throw new BadRequestException("Journal needs at least two lines");
     for (const l of lines) {
-      if (l.debit < 0 || l.credit < 0) throw new BadRequestException("Debit and credit cannot be negative");
+      if (!Number.isFinite(l.debit) || !Number.isFinite(l.credit) || l.debit < 0 || l.credit < 0) throw new BadRequestException("Debit and credit cannot be negative");
       if (l.debit > 0 && l.credit > 0) throw new BadRequestException("A line cannot be both debit and credit");
       if (l.debit === 0 && l.credit === 0) throw new BadRequestException("Each line needs a debit or a credit");
     }
@@ -121,24 +122,28 @@ export class AccountingService {
   }
 
   async postExisting(id: string, userId: string) {
-    const j = await this.prisma.journalEntry.findUnique({ where: { id }, include: { lines: true } });
-    if (!j) throw new BadRequestException("Journal not found");
-    if (j.status === "POSTED") throw new BadRequestException("Already posted");
-    const debit = j.lines.reduce((s, l) => s + Number(l.debit), 0);
-    const credit = j.lines.reduce((s, l) => s + Number(l.credit), 0);
-    if (Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
-    const updated = await this.prisma.journalEntry.update({
-      where: { id },
-      data: { status: "POSTED", postedAt: new Date() },
+    return this.prisma.$transaction(async tx => {
+      const j = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } });
+      if (!j || j.status !== "DRAFT") throw new BadRequestException("Only draft journals can be posted");
+      const debit = j.lines.reduce((sum, line) => sum + Number(line.debit), 0);
+      const credit = j.lines.reduce((sum, line) => sum + Number(line.credit), 0);
+      if (j.lines.length < 2 || !Number.isFinite(debit) || !Number.isFinite(credit) || debit <= 0 || Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
+      const claimed = await tx.journalEntry.updateMany({ where: { id, status: "DRAFT" }, data: { status: "POSTED", postedAt: new Date() } });
+      if (claimed.count !== 1) throw new BadRequestException("Journal status changed");
+      await this.audit.log({ userId, action: "POST", entity: "journalEntry", entityId: id, db: tx });
+      return tx.journalEntry.findUnique({ where: { id } });
     });
-    await this.audit.log({ userId, action: "POST", entity: "journalEntry", entityId: id });
-    return updated;
   }
 
   async reverse(id: string, userId: string) {
-    const j = await this.prisma.journalEntry.findUnique({ where: { id }, include: { lines: true } });
+    return this.prisma.$transaction(async tx => {
+    const j = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } });
     if (!j || j.status !== "POSTED") throw new BadRequestException("Only posted journals can be reversed");
+    if (!["MANUAL", "OPENING", "ADJUSTMENT"].includes(j.kind)) throw new BadRequestException("Use the source module refund or cancellation workflow for business journals");
+    const claimed = await tx.journalEntry.updateMany({ where: { id, status: "POSTED" }, data: { status: "REVERSED" } });
+    if (claimed.count !== 1) throw new BadRequestException("Journal already reversed");
     const rev = await this.postJournal({
+      db: tx,
       date: new Date(),
       memo: `Reversal of ${j.entryNumber}`,
       branchId: j.branchId,
@@ -155,8 +160,9 @@ export class AccountingService {
         partyId: l.partyId || undefined,
       })),
     });
-    await this.prisma.journalEntry.update({ where: { id }, data: { status: "REVERSED", reversedOfId: rev.id } });
+    await tx.journalEntry.update({ where: { id }, data: { status: "REVERSED", reversedOfId: rev.id } });
     return rev;
+    });
   }
 
   async postSale(opts: {
@@ -225,6 +231,7 @@ export class AccountingService {
 
   async postReceipt(opts: {
     userId: string;
+    db?: Db;
     amount: number;
     method?: string;
     customerId?: string | null;
@@ -235,10 +242,11 @@ export class AccountingService {
     module?: string;
   }) {
     const amount = Number(opts.amount || 0);
-    if (amount <= 0) throw new BadRequestException("Receipt amount must be positive");
-    const cash = await this.accountByCode(this.moneyAccount(opts.method));
-    const ar = await this.accountByCode(GL.AR);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Receipt amount must be positive");
+    const cash = await this.accountByCode(this.moneyAccount(opts.method), opts.db);
+    const ar = await this.accountByCode(GL.AR, opts.db);
     return this.postJournal({
+      db: opts.db,
       date: opts.date || new Date(),
       memo: opts.memo || "Customer receipt",
       branchId: opts.branchId,
@@ -255,6 +263,7 @@ export class AccountingService {
 
   async postPayment(opts: {
     userId: string;
+    db?: Db;
     amount: number;
     method?: string;
     supplierId?: string | null;
@@ -265,10 +274,11 @@ export class AccountingService {
     module?: string;
   }) {
     const amount = Number(opts.amount || 0);
-    if (amount <= 0) throw new BadRequestException("Payment amount must be positive");
-    const cash = await this.accountByCode(this.moneyAccount(opts.method));
-    const ap = await this.accountByCode(GL.AP);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Payment amount must be positive");
+    const cash = await this.accountByCode(this.moneyAccount(opts.method), opts.db);
+    const ap = await this.accountByCode(GL.AP, opts.db);
     return this.postJournal({
+      db: opts.db,
       date: opts.date || new Date(),
       memo: opts.memo || "Supplier payment",
       branchId: opts.branchId,
@@ -368,16 +378,18 @@ export class AccountingService {
 
   async postExpense(opts: {
     userId: string;
+    db?: Db;
     amount: number;
     category?: string;
     branchId?: string | null;
     date?: Date;
   }) {
     const amount = Number(opts.amount || 0);
-    if (amount <= 0) throw new BadRequestException("Expense amount must be positive");
-    const exp = await this.accountByCode(GL.OPEX);
-    const cash = await this.accountByCode(GL.CASH);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Expense amount must be positive");
+    const exp = await this.accountByCode(GL.OPEX, opts.db);
+    const cash = await this.accountByCode(GL.CASH, opts.db);
     return this.postJournal({
+      db: opts.db,
       date: opts.date || new Date(),
       memo: opts.category || "Expense",
       branchId: opts.branchId,
@@ -397,7 +409,7 @@ export class AccountingService {
     const rows = [];
     for (const a of accounts) {
       const agg = await this.prisma.journalLine.aggregate({
-        where: { accountId: a.id, journal: { status: "POSTED", date: { lte: cutoff } } },
+        where: { accountId: a.id, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { lte: cutoff } } },
         _sum: { debit: true, credit: true },
       });
       const debit = Number(agg._sum.debit ?? 0);
@@ -414,7 +426,7 @@ export class AccountingService {
     const rows = [];
     for (const a of accounts) {
       const agg = await this.prisma.journalLine.aggregate({
-        where: { accountId: a.id, journal: { status: "POSTED", date: { gte: from, lte: to } } },
+        where: { accountId: a.id, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { gte: from, lte: to } } },
         _sum: { debit: true, credit: true },
       });
       const debit = Number(agg._sum.debit ?? 0);
@@ -433,7 +445,7 @@ export class AccountingService {
 
   async partyLedger(partyType: string, partyId: string) {
     const lines = await this.prisma.journalLine.findMany({
-      where: { partyType, partyId, journal: { status: "POSTED" } },
+      where: { partyType, partyId, journal: { status: { in: ["POSTED", "REVERSED"] } } },
       include: { journal: true, account: true },
       orderBy: { journal: { date: "asc" } },
     });
@@ -456,7 +468,7 @@ export class AccountingService {
     const arApCode = partyType === "customer" ? GL.AR : GL.AP;
     const acc = await this.accountByCode(arApCode);
     const lines = await this.prisma.journalLine.findMany({
-      where: { accountId: acc.id, partyType, journal: { status: "POSTED" } },
+      where: { accountId: acc.id, partyType, journal: { status: { in: ["POSTED", "REVERSED"] } } },
     });
     const map: Record<string, number> = {};
     for (const l of lines) {

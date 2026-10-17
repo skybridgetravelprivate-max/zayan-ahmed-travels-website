@@ -49,8 +49,9 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const identifier = (body.identifier ?? "").trim();
-    const password = body.password ?? "";
+    const identifier = typeof body.identifier === "string" ? body.identifier.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (identifier.length > 254 || Buffer.byteLength(password, "utf8") > 72) throw new BadRequestException("Invalid sign-in fields");
     if (!identifier || !password) throw new BadRequestException("Email/username and password are required");
 
     const user = await this.prisma.user.findFirst({
@@ -62,6 +63,7 @@ export class AuthController {
       await this.prisma.loginAttempt.create({ data: { identifier, success: false, ipAddress: ip } });
       throw new UnauthorizedException("Invalid credentials");
     }
+    if (user.deletedAt || (user.status !== "ACTIVE" && !(user.status === "LOCKED" && user.lockedUntil))) throw new UnauthorizedException("Account inactive");
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       throw new UnauthorizedException("Account locked. Try later.");
     }
@@ -75,7 +77,7 @@ export class AuthController {
       const lockedUntil = failed >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
       await this.prisma.user.update({
         where: { id: user.id },
-        data: { failedLogins: failed, lockedUntil, status: lockedUntil ? "LOCKED" : user.status },
+        data: { failedLogins: failed, lockedUntil, status: user.status },
       });
       throw new UnauthorizedException("Invalid credentials");
     }
@@ -131,9 +133,10 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     if (raw) {
-      const sessionId = raw.split(".")[0];
+      const [sessionId, refreshToken] = raw.split(".");
+      const refreshTokenHash = createHash("sha256").update(refreshToken ?? "").digest("hex");
       await this.prisma.session.updateMany({
-        where: { id: sessionId, revokedAt: null },
+        where: { id: sessionId, refreshTokenHash, revokedAt: null },
         data: { revokedAt: new Date() },
       });
     }
@@ -181,9 +184,11 @@ export class AuthController {
     assertPasswordPolicy(body.newPassword);
     const ok = await verifyPassword(body.currentPassword, user.passwordHash);
     if (!ok) throw new UnauthorizedException("Current password is incorrect");
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash: await hashPassword(body.newPassword) },
+    const passwordHash = await hashPassword(body.newPassword);
+    await this.prisma.$transaction(async tx => {
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+      await tx.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.passwordResetToken.updateMany({ where: { email: user.email, usedAt: null }, data: { usedAt: new Date() } });
     });
     return { ok: true };
   }
@@ -203,7 +208,10 @@ export class AuthController {
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         },
       });
-      const link = `${process.env.APP_URL}/reset-password?token=${token}`;
+      const origin = process.env.SITE_URL || (process.env.APP_URL ?? "").split(",")[0].trim();
+      const link = new URL("/reset-password", origin);
+      if (link.protocol !== "https:" && process.env.NODE_ENV === "production") throw new BadRequestException("Invalid site configuration");
+      link.searchParams.set("token", token);
       await this.mail.send(email, "Reset your password", `<p>Reset link: <a href="${link}">${link}</a></p>`);
     }
     return { ok: true };
@@ -212,18 +220,23 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post("reset-password")
   async reset(@Body() body: { token?: string; password?: string }) {
-    if (!body.token || !body.password) throw new BadRequestException();
+    if (typeof body.token !== "string" || typeof body.password !== "string" || !body.token || !body.password) throw new BadRequestException();
     assertPasswordPolicy(body.password);
     const tokenHash = createHash("sha256").update(body.token).digest("hex");
     const row = await this.prisma.passwordResetToken.findFirst({
       where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
     });
     if (!row) throw new BadRequestException("Invalid or expired token");
-    await this.prisma.user.update({
-      where: { email: row.email },
-      data: { passwordHash: await hashPassword(body.password), failedLogins: 0, lockedUntil: null, status: "ACTIVE" },
+    const passwordHash = await hashPassword(body.password);
+    await this.prisma.$transaction(async tx => {
+      const claimed = await tx.passwordResetToken.updateMany({ where: { id: row.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+      if (claimed.count !== 1) throw new BadRequestException("Invalid or expired token");
+      const user = await tx.user.findUnique({ where: { email: row.email } });
+      if (!user || user.deletedAt || (user.status !== "ACTIVE" && !(user.status === "LOCKED" && user.lockedUntil))) throw new BadRequestException("Account unavailable");
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, failedLogins: 0, lockedUntil: null, status: "ACTIVE" } });
+      await tx.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.passwordResetToken.updateMany({ where: { email: row.email, usedAt: null }, data: { usedAt: new Date() } });
     });
-    await this.prisma.passwordResetToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
     return { ok: true };
   }
 

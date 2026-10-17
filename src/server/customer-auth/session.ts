@@ -142,7 +142,6 @@ export async function createSession(customerId: string) {
 export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   await connection();
   const tokenHash = await currentTokenHash();
-  await removeExpiredSessions();
   if (!tokenHash) return null;
   return resolveCustomerSession(tokenHash);
 }

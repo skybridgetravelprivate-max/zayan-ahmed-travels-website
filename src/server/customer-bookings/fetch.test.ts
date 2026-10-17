@@ -71,7 +71,7 @@ test("signed-in customer A → CRM request uses A's customer id", async () => {
         },
       ],
     };
-  });
+  }, async () => true);
   assert.equal(usedId, "crm-customer-a");
   assert.equal(resolved.status, 200);
   assert.equal(resolved.body.ok, true);
@@ -96,7 +96,7 @@ test("customer A cannot use a browser-supplied customer B id to fetch B's bookin
         },
       ],
     };
-  });
+  }, async () => true);
   assert.equal(usedId, "crm-customer-a");
   assert.notEqual(usedId, browserQueryCustomerId);
   assert.equal(result.status, 200);
@@ -152,7 +152,7 @@ test("CRM failure → sanitized 503 without token or CRM internals", async () =>
         status,
         headers: { "Content-Type": "application/json" },
       })) as typeof fetch;
-    const resolved = await resolveAccountBookings(customer("cust-a", "crm-cust-a"));
+    const resolved = await resolveAccountBookings(customer("cust-a", "crm-cust-a"), fetchCustomerBookingsForWebsiteCustomer, async () => true);
     assert.equal(resolved.status, 503);
     assert.equal(resolved.body.ok, false);
     const text = JSON.stringify(resolved.body);
@@ -174,4 +174,11 @@ test("missing configuration → 503 and no outbound CRM call", async () => {
   if (result.ok) return;
   assert.equal(result.status, 503);
   assert.equal(fetchCalled, false);
+});
+
+test("unverified email link never fetches CRM bookings", async () => {
+  let called = false;
+  const result = await resolveAccountBookings(customer("unverified", "existing-crm"), async () => { called = true; return { ok: true, bookings: [] }; }, async () => false);
+  assert.equal(result.status, 403);
+  assert.equal(called, false);
 });

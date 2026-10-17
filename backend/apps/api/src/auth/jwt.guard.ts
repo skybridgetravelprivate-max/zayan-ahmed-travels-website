@@ -28,7 +28,7 @@ export class JwtAuthGuard implements CanActivate {
           branches: true,
         },
       });
-      if (!user || user.status !== "ACTIVE") throw new UnauthorizedException();
+      if (!user || user.deletedAt || user.status !== "ACTIVE") throw new UnauthorizedException();
       if (user.lockedUntil && user.lockedUntil > new Date()) throw new UnauthorizedException("Account locked");
       const roleNames = user.roles.map((r) => r.role.name);
       const permissions = [...new Set(user.roles.flatMap((r) => r.role.permissions.map((p) => p.permission.code)))];
