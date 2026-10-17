@@ -34,6 +34,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     return [
+      { source: "/admin", headers: privateNoStore },
+      { source: "/admin/:path*", headers: privateNoStore },
       { source: "/account", headers: privateNoStore },
       { source: "/my-bookings", headers: privateNoStore },
       { source: "/api/account/:path*", headers: privateNoStore },
