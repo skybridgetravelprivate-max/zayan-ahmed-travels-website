@@ -46,3 +46,10 @@ jobs:
         env:
           NODE_OPTIONS: --conditions=react-server
         run: npm run test:customer-bookings
+
+      - name: Verify API, customer authentication, inquiries and deployment packaging
+        run: |
+          npm test --prefix backend
+          npm run test:customer-auth
+          npm run test:inquiries
+          node --test scripts/package-hostinger.spec.cjs

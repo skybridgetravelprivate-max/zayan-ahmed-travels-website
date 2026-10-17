@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { createPostgresConnectionConfig } from "@zat/config/postgres-tls";
 
 function databaseUrl() {
   const raw =
@@ -26,20 +27,14 @@ export function databaseUrlProblem() {
   return null;
 }
 
-function needsSsl(url: string) {
-  if (!url) return false;
-  if (/localhost|127\.0\.0\.1/i.test(url)) return false;
-  return true;
-}
-
 function prismaOptions() {
   const url = databaseUrl();
   if (!url) return {};
+  const postgresConfig = createPostgresConnectionConfig(url);
   const pool = new Pool({
-    connectionString: url,
+    ...postgresConfig,
     max: 5,
     connectionTimeoutMillis: 15000,
-    ssl: needsSsl(url) ? { rejectUnauthorized: false } : undefined,
   });
   return { adapter: new PrismaPg(pool) };
 }
@@ -47,7 +42,7 @@ function prismaOptions() {
 export function sanitizeDbError(err: unknown) {
   const e = err as { code?: string; message?: string };
   let msg = String(e?.message ?? err ?? "unknown");
-  msg = msg.replace(/postgresql:\/\/[^@\s]+@/gi, "postgresql://***@");
+  msg = msg.replace(/\b(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1***@");
   msg = msg.replace(/:[^:@/]+@/g, ":***@");
   if (msg.length > 240) msg = msg.slice(0, 240);
   return e?.code ? `${e.code}: ${msg}` : msg;

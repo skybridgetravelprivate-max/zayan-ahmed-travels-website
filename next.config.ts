@@ -30,6 +30,8 @@ function crmApiOrigin() {
 }
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     return [
       { source: "/account", headers: privateNoStore },

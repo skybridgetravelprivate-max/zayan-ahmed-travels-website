@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -40,6 +40,13 @@ export class StorageService {
   }
 
   async put(buffer: Buffer, originalName: string, mimeType: string) {
+    // Production local disk has no verified durability. Explicit opt-in is
+    // reserved for deployments with independently verified persistent storage.
+    if (process.env.DOCUMENT_UPLOADS_ENABLED === "false" ||
+        (process.env.NODE_ENV === "production" && process.env.DOCUMENT_UPLOADS_ENABLED !== "true")) {
+      throw new ServiceUnavailableException("Document uploads are temporarily unavailable.");
+    }
+    if (this.driver !== "local") throw new ServiceUnavailableException("Storage driver is not configured.");
     if (!buffer || buffer.length === 0) throw new BadRequestException("Empty file");
     if (buffer.length > MAX_UPLOAD_BYTES) throw new BadRequestException("File must be 8 MB or smaller");
     const mime = String(mimeType || "").toLowerCase();
