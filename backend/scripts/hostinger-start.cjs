@@ -99,7 +99,7 @@ function listenGateway() {
         apiExpress(req, res);
         return;
       }
-      res.writeHead(503, { "content-type": "application/json; charset=utf-8" });
+      res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "retry-after": "3" });
       res.end(JSON.stringify({ ok: false, message: "API is starting. Try again in a few seconds." }));
       return;
     }
@@ -107,7 +107,7 @@ function listenGateway() {
       nextHandle(req, res, parse(req.url, true));
       return;
     }
-    res.writeHead(503, { "content-type": "application/json; charset=utf-8" });
+    res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "retry-after": "3" });
     res.end(JSON.stringify({ ok: false, message: "Web is starting." }));
   });
   server.on("upgrade", (req, socket, head) => {
