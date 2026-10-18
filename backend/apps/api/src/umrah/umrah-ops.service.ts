@@ -4,6 +4,7 @@ import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
+import { assertBranch, assertPeopleLinks, assertRecordBranch, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
 
 const money = (n: number) => new Prisma.Decimal(Number(n || 0).toFixed(2));
@@ -52,6 +53,9 @@ export class UmrahOpsService {
     if (!body.id) assertCan(user, "umrah.create");
     const customerId = String(body.customerId || "");
     if (!customerId) throw new BadRequestException("Customer is required.");
+    await assertPeopleLinks(this.prisma, user, body);
+    if (body.id) await assertRecordBranch(this.prisma, user, "umrahBooking", body.id);
+    else assertBranch(user, user.defaultBranchId);
     const tot = this.totals(body as { cost?: number; sellingPrice?: number; discount?: number; tax?: number; commission?: number; paid?: number });
     const passengers = Array.isArray(body.passengerIds) ? (body.passengerIds as string[]) : [];
     const bookingNumber = body.id ? undefined : await this.seq.next("umr-bk", "UMR");
@@ -89,7 +93,7 @@ export class UmrahOpsService {
     } else {
       assertCan(user, "umrah.create");
       row = await this.prisma.umrahBooking.create({
-        data: { ...data, bookingNumber: bookingNumber as string, status: "DRAFT" },
+        data: { ...data, branchId: user.defaultBranchId, bookingNumber: bookingNumber as string, status: "DRAFT" },
       });
     }
     if (passengers.length) {
@@ -126,6 +130,7 @@ export class UmrahOpsService {
     if (!UMRAH_LIFECYCLE.includes(step)) throw new BadRequestException("Unknown lifecycle status.");
     const existing = await this.prisma.umrahBooking.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException();
+    assertBranch(user, existing.branchId);
     if (existing.status === "CANCELLED" && step !== "Cancelled") throw new BadRequestException("Cancelled bookings cannot change status.");
     const row = await this.prisma.umrahBooking.update({
       where: { id },
@@ -139,6 +144,7 @@ export class UmrahOpsService {
     assertCan(user, "umrah.edit");
     const existing = await this.prisma.umrahBooking.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException();
+    assertBranch(user, existing.branchId);
     if (existing.iataLocked) throw new BadRequestException("IATA is locked.");
     if (!String(iataCode || "").trim()) throw new BadRequestException("IATA code is required.");
     const row = await this.prisma.umrahBooking.update({
@@ -151,7 +157,7 @@ export class UmrahOpsService {
 
   async dashboards(user: AuthUser) {
     assertCan(user, "umrah.view");
-    const rows = await this.prisma.umrahBooking.findMany({ include: { passengers: true } });
+    const rows = await this.prisma.umrahBooking.findMany({ where: branchWhere(user), include: { passengers: true } });
     return {
       total: rows.length,
       pax: rows.reduce((n, r) => n + r.passengers.length, 0),

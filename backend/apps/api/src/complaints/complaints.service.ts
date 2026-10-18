@@ -3,6 +3,7 @@ import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { NotifyService } from "../common/notify.service";
+import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
 import { AuthUser } from "../auth/auth.types";
 
 const TERMINAL = new Set(["Closed", "Cancelled"]);
@@ -42,8 +43,15 @@ export class ComplaintsService {
     };
   }
 
-  async list(query: Record<string, string>) {
-    const where: Record<string, unknown> = {};
+  async list(user: AuthUser, query: Record<string, string>) {
+    const where: Record<string, unknown> = branchWhere(user);
+    if (!user.isSuperAdmin) {
+      const peopleScope = customerBranchWhere(user);
+      where.AND = [
+        { customer: { is: peopleScope } },
+        { OR: [{ passengerId: null }, { passenger: { is: { customer: { is: peopleScope } } } }] },
+      ];
+    }
     if (query.status) where.status = query.status;
     if (query.module) where.module = query.module;
     if (query.category) where.category = query.category;
@@ -67,7 +75,7 @@ export class ComplaintsService {
     });
   }
 
-  async get(id: string) {
+  async get(user: AuthUser, id: string) {
     const row = await this.prisma.complaint.findUnique({
       where: { id },
       include: {
@@ -75,6 +83,9 @@ export class ComplaintsService {
       },
     });
     if (!row) throw new NotFoundException("Complaint not found");
+    assertBranch(user, row.branchId);
+    await assertPeopleLinks(this.prisma, user, row);
+    await assertPeopleLinksInBranch(this.prisma, row, row.branchId);
     const documents = await this.prisma.storedDocument.findMany({
       where: { entityType: "complaint", entityId: id },
       orderBy: { createdAt: "desc" },
@@ -86,6 +97,9 @@ export class ComplaintsService {
     const b = body as ComplaintBody;
     if (!b.customerId) throw new BadRequestException("Customer is required.");
     if (!String(b.description || "").trim()) throw new BadRequestException("Description is required.");
+    assertBranch(user, user.defaultBranchId);
+    await assertPeopleLinks(this.prisma, user, b);
+    await assertPeopleLinksInBranch(this.prisma, b, user.defaultBranchId);
     const complaintNumber = await this.seq.next("cmp", "CMP");
     const row = await this.prisma.complaint.create({
       data: {
@@ -131,7 +145,17 @@ export class ComplaintsService {
   async update(user: AuthUser, id: string, body: ComplaintBody | Record<string, unknown>, ip?: string) {
     const existing = await this.prisma.complaint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Complaint not found");
+    assertBranch(user, existing.branchId);
     if (TERMINAL.has(existing.status)) throw new BadRequestException("Closed or cancelled complaints cannot be edited.");
+    await assertPeopleLinks(this.prisma, user, body);
+    await assertPeopleLinksInBranch(
+      this.prisma,
+      {
+        customerId: existing.customerId,
+        passengerId: body.passengerId === undefined ? existing.passengerId : body.passengerId,
+      },
+      existing.branchId,
+    );
     const data: Record<string, unknown> = {};
     const keys: (keyof ComplaintBody)[] = [
       "passengerId",
@@ -171,6 +195,7 @@ export class ComplaintsService {
   async assign(user: AuthUser, id: string, assignedUserId: string, ip?: string) {
     const existing = await this.prisma.complaint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Complaint not found");
+    assertBranch(user, existing.branchId);
     if (TERMINAL.has(existing.status) || existing.status === "Resolved") {
       throw new BadRequestException("Cannot assign this complaint.");
     }
@@ -202,6 +227,7 @@ export class ComplaintsService {
   async resolve(user: AuthUser, id: string, resolution: string, ip?: string) {
     const existing = await this.prisma.complaint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Complaint not found");
+    assertBranch(user, existing.branchId);
     if (TERMINAL.has(existing.status)) throw new BadRequestException("Cannot resolve this complaint.");
     if (!String(resolution || existing.resolution || "").trim()) {
       throw new BadRequestException("Resolution is required.");
@@ -229,6 +255,7 @@ export class ComplaintsService {
   async close(user: AuthUser, id: string, ip?: string) {
     const existing = await this.prisma.complaint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Complaint not found");
+    assertBranch(user, existing.branchId);
     if (existing.status !== "Resolved") throw new BadRequestException("Close is only allowed after Resolved.");
     const row = await this.prisma.complaint.update({
       where: { id },
@@ -252,6 +279,7 @@ export class ComplaintsService {
   async addNote(user: AuthUser, id: string, body: string, ip?: string) {
     const existing = await this.prisma.complaint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Complaint not found");
+    assertBranch(user, existing.branchId);
     if (!String(body || "").trim()) throw new BadRequestException("Note is required.");
     const notes = [existing.notes, `${new Date().toISOString()} ${user.email}: ${body.trim()}`].filter(Boolean).join("\n");
     const row = await this.prisma.complaint.update({
@@ -275,6 +303,7 @@ export class ComplaintsService {
   async remove(user: AuthUser, id: string, ip?: string) {
     const existing = await this.prisma.complaint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Complaint not found");
+    assertBranch(user, existing.branchId);
     await this.prisma.complaint.delete({ where: { id } });
     await this.audit.log({
       userId: user.id,

@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -7,6 +8,7 @@ import { AccountingService } from "../finance/accounting.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
+import { assertBranch, assertPeopleLinks, assertRecordBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
 import { NotifyService } from "../common/notify.service";
 
 const UMRAH_STEPS = [
@@ -41,6 +43,7 @@ export class WorkflowsController {
   async convertLead(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
     const lead = await this.prisma.lead.findUnique({ where: { id } });
     if (!lead) throw new BadRequestException("Lead not found");
+    assertBranch(req.user, lead.branchId);
     const customerNumber = await this.seq.next("customer", "ZAT-CUS");
     const customer = await this.prisma.customer.create({
       data: {
@@ -67,7 +70,10 @@ export class WorkflowsController {
   async convertQuote(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
     const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true } });
     if (!q) throw new BadRequestException("Quotation not found");
+    assertBranch(req.user, q.branchId);
     if (!q.customerId) throw new BadRequestException("Quotation has no customer");
+    await assertPeopleLinks(this.prisma, req.user, q);
+    if (q.leadId) await assertRecordBranch(this.prisma, req.user, "lead", q.leadId);
     const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM");
     const booking = await this.prisma.umrahBooking.create({
       data: {
@@ -114,10 +120,11 @@ export class WorkflowsController {
   async umrahStep(
     @Param("id") id: string,
     @Body() body: { step?: string },
-    @Req() _req: Request & { user: AuthUser },
+    @Req() req: Request & { user: AuthUser },
   ) {
     const b = await this.prisma.umrahBooking.findUnique({ where: { id } });
     if (!b) throw new BadRequestException();
+    assertBranch(req.user, b.branchId);
     const step = body.step && UMRAH_STEPS.includes(body.step) ? body.step : "ADVANCE_PAYMENT";
     let status = b.status;
     if (step === "CUSTOMER_CONFIRMATION") status = "CONFIRMED";
@@ -130,9 +137,10 @@ export class WorkflowsController {
 
   @Post("umrah-groups/:id/allocate")
   @RequirePermission("umrah.edit")
-  async allocateSeats(@Param("id") id: string, @Body() body: { seats: number }) {
+  async allocateSeats(@Param("id") id: string, @Body() body: { seats: number }, @Req() req: Request & { user: AuthUser }) {
     const g = await this.prisma.umrahGroup.findUnique({ where: { id } });
     if (!g) throw new BadRequestException();
+    assertBranch(req.user, g.branchId);
     const next = g.reservedSeats + Number(body.seats);
     if (next > g.totalSeats) throw new BadRequestException("Overselling seats is not allowed");
     return this.prisma.umrahGroup.update({ where: { id }, data: { reservedSeats: next } });
@@ -144,6 +152,8 @@ export class WorkflowsController {
     @Body() body: Record<string, unknown>,
     @Req() req: Request & { user: AuthUser },
   ) {
+    assertBranch(req.user, body.branchId || req.user.defaultBranchId);
+    await assertPeopleLinks(this.prisma, req.user, body);
     const net = Number(body.net ?? Number(body.fare ?? 0) + Number(body.tax ?? 0) - Number(body.discount ?? 0));
     const cost = Number(body.cost ?? 0);
     const profit = net - cost;
@@ -201,50 +211,57 @@ export class WorkflowsController {
     @Body() body: { refundAmount: number; airlineDeduction?: number; agencyDeduction?: number; otherCharges?: number; reason?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    const ticket = await this.prisma.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
-    if (!ticket) throw new BadRequestException("Ticket not found");
-    if (ticket.status === "CANCELLED") throw new BadRequestException("Cancelled ticket cannot be refunded");
-    if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
-    const prior = (ticket.refunds || []).reduce((s, r) => s + Number(r.netRefund), 0);
-    const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
-    const refundable = Math.max(0, Math.min(paid, Number(ticket.net)) - prior);
-    const deductions = Number(body.airlineDeduction ?? 0) + Number(body.agencyDeduction ?? 0) + Number(body.otherCharges ?? 0);
-    const netRefund = Number(body.refundAmount) - deductions;
-    if (Number(body.refundAmount) <= 0) throw new BadRequestException("Refund amount is required");
-    if (netRefund <= 0) throw new BadRequestException("Net refund after deductions must be positive");
-    if (netRefund - refundable > 0.009) throw new BadRequestException("Refund cannot exceed refundable amount");
-    const journal = await this.accounting.postRefund({
-      userId: req.user.id,
-      amount: netRefund,
-      module: "ticket",
-      sourceId: ticket.id,
-      customerId: ticket.customerId,
-      branchId: ticket.branchId,
-      memo: `Ticket refund ${ticket.ticketNumber}`,
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize availability checks across processes until commit.
+      await tx.$queryRaw`SELECT id FROM "TicketSale" WHERE id = ${id} FOR UPDATE`;
+      const ticket = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
+      if (!ticket) throw new BadRequestException("Ticket not found");
+      assertBranch(req.user, ticket.branchId);
+      if (ticket.status === "CANCELLED") throw new BadRequestException("Cancelled ticket cannot be refunded");
+      if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
+      const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toNumber();
+      const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
+      const refundable = Math.max(0, new Prisma.Decimal(Math.min(paid, Number(ticket.net))).minus(prior).toNumber());
+      const amounts = [body.refundAmount, body.airlineDeduction ?? 0, body.agencyDeduction ?? 0, body.otherCharges ?? 0];
+      if (!amounts.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Refund amounts must be nonnegative numbers with at most two decimal places");
+      const netRefund = amounts.slice(1).reduce((amount, deduction) => amount.minus(deduction), new Prisma.Decimal(body.refundAmount)).toNumber();
+      if (Number(body.refundAmount) <= 0) throw new BadRequestException("Refund amount is required");
+      if (netRefund <= 0) throw new BadRequestException("Net refund after deductions must be positive");
+      if (netRefund > refundable) throw new BadRequestException("Refund cannot exceed refundable amount");
+      const journal = await this.accounting.postRefund({
+        userId: req.user.id,
+        amount: netRefund,
+        module: "ticket",
+        sourceId: ticket.id,
+        customerId: ticket.customerId,
+        branchId: ticket.branchId,
+        memo: `Ticket refund ${ticket.ticketNumber}`,
+        db: tx,
+      });
+      const refund = await tx.ticketRefund.create({
+        data: {
+          ticketId: id,
+          originalFare: ticket.fare,
+          refundAmount: body.refundAmount,
+          airlineDeduction: body.airlineDeduction ?? 0,
+          agencyDeduction: body.agencyDeduction ?? 0,
+          otherCharges: body.otherCharges ?? 0,
+          netRefund,
+          reason: body.reason,
+          approvedById: req.user.id,
+          journalId: journal.id,
+        },
+      });
+      await tx.ticketSale.update({
+        where: { id },
+        data: {
+          status: netRefund >= refundable - 0.009 ? "REFUNDED" : ticket.status,
+          paymentStatus: prior + netRefund >= paid - 0.009 && paid > 0 ? "REFUNDED" : ticket.paymentStatus,
+        },
+      });
+      await this.audit.log({ userId: req.user.id, action: "REFUND", entity: "ticketSale", entityId: id, after: refund, db: tx });
+      return refund;
     });
-    const refund = await this.prisma.ticketRefund.create({
-      data: {
-        ticketId: id,
-        originalFare: ticket.fare,
-        refundAmount: body.refundAmount,
-        airlineDeduction: body.airlineDeduction ?? 0,
-        agencyDeduction: body.agencyDeduction ?? 0,
-        otherCharges: body.otherCharges ?? 0,
-        netRefund,
-        reason: body.reason,
-        approvedById: req.user.id,
-        journalId: journal.id,
-      },
-    });
-    await this.prisma.ticketSale.update({
-      where: { id },
-      data: {
-        status: prior + netRefund >= refundable + prior - 0.009 ? "REFUNDED" : ticket.status,
-        paymentStatus: prior + netRefund >= paid - 0.009 && paid > 0 ? "REFUNDED" : ticket.paymentStatus,
-      },
-    });
-    await this.audit.log({ userId: req.user.id, action: "REFUND", entity: "ticketSale", entityId: id, after: refund });
-    return refund;
   }
 
   @Post("tickets/:id/reissue")
@@ -263,6 +280,8 @@ export class WorkflowsController {
   ) {
     const original = await this.prisma.ticketSale.findUnique({ where: { id } });
     if (!original) throw new BadRequestException();
+    assertBranch(req.user, original.branchId);
+    await assertPeopleLinks(this.prisma, req.user, original);
     const extra = Number(body.airlineChangeFee ?? 0) + Number(body.agencyFee ?? 0) + Number(body.fareDifference ?? 0);
     const newTicket = await this.prisma.ticketSale.create({
       data: {
@@ -394,6 +413,9 @@ export class WorkflowsController {
     },
     @Req() req: Request & { user: AuthUser },
   ) {
+    assertBranch(req.user, req.user.defaultBranchId);
+    await assertPeopleLinks(this.prisma, req.user, body);
+    for (const room of body.rooms || []) await assertPeopleLinks(this.prisma, req.user, room);
     const rooms = (body.rooms || []).map((rm, i) => ({
       ...rm,
       roomNo: rm.roomNo || (body.autoAllocate === false ? undefined : `${String(rm.hotelId).slice(-4)}-${i + 1}`),
@@ -464,9 +486,10 @@ export class WorkflowsController {
 
   @Get("star")
   @RequirePermission("star.view")
-  async listStar(@Query() q: { q?: string; status?: string }) {
+  async listStar(@Query() q: { q?: string; status?: string }, @Req() req: Request & { user: AuthUser }) {
     return this.prisma.starBooking.findMany({
       where: {
+        ...branchWhere(req.user),
         ...(q.status ? { status: q.status } : {}),
         ...(q.q
           ? {
@@ -487,9 +510,10 @@ export class WorkflowsController {
 
   @Get("star/intimation")
   @RequirePermission("star.view")
-  async starIntimation(@Query() q: { from?: string; to?: string }) {
+  async starIntimation(@Query() q: { from?: string; to?: string }, @Req() req: Request & { user: AuthUser }) {
     return this.prisma.starBooking.findMany({
       where: {
+        ...branchWhere(req.user),
         status: { notIn: ["Cancelled", "Expired"] },
         ...(q.from || q.to ? { rooms: { some: { checkIn: { gte: q.from ? new Date(q.from) : undefined, lte: q.to ? new Date(q.to) : undefined } } } } : {}),
       },
@@ -500,12 +524,14 @@ export class WorkflowsController {
 
   @Get("star/:id")
   @RequirePermission("star.view")
-  async getStar(@Param("id") id: string) {
+  async getStar(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
     const rec = await this.prisma.starBooking.findUnique({
       where: { id },
       include: { customer: true, supplier: true, rooms: { include: { hotel: true, pax: { include: { passenger: true } } } } },
     });
     if (!rec) throw new NotFoundException("STAR booking not found");
+    assertBranch(req.user, rec.branchId);
+    await assertPeopleLinks(this.prisma, req.user, rec);
     return rec;
   }
 
@@ -521,6 +547,8 @@ export class WorkflowsController {
       include: { rooms: true },
     });
     if (!booking) throw new NotFoundException("STAR booking not found");
+    assertBranch(req.user, booking.branchId);
+    for (const room of body.rooms || []) await assertPeopleLinks(this.prisma, req.user, room);
     const updates = body.rooms || [];
     for (const rm of updates) {
       const current = booking.rooms.find((r) => r.id === rm.id);
@@ -561,6 +589,9 @@ export class WorkflowsController {
     @Body() body: Record<string, unknown>,
     @Req() req: Request & { user: AuthUser },
   ) {
+    assertBranch(req.user, body.branchId || req.user.defaultBranchId);
+    await assertPeopleLinks(this.prisma, req.user, body);
+    for (const [field, model] of [["umrahBookingId", "umrahBooking"], ["hotelBookingId", "hotelBooking"]] as const) if (body[field]) await assertRecordBranch(this.prisma, req.user, model, body[field]);
     const paxCount = Number(body.paxCount ?? 1);
     if (!Number.isFinite(paxCount) || paxCount < 1) throw new BadRequestException("Passenger count must be at least 1");
     const cost = Number(body.cost ?? 0);
@@ -624,11 +655,12 @@ export class WorkflowsController {
 
   @Get("transport/intimation")
   @RequirePermission("transport.view")
-  async transportIntimation(@Query() q: { from?: string; to?: string; supplierId?: string }) {
+  async transportIntimation(@Query() q: { from?: string; to?: string; supplierId?: string }, @Req() req: Request & { user: AuthUser }) {
     const from = q.from ? new Date(q.from) : undefined;
     const to = q.to ? new Date(q.to) : undefined;
     return this.prisma.transportBooking.findMany({
       where: {
+        ...branchWhere(req.user),
         status: { not: "Cancelled" },
         ...(from || to ? { tripDate: { gte: from, lte: to } } : {}),
       },
@@ -643,7 +675,7 @@ export class WorkflowsController {
     const soon = new Date();
     soon.setDate(soon.getDate() + 90);
     const pax = await this.prisma.passenger.findMany({
-      where: { passportExpiryDate: { lte: soon, gte: new Date() } },
+      where: { ...(req.user.isSuperAdmin ? {} : { customer: customerBranchWhere(req.user) }), passportExpiryDate: { lte: soon, gte: new Date() } },
     });
     for (const p of pax) {
       await this.notify.send(req.user.id, "Passport expiry", `${p.fullName} passport expires ${p.passportExpiryDate?.toISOString().slice(0, 10)}`, "ALERT", {

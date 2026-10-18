@@ -20,7 +20,6 @@ export class OcrController {
   }
 
   @Post("passport/confirm")
-  @RequirePermission("passenger.edit")
   confirm(
     @Body()
     body: {

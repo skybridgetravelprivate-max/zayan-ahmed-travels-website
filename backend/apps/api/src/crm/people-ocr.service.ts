@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../common/prisma.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser } from "../auth/auth.types";
+import { assertRecordBranch, assertPassengerBranch, assertPeopleLinks, requirePermission } from "../auth/record-scope";
 import { Gender } from "@prisma/client";
 
 function mrzVal(ch: string) {
@@ -115,8 +116,11 @@ export class PeopleOcrService {
       userEdits?: Record<string, string>;
     },
   ) {
+    if (Boolean(body.customerId) === Boolean(body.passengerId)) throw new BadRequestException("Select exactly one target");
+    requirePermission(user, body.customerId ? "customer.edit" : "passenger.edit");
     const extract = await this.prisma.ocrExtract.findUnique({ where: { id: body.extractId } });
     if (!extract) throw new NotFoundException("OCR extract not found");
+    await assertPeopleLinks(this.prisma, user, extract);
     const parsed = extract.parsed as {
       name?: string;
       passport_number?: string;
@@ -140,6 +144,7 @@ export class PeopleOcrService {
     if (body.passengerId) {
       const pax = await this.prisma.passenger.findUnique({ where: { id: body.passengerId } });
       if (!pax) throw new NotFoundException("Passenger not found");
+      await assertPassengerBranch(this.prisma, user, pax.customerId);
       before = { ...pax };
       const data: Record<string, unknown> = {};
       const map: Record<string, keyof typeof pax> = {
@@ -154,16 +159,16 @@ export class PeopleOcrService {
         const inc = incoming[k];
         if (isEmpty(inc)) continue;
         const cur = pax[col];
-        if (isEmpty(cur) || allow.has(k)) data[col] = k.includes("Date") || k.includes("Dob") ? new Date(String(inc)) : inc;
+        if (isEmpty(cur) || allow.has(k)) data[col] = ["dateOfBirth", "passportExpiryDate"].includes(k) ? new Date(String(inc)) : inc;
       }
       if (data.gender && !["MALE", "FEMALE", "OTHER"].includes(String(data.gender))) delete data.gender;
       const updated = await this.prisma.passenger.update({ where: { id: pax.id }, data: data as never });
       after = data;
-      if (incoming.passportNumber && String(incoming.passportNumber) !== String(pax.passportNumber || "")) {
+      if (data.passportNumber && String(data.passportNumber) !== String(pax.passportNumber || "")) {
         await this.prisma.passportHistory.create({
           data: {
             passengerId: pax.id,
-            passportNumber: String(incoming.passportNumber),
+            passportNumber: String(data.passportNumber),
             expiryDate: incoming.passportExpiryDate ? new Date(String(incoming.passportExpiryDate)) : undefined,
           },
         });
@@ -184,6 +189,7 @@ export class PeopleOcrService {
     if (body.customerId) {
       const c = await this.prisma.customer.findUnique({ where: { id: body.customerId } });
       if (!c) throw new NotFoundException("Customer not found");
+      await assertRecordBranch(this.prisma, user, "customer", c.id);
       before = { ...c };
       const data: Record<string, unknown> = {};
       if (!isEmpty(incoming.fullName) && (isEmpty(c.fullName) || allow.has("fullName"))) data.fullName = incoming.fullName;

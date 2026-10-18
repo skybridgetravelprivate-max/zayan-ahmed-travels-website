@@ -306,14 +306,15 @@ export class AccountingService {
   }) {
     const amount = Number(opts.amount || 0);
     if (amount <= 0) throw new BadRequestException("Refund amount must be positive");
-    const ar = await this.accountByCode(GL.AR);
-    const rev = await this.accountByCode(this.revenueCode(opts.module));
+    const ar = await this.accountByCode(GL.AR, opts.db);
+    const rev = await this.accountByCode(this.revenueCode(opts.module), opts.db);
     return this.postJournal({
       date: opts.date || new Date(),
       memo: opts.memo || `${opts.module} refund`,
       branchId: opts.branchId,
       userId: opts.userId,
       kind: "REFUND",
+      db: opts.db,
       module: opts.module,
       sourceId: opts.sourceId,
       lines: [
