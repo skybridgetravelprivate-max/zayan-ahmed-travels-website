@@ -4,7 +4,7 @@ import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, can } from "../auth/auth.types";
 import { RESOURCES, actionPermission } from "./registry";
-import { assertPassengerBranch, assertPeopleLinks, assertRecordBranch, branchIds } from "../auth/record-scope";
+import { assertPassengerBranch, assertPeopleLinks, assertRecordBranch, branchIds, customerBranchWhere } from "../auth/record-scope";
 import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/document-scope";
 import { hashPassword, assertPasswordPolicy } from "../common/password";
 
@@ -70,8 +70,9 @@ export class ResourcesService {
   }
 
   private branchWhere(user: AuthUser, meta: ReturnType<ResourcesService["meta"]>, extra: Record<string, unknown> = {}) {
-    if (meta.model === "passenger" && !user.isSuperAdmin) return { ...extra, customer: { branchId: { in: branchIds(user) } } };
-    if (!user.isSuperAdmin && meta.model === "passengerDocument") return { ...extra, passenger: { customer: { branchId: { in: branchIds(user) } } } };
+    if (meta.model === "customer" && !user.isSuperAdmin) return { ...extra, ...customerBranchWhere(user) };
+    if (meta.model === "passenger" && !user.isSuperAdmin) return { ...extra, customer: customerBranchWhere(user) };
+    if (!user.isSuperAdmin && meta.model === "passengerDocument") return { ...extra, passenger: { customer: customerBranchWhere(user) } };
     if (!user.isSuperAdmin && meta.model === "ticketRefund") return { ...extra, ticket: { branchId: { in: branchIds(user) } } };
     if (!meta.branchField || user.isSuperAdmin) return extra;
     const ids = this.allowedBranchIds(user);

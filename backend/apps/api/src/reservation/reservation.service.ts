@@ -472,6 +472,7 @@ export class ReservationService {
 
   async transfer(user: AuthUser, fromRoomId: string, toRoomId: string | undefined, roomNumber: string | undefined, ip?: string) {
     assertCan(user, "reservation.transfer");
+    if (toRoomId === fromRoomId) throw new BadRequestException("Choose a different destination room.");
     return this.prisma.$transaction(async (tx) => {
       const source = await tx.hotelStayRoom.findUnique({ where: { id: fromRoomId }, select: { segment: { select: { bookingId: true } } } });
       if (!source) throw new NotFoundException("Room unit not found.");

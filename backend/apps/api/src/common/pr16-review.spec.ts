@@ -15,6 +15,44 @@ import { SequenceService } from "../common/sequence.service";
 const user: AuthUser = { id: "staff", email: "test@test", username: "staff", fullName: "Staff", permissions: ["passenger.view", "passenger.create", "passenger.edit", "passenger.delete", "document.view", "customer.view", "hotel.booking", "reservation.cancel", "reservation.split", "reservation.checkin", "reservation.checkout", "reservation.transfer"], roleNames: [], branchIds: ["a"], defaultBranchId: "a", isSuperAdmin: false };
 const request = { user } as never;
 const audit = { log: async () => {} };
+
+test("customer, passenger and document lists enforce linked-lead scope even with search", async () => {
+  const scopes: unknown[] = [];
+  const delegate = { findMany: async (args: { where: unknown }) => { scopes.push(args.where); return []; }, count: async (args: { where: unknown }) => { scopes.push(args.where); return 0; } };
+  const db = { customer: delegate, passenger: delegate, passengerDocument: delegate };
+  const svc = new ResourcesService(db as never, {} as never, audit as never);
+  const scope = { branchId: { in: ["a"] }, AND: [{ OR: [{ leadId: null }, { lead: { branchId: { in: ["a"] } } }] }] };
+  for (const resource of ["customers", "passengers", "passenger-documents"]) {
+    scopes.length = 0;
+    await svc.list(resource, user, { q: "name", branchId: "a" });
+    for (const query of scopes as Record<string, unknown>[]) {
+      if (resource === "customers") assert.deepEqual(query.AND, scope.AND);
+      else if (resource === "passengers") assert.deepEqual(query.customer, scope);
+      else assert.deepEqual(query.passenger, { customer: scope });
+    }
+    assert.equal(scopes.length, 2);
+  }
+});
+
+test("OCR refuses customer in own branch linked to another branch before any write", async () => {
+  let writes = 0;
+  const db = {
+    ocrExtract: { findUnique: async () => ({ parsed: { name: "Replacement" } }), update: async () => { writes++; } },
+    customer: { findUnique: async () => ({ id: "customer", branchId: "a", leadId: "foreign" }), update: async () => { writes++; } },
+    lead: { findUnique: async () => ({ branchId: "b" }) },
+  };
+  const svc = new PeopleOcrService(db as never, audit as never);
+  await assert.rejects(svc.confirm({ ...user, permissions: [...user.permissions, "customer.edit"] }, { extractId: "x", customerId: "customer", overwriteFields: ["fullName"] }), { status: 404 });
+  assert.equal(writes, 0);
+});
+
+test("room self-transfer fails before opening a write transaction", async () => {
+  let transactions = 0;
+  const db = { $transaction: async () => { transactions++; } };
+  const svc = new ReservationService(db as never, {} as never, audit as never, {} as never);
+  await assert.rejects(svc.transfer(user, "room", "room", undefined), { status: 400 });
+  assert.equal(transactions, 0);
+});
 test("document metadata list/get and partial or unknown ownership cannot bypass download scope", async () => {
   const db = { storedDocument: { findUnique: async () => ({ entityType: "customer", entityId: "b", uploadedById: user.id }) }, customer: { findUnique: async () => ({ branchId: "b" }) } };
   const svc = new ResourcesService(db as never, {} as never, audit as never);
@@ -42,7 +80,7 @@ test("expiry alerts use customer branch scope and quotation conversion checks li
   const db = { passenger: { findMany: async (args: { where: unknown }) => { where = args.where; return []; } }, quotation: { findUnique: async () => ({ branchId: "a", customerId: "b" }) }, customer: { findUnique: async () => ({ branchId: "b" }) } };
   const ctrl = new WorkflowsController(db as never, {} as never, audit as never, {} as never, {} as never);
   await ctrl.expiryAlerts(request);
-  assert.deepEqual((where as { customer: unknown }).customer, { branchId: { in: ["a"] } });
+  assert.deepEqual((where as { customer: unknown }).customer, { branchId: { in: ["a"] }, AND: [{ OR: [{ leadId: null }, { lead: { branchId: { in: ["a"] } } }] }] });
   await assert.rejects(ctrl.convertQuote("q", request), { status: 404 });
 });
 

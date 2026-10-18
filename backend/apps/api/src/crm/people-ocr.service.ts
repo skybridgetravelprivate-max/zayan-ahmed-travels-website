@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../common/prisma.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser } from "../auth/auth.types";
-import { assertBranch, assertPassengerBranch, assertPeopleLinks, requirePermission } from "../auth/record-scope";
+import { assertRecordBranch, assertPassengerBranch, assertPeopleLinks, requirePermission } from "../auth/record-scope";
 import { Gender } from "@prisma/client";
 
 function mrzVal(ch: string) {
@@ -189,7 +189,7 @@ export class PeopleOcrService {
     if (body.customerId) {
       const c = await this.prisma.customer.findUnique({ where: { id: body.customerId } });
       if (!c) throw new NotFoundException("Customer not found");
-      assertBranch(user, c.branchId);
+      await assertRecordBranch(this.prisma, user, "customer", c.id);
       before = { ...c };
       const data: Record<string, unknown> = {};
       if (!isEmpty(incoming.fullName) && (isEmpty(c.fullName) || allow.has("fullName"))) data.fullName = incoming.fullName;

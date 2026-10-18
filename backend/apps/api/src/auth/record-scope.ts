@@ -23,6 +23,12 @@ export type ScopeDb = Pick<PrismaService, "customer" | "passenger" | "lead" | "q
 export function branchWhere(user: AuthUser) {
   return user.isSuperAdmin ? {} : { branchId: { in: branchIds(user) } };
 }
+export function customerBranchWhere(user: AuthUser) {
+  return user.isSuperAdmin ? {} : {
+    ...branchWhere(user),
+    AND: [{ OR: [{ leadId: null }, { lead: branchWhere(user) }] }],
+  };
+}
 export async function assertRecordBranch(db: ScopeDb, user: AuthUser, model: keyof ScopeDb, id: unknown) {
   if (typeof id !== "string" || !id) throw new NotFoundException();
   const delegate = db[model] as unknown as { findUnique(args: { where: { id: string } }): Promise<{ branchId?: string | null; customerId?: string | null; leadId?: string | null } | null> };

@@ -15,7 +15,7 @@ const audit = { log: async () => {} };
 test("passenger CRUD scopes lists and rejects foreign records, attachment, reassignment and unowned records", async () => {
   let writes = 0;
   const db = { customer: { findUnique: async ({ where }: { where: { id: string; code?: string; customer?: unknown } }) => ({ branchId: where.id }) }, passenger: {
-    findMany: async ({ where }: { where: { customer: unknown } }) => { assert.deepEqual(where.customer, { branchId: { in: ["a"] } }); return []; }, count: async () => 0,
+    findMany: async ({ where }: { where: { customer: unknown } }) => { assert.deepEqual(where.customer, { branchId: { in: ["a"] }, AND: [{ OR: [{ leadId: null }, { lead: { branchId: { in: ["a"] } } }] }] }); return []; }, count: async () => 0,
     findUnique: async ({ where }: { where: { id: string; code?: string; customer?: unknown } }) => ({ id: where.id, customerId: where.id === "orphan" ? null : where.id }),
     create: async () => { writes++; return {}; }, update: async () => { writes++; return {}; }, delete: async () => { writes++; },
   } };

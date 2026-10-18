@@ -8,7 +8,7 @@ import { AccountingService } from "../finance/accounting.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
-import { assertBranch, assertPeopleLinks, assertRecordBranch, branchWhere } from "../auth/record-scope";
+import { assertBranch, assertPeopleLinks, assertRecordBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
 import { NotifyService } from "../common/notify.service";
 
 const UMRAH_STEPS = [
@@ -675,7 +675,7 @@ export class WorkflowsController {
     const soon = new Date();
     soon.setDate(soon.getDate() + 90);
     const pax = await this.prisma.passenger.findMany({
-      where: { ...(req.user.isSuperAdmin ? {} : { customer: branchWhere(req.user) }), passportExpiryDate: { lte: soon, gte: new Date() } },
+      where: { ...(req.user.isSuperAdmin ? {} : { customer: customerBranchWhere(req.user) }), passportExpiryDate: { lte: soon, gte: new Date() } },
     });
     for (const p of pax) {
       await this.notify.send(req.user.id, "Passport expiry", `${p.fullName} passport expires ${p.passportExpiryDate?.toISOString().slice(0, 10)}`, "ALERT", {
