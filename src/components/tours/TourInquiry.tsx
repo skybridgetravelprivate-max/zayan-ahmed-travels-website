@@ -16,7 +16,7 @@ export function TourInquiry() {
           inquiry is checked on the website, then sent to the travel desk. It
           does not book a tour.
         </p>
-        <ServiceInquiryForm type="tour" submitLabel="Start an inquiry" />
+        <ServiceInquiryForm type="tour" submitLabel="Send tour inquiry" />
       </div>
     </section>
   );

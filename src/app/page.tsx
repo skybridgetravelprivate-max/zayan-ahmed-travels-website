@@ -1,17 +1,7 @@
 import { SearchCard } from "@/components/home/SearchCard";
-import { PlaceholderArt, RouteBand } from "@/components/home/PlaceholderArt";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Section } from "@/components/ui/Section";
-import {
-  flightRoutes,
-  hotels,
-  reasons,
-  testimonials,
-  tours,
-  umrahPackages,
-  visaServices,
-} from "@/config/home";
 import { site } from "@/config/site";
 import { getPublicTestimonials } from "@/server/crm-testimonials";
 
@@ -39,9 +29,9 @@ export default async function Home() {
             Flights, Hotels, Umrah, Visas and Complete Travel Solutions
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button href="/#umrah">Explore Umrah Packages</Button>
-            <Button href="/contact" variant="inverse">
-              Contact us
+            <Button href="/contact">Ask about travel options</Button>
+            <Button href="/#umrah" variant="inverse">
+              View service information
             </Button>
           </div>
         </div>
@@ -56,75 +46,29 @@ export default async function Home() {
       <Section
         id="umrah"
         eyebrow="Umrah"
-        title="Featured Umrah Packages"
-        description="Three sample packages for layout only. Dates, hotels, and fares are not live."
+        title="Umrah travel"
+        description="Current Umrah packages, dates, hotels, and prices are not published on this page."
       >
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {umrahPackages.map((item) => (
-            <li key={item.title}>
-              <Card
-                title={item.title}
-                description={item.description}
-                media={
-                  <PlaceholderArt caption={item.title} tone={item.tone} />
-                }
-              >
-                <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                  {item.detail}
-                </p>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <AvailabilityNotice service="Umrah travel" />
       </Section>
 
       <Section
         id="flights"
         className="bg-surface"
         eyebrow="Flights"
-        title="Popular Flight Destinations"
-        description="Sample routes from Islamabad. These cards do not show live fares."
+        title="Flight enquiries"
+        description="This site does not search live flights or publish current fares."
       >
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {flightRoutes.map((route) => (
-            <li key={`${route.from}-${route.to}`}>
-              <Card
-                title={`${route.from} – ${route.to}`}
-                description="Demo route. No seats are searched and no fare is quoted."
-                media={<RouteBand from={route.from} to={route.to} />}
-              >
-                <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                  Demo route
-                </p>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <AvailabilityNotice service="flights" />
       </Section>
 
       <Section
         id="hotels"
         eyebrow="Hotels"
-        title="Featured Hotels"
-        description="Three sample stays. No property is booked from this page."
+        title="Hotel enquiries"
+        description="No current hotel listings, room availability, or rates are published on this page."
       >
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {hotels.map((item) => (
-            <li key={item.title}>
-              <Card
-                title={item.title}
-                description={item.description}
-                media={
-                  <PlaceholderArt caption={item.title} tone={item.tone} />
-                }
-              >
-                <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                  {item.detail}
-                </p>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <AvailabilityNotice service="hotels" />
       </Section>
 
       <Section
@@ -132,68 +76,28 @@ export default async function Home() {
         className="bg-surface"
         eyebrow="Visas"
         title="Visa Services"
-        description="Service categories only. This page does not file an application."
+        description="Current visa service information is not published on this page."
       >
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visaServices.map((item) => (
-            <li key={item.title}>
-              <Card title={item.title} description={item.description}>
-                <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                  Demo service
-                </p>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <AvailabilityNotice service="visa services" />
       </Section>
 
       <Section
         id="tours"
         eyebrow="Tours"
-        title="Popular Tours"
-        description="Three sample itineraries. Nothing on this page is a confirmed departure."
+        title="Tour enquiries"
+        description="Current itineraries and departure availability are not published on this page."
       >
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {tours.map((item) => (
-            <li key={item.title}>
-              <Card
-                title={item.title}
-                description={item.description}
-                media={
-                  <PlaceholderArt caption={item.title} tone={item.tone} />
-                }
-              >
-                <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                  {item.detail}
-                </p>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <AvailabilityNotice service="tours" />
       </Section>
 
       <Section
         id="why"
         className="bg-surface"
         eyebrow={site.shortName}
-        title={`Why choose ${site.shortName}`}
-        description={`What travellers can expect from ${site.shortName}.`}
+        title="Planning with our travel team"
+        description="Use the contact form to send an inquiry. It is not a live availability search or a booking."
       >
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {reasons.map((item, index) => (
-            <li key={item.title}>
-              <Card
-                title={item.title}
-                description={item.description}
-                icon={
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zayan-orange/10 text-sm font-bold">
-                    {index + 1}
-                  </span>
-                }
-              />
-            </li>
-          ))}
-        </ul>
+        <Button href="/contact">Open contact form</Button>
       </Section>
 
       <Section
@@ -202,34 +106,23 @@ export default async function Home() {
         title="Traveller notes"
         description={
           liveTestimonials
-            ? "Published notes from the travel desk."
-            : "Sample quotes written for this layout. They are not customer reviews."
+            ? "Published traveller notes."
+            : "No published traveller notes are available right now."
         }
       >
-        <ul className="grid gap-4 lg:grid-cols-3">
-          {liveTestimonials
-            ? publishedTestimonials.map((item) => (
-                <li key={item.id}>
-                  <Card title={item.author} description={`“${item.quote}”`}>
-                    <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                      Published testimonial
-                    </p>
-                  </Card>
-                </li>
-              ))
-            : testimonials.map((item) => (
-                <li key={item.name}>
-                  <Card
-                    title={`Demo testimonial · ${item.name}`}
-                    description={`“${item.quote}”`}
-                  >
-                    <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                      Demo testimonial
-                    </p>
-                  </Card>
-                </li>
-              ))}
-        </ul>
+        {liveTestimonials ? (
+          <ul className="grid gap-4 lg:grid-cols-3">
+            {publishedTestimonials.map((item) => (
+              <li key={item.id}>
+                <Card title={item.author} description={`“${item.quote}”`}>
+                  <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
+                    Published testimonial
+                  </p>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </Section>
 
       <section
@@ -241,18 +134,26 @@ export default async function Home() {
             Ready for your next journey?
           </h2>
           <p className="max-w-2xl text-base leading-7 text-white/85">
-            {site.legalName} can walk through flights, stays, Umrah, visas, and
-            tours with you. This call to action stays on the homepage and does
-            not send a message.
+            {site.legalName} provides a contact form for travel inquiries.
+            Sending an inquiry does not confirm availability or create a booking.
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button href="/#umrah">Explore Umrah Packages</Button>
-            <Button href="/#search" variant="inverse">
-              Back to search
-            </Button>
-          </div>
+          <Button href="/contact">Open contact form</Button>
         </div>
       </section>
     </>
+  );
+}
+
+function AvailabilityNotice({ service }: { service: string }) {
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <p className="max-w-2xl text-sm leading-6 text-muted">
+        Contact the travel team to ask about {service}. This page does not
+        display confirmed availability or prices.
+      </p>
+      <Button href="/contact" className="shrink-0">
+        Ask about {service}
+      </Button>
+    </div>
   );
 }
