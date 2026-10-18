@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../common/prisma.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser } from "../auth/auth.types";
+import { assertBranch, assertPassengerBranch, requirePermission } from "../auth/record-scope";
 import { Gender } from "@prisma/client";
 
 function mrzVal(ch: string) {
@@ -115,6 +116,8 @@ export class PeopleOcrService {
       userEdits?: Record<string, string>;
     },
   ) {
+    if (Boolean(body.customerId) === Boolean(body.passengerId)) throw new BadRequestException("Select exactly one target");
+    requirePermission(user, body.customerId ? "customer.edit" : "passenger.edit");
     const extract = await this.prisma.ocrExtract.findUnique({ where: { id: body.extractId } });
     if (!extract) throw new NotFoundException("OCR extract not found");
     const parsed = extract.parsed as {
@@ -140,6 +143,7 @@ export class PeopleOcrService {
     if (body.passengerId) {
       const pax = await this.prisma.passenger.findUnique({ where: { id: body.passengerId } });
       if (!pax) throw new NotFoundException("Passenger not found");
+      await assertPassengerBranch(this.prisma, user, pax.customerId);
       before = { ...pax };
       const data: Record<string, unknown> = {};
       const map: Record<string, keyof typeof pax> = {
@@ -184,6 +188,7 @@ export class PeopleOcrService {
     if (body.customerId) {
       const c = await this.prisma.customer.findUnique({ where: { id: body.customerId } });
       if (!c) throw new NotFoundException("Customer not found");
+      assertBranch(user, c.branchId);
       before = { ...c };
       const data: Record<string, unknown> = {};
       if (!isEmpty(incoming.fullName) && (isEmpty(c.fullName) || allow.has("fullName"))) data.fullName = incoming.fullName;

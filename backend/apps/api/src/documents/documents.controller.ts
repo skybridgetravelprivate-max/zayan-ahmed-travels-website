@@ -18,6 +18,8 @@ import { safeDownloadName } from "../common/storage-path";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
+import { NotFoundException } from "@nestjs/common";
+import { authorizeDocumentOwner } from "./document-scope";
 import { DocumentPdfService } from "./document-pdf.service";
 
 @Controller("v1/documents")
@@ -40,6 +42,8 @@ export class DocumentsController {
     @Query() q: { entityType?: string; entityId?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
+    if (!q.entityType || !q.entityId) throw new NotFoundException("Document owner required");
+    await authorizeDocumentOwner(this.prisma, req.user, q.entityType, q.entityId);
     const stored = await this.storage.put(file.buffer, file.originalname, file.mimetype);
     return this.prisma.storedDocument.create({
       data: {
@@ -56,9 +60,11 @@ export class DocumentsController {
 
   @Get(":id/download")
   @RequirePermission("document.view")
-  async download(@Param("id") id: string, @Res() res: Response) {
+  async download(@Param("id") id: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
     const doc = await this.prisma.storedDocument.findUnique({ where: { id } });
     if (!doc) return res.status(404).send("Not found");
+    if (doc.entityType && doc.entityId) await authorizeDocumentOwner(this.prisma, req.user, doc.entityType, doc.entityId);
+    else if (!req.user.isSuperAdmin && doc.uploadedById !== req.user.id) throw new NotFoundException();
     const buf = await this.storage.get(doc.storageKey);
     res.setHeader("Content-Type", doc.mimeType);
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -77,7 +83,8 @@ export class PdfController {
   ) {}
 
   @Get("quotation/:id")
-  async quotation(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async quotation(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "quotation", id);
     const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true, customer: true } });
     if (!q) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -98,7 +105,8 @@ export class PdfController {
   }
 
   @Get("umrah-booking/:id")
-  async umrahBooking(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async umrahBooking(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "umrahBooking", id);
     const b = await this.prisma.umrahBooking.findUnique({
       where: { id },
       include: { customer: true, passengers: { include: { passenger: true } } },
@@ -124,12 +132,13 @@ export class PdfController {
   }
 
   @Get("umrah-voucher/:id")
-  async umrahVoucher(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
-    return this.umrahBooking(id, mode, res);
+  async umrahVoucher(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    return this.umrahBooking(id, mode, res, req);
   }
 
   @Get("hotel-voucher/:id")
-  async hotelVoucher(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async hotelVoucher(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "hotelVoucher", id);
     const v = await this.prisma.hotelVoucher.findUnique({
       where: { id },
       include: { booking: { include: { hotel: true, customer: true } } },
@@ -148,7 +157,8 @@ export class PdfController {
   }
 
   @Get("hotel-reservation/:id")
-  async hotelReservation(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async hotelReservation(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "hotelBooking", id);
     const b = await this.prisma.hotelBooking.findUnique({
       where: { id },
       include: { hotel: true, customer: true, staySegments: { include: { rooms: true } } },
@@ -171,7 +181,8 @@ export class PdfController {
   }
 
   @Get("transport-voucher/:id")
-  async transportVoucher(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async transportVoucher(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "transportVoucher", id);
     const v = await this.prisma.transportVoucher.findUnique({ where: { id }, include: { booking: true } });
     if (!v) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -185,7 +196,8 @@ export class PdfController {
   }
 
   @Get("ticket-invoice/:id")
-  async ticketInvoice(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async ticketInvoice(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "ticketSale", id);
     const t = await this.prisma.ticketSale.findUnique({ where: { id }, include: { customer: true, passenger: true, airline: true } });
     if (!t) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -207,7 +219,8 @@ export class PdfController {
   }
 
   @Get("ticket-refund/:id")
-  async ticketRefund(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async ticketRefund(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "ticketRefund", id);
     const r = await this.prisma.ticketRefund.findUnique({ where: { id }, include: { ticket: { include: { customer: true } } } });
     if (!r) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -227,7 +240,8 @@ export class PdfController {
   }
 
   @Get("service-invoice/:id")
-  async serviceInvoice(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async serviceInvoice(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "serviceInvoice", id);
     const inv = await this.prisma.serviceInvoice.findUnique({ where: { id }, include: { customer: true, lines: true } });
     if (!inv) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -244,7 +258,8 @@ export class PdfController {
   }
 
   @Get("receipt/:id")
-  async receipt(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async receipt(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "receipt", id);
     const r = await this.prisma.receipt.findUnique({ where: { id }, include: { customer: true } });
     if (!r) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -261,7 +276,8 @@ export class PdfController {
   }
 
   @Get("salary-slip/:id")
-  async salary(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response) {
+  async salary(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "salarySlip", id);
     const s = await this.prisma.salarySlip.findUnique({ where: { id }, include: { employee: true } });
     if (!s) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
@@ -273,7 +289,7 @@ export class PdfController {
   }
 
   @Get("invoice/:bookingId")
-  async invoice(@Param("bookingId") bookingId: string, @Query("mode") mode: string, @Res() res: Response) {
-    return this.umrahBooking(bookingId, mode, res);
+  async invoice(@Param("bookingId") bookingId: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    return this.umrahBooking(bookingId, mode, res, req);
   }
 }

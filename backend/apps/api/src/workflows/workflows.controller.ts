@@ -7,6 +7,7 @@ import { AccountingService } from "../finance/accounting.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
+import { assertBranch } from "../auth/record-scope";
 import { NotifyService } from "../common/notify.service";
 
 const UMRAH_STEPS = [
@@ -41,6 +42,7 @@ export class WorkflowsController {
   async convertLead(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
     const lead = await this.prisma.lead.findUnique({ where: { id } });
     if (!lead) throw new BadRequestException("Lead not found");
+    assertBranch(req.user, lead.branchId);
     const customerNumber = await this.seq.next("customer", "ZAT-CUS");
     const customer = await this.prisma.customer.create({
       data: {
@@ -67,6 +69,7 @@ export class WorkflowsController {
   async convertQuote(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
     const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true } });
     if (!q) throw new BadRequestException("Quotation not found");
+    assertBranch(req.user, q.branchId);
     if (!q.customerId) throw new BadRequestException("Quotation has no customer");
     const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM");
     const booking = await this.prisma.umrahBooking.create({
@@ -201,50 +204,57 @@ export class WorkflowsController {
     @Body() body: { refundAmount: number; airlineDeduction?: number; agencyDeduction?: number; otherCharges?: number; reason?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    const ticket = await this.prisma.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
-    if (!ticket) throw new BadRequestException("Ticket not found");
-    if (ticket.status === "CANCELLED") throw new BadRequestException("Cancelled ticket cannot be refunded");
-    if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
-    const prior = (ticket.refunds || []).reduce((s, r) => s + Number(r.netRefund), 0);
-    const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
-    const refundable = Math.max(0, Math.min(paid, Number(ticket.net)) - prior);
-    const deductions = Number(body.airlineDeduction ?? 0) + Number(body.agencyDeduction ?? 0) + Number(body.otherCharges ?? 0);
-    const netRefund = Number(body.refundAmount) - deductions;
-    if (Number(body.refundAmount) <= 0) throw new BadRequestException("Refund amount is required");
-    if (netRefund <= 0) throw new BadRequestException("Net refund after deductions must be positive");
-    if (netRefund - refundable > 0.009) throw new BadRequestException("Refund cannot exceed refundable amount");
-    const journal = await this.accounting.postRefund({
-      userId: req.user.id,
-      amount: netRefund,
-      module: "ticket",
-      sourceId: ticket.id,
-      customerId: ticket.customerId,
-      branchId: ticket.branchId,
-      memo: `Ticket refund ${ticket.ticketNumber}`,
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize availability checks across processes until commit.
+      await tx.$queryRaw`SELECT id FROM "TicketSale" WHERE id = ${id} FOR UPDATE`;
+      const ticket = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
+      if (!ticket) throw new BadRequestException("Ticket not found");
+      assertBranch(req.user, ticket.branchId);
+      if (ticket.status === "CANCELLED") throw new BadRequestException("Cancelled ticket cannot be refunded");
+      if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
+      const prior = (ticket.refunds || []).reduce((s, r) => s + Number(r.netRefund), 0);
+      const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
+      const refundable = Math.max(0, Math.min(paid, Number(ticket.net)) - prior);
+      const deductions = Number(body.airlineDeduction ?? 0) + Number(body.agencyDeduction ?? 0) + Number(body.otherCharges ?? 0);
+      const netRefund = Number(body.refundAmount) - deductions;
+      if (![body.refundAmount, body.airlineDeduction ?? 0, body.agencyDeduction ?? 0, body.otherCharges ?? 0].every(v => Number.isFinite(Number(v)) && Number(v) >= 0)) throw new BadRequestException("Invalid refund amounts");
+      if (Number(body.refundAmount) <= 0) throw new BadRequestException("Refund amount is required");
+      if (netRefund <= 0) throw new BadRequestException("Net refund after deductions must be positive");
+      if (netRefund - refundable > 0.009) throw new BadRequestException("Refund cannot exceed refundable amount");
+      const journal = await this.accounting.postRefund({
+        userId: req.user.id,
+        amount: netRefund,
+        module: "ticket",
+        sourceId: ticket.id,
+        customerId: ticket.customerId,
+        branchId: ticket.branchId,
+        memo: `Ticket refund ${ticket.ticketNumber}`,
+        db: tx,
+      });
+      const refund = await tx.ticketRefund.create({
+        data: {
+          ticketId: id,
+          originalFare: ticket.fare,
+          refundAmount: body.refundAmount,
+          airlineDeduction: body.airlineDeduction ?? 0,
+          agencyDeduction: body.agencyDeduction ?? 0,
+          otherCharges: body.otherCharges ?? 0,
+          netRefund,
+          reason: body.reason,
+          approvedById: req.user.id,
+          journalId: journal.id,
+        },
+      });
+      await tx.ticketSale.update({
+        where: { id },
+        data: {
+          status: netRefund >= refundable - 0.009 ? "REFUNDED" : ticket.status,
+          paymentStatus: prior + netRefund >= paid - 0.009 && paid > 0 ? "REFUNDED" : ticket.paymentStatus,
+        },
+      });
+      await this.audit.log({ userId: req.user.id, action: "REFUND", entity: "ticketSale", entityId: id, after: refund, db: tx });
+      return refund;
     });
-    const refund = await this.prisma.ticketRefund.create({
-      data: {
-        ticketId: id,
-        originalFare: ticket.fare,
-        refundAmount: body.refundAmount,
-        airlineDeduction: body.airlineDeduction ?? 0,
-        agencyDeduction: body.agencyDeduction ?? 0,
-        otherCharges: body.otherCharges ?? 0,
-        netRefund,
-        reason: body.reason,
-        approvedById: req.user.id,
-        journalId: journal.id,
-      },
-    });
-    await this.prisma.ticketSale.update({
-      where: { id },
-      data: {
-        status: prior + netRefund >= refundable + prior - 0.009 ? "REFUNDED" : ticket.status,
-        paymentStatus: prior + netRefund >= paid - 0.009 && paid > 0 ? "REFUNDED" : ticket.paymentStatus,
-      },
-    });
-    await this.audit.log({ userId: req.user.id, action: "REFUND", entity: "ticketSale", entityId: id, after: refund });
-    return refund;
   }
 
   @Post("tickets/:id/reissue")

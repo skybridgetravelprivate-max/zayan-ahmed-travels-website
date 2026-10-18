@@ -212,8 +212,19 @@ export class ReservationService {
       async (tx) => {
         await this.occupancyConflicts(input.id, input.segments, tx);
         if (input.id) {
+          await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${input.id} FOR UPDATE`;
           const existing = await tx.hotelBooking.findUnique({ where: { id: input.id } });
           if (!existing) throw new NotFoundException();
+          // These totals and parties already own posted sale/cost entries.
+          const financial = { cost: tot.cost, sellingPrice: tot.selling, discount: tot.discount, tax: tot.tax, commission: tot.commission, net: tot.net, paid };
+          if (Object.entries(financial).some(([key, value]) => !money(value).equals(existing[key as keyof typeof existing] as Prisma.Decimal)) ||
+              (input.customerId || existing.customerId) !== existing.customerId ||
+              (input.passengerId || existing.passengerId) !== existing.passengerId ||
+              (input.supplierId || first.supplierId || existing.supplierId) !== existing.supplierId ||
+              (input.branchId || existing.branchId) !== existing.branchId ||
+              (input.agentId || existing.agentId) !== existing.agentId) {
+            throw new BadRequestException("Posted reservation amounts and parties cannot be changed.");
+          }
           if (existing.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
           const row = await tx.hotelBooking.update({
             where: { id: input.id },
@@ -477,17 +488,29 @@ export class ReservationService {
 
   async cancel(user: AuthUser, bookingId: string, reason: string, ip?: string) {
     assertCan(user, "reservation.cancel");
-    const booking = await this.get(user, bookingId);
-    if (booking.cancelledAt) throw new BadRequestException("Already cancelled.");
+    assertCan(user, "hotel.booking");
     if (!String(reason || "").trim()) throw new BadRequestException("Cancellation reason is required.");
-    const inHouse = booking.staySegments.some((s) => s.rooms.some((r) => r.status === "CHECKED_IN"));
-    if (inHouse) throw new BadRequestException("Cannot cancel while rooms are checked in.");
-    const row = await this.prisma.hotelBooking.update({
-      where: { id: bookingId },
-      data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED" },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${bookingId} FOR UPDATE`;
+      const booking = await tx.hotelBooking.findUnique({ where: { id: bookingId }, include: this.include() });
+      if (!booking) throw new NotFoundException();
+      if (booking.cancelledAt) throw new BadRequestException("Already cancelled.");
+      if (booking.staySegments.some(s => s.rooms.some(r => r.status === "CHECKED_IN"))) throw new BadRequestException("Cannot cancel while rooms are checked in.");
+      const journals = await tx.journalEntry.findMany({
+        where: { module: "reservation", sourceId: bookingId, status: "POSTED", kind: { in: ["SALE", "COST"] } }, include: { lines: true },
+      });
+      for (const journal of journals) {
+        // Both entries remain posted so the original and offset reconcile to zero.
+        await this.accounting.postJournal({
+          db: tx, userId: user.id, date: new Date(), memo: `Cancellation of ${journal.entryNumber}`,
+          kind: "CANCELLATION", module: "reservation", sourceId: bookingId, branchId: journal.branchId,
+          lines: journal.lines.map(line => ({ accountId: line.accountId, debit: Number(line.credit), credit: Number(line.debit), partyType: line.partyType || undefined, partyId: line.partyId || undefined })),
+        });
+      }
+      const row = await tx.hotelBooking.update({ where: { id: bookingId }, data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED", balance: 0 } });
+      await this.audit.log({ userId: user.id, action: "cancel", entity: "HotelBooking", entityId: bookingId, before: booking, after: row, ipAddress: ip, db: tx });
+      return row;
     });
-    await this.audit.log({ userId: user.id, action: "cancel", entity: "HotelBooking", entityId: bookingId, before: booking, after: row, ipAddress: ip });
-    return row;
   }
 
   async split(user: AuthUser, bookingId: string, roomIds: string[], ip?: string) {
