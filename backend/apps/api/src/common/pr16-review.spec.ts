@@ -61,7 +61,11 @@ test("document metadata list/get and partial or unknown ownership cannot bypass 
   await assert.rejects(svc.get("documents", "d", user), { status: 404 });
   await assert.rejects(authorizeDocumentOwner(db as never, user, "constructor", "d"), { status: 404 });
   for (const doc of [{ entityType: "customer", uploadedById: user.id }, { entityId: "b", uploadedById: user.id }]) {
-    const ctrl = new DocumentsController({ storedDocument: { findUnique: async () => doc } } as never, {} as never);
+    const ctrl = new DocumentsController(
+      { storedDocument: { findUnique: async () => doc } } as never,
+      {} as never,
+      {} as never,
+    );
     await assert.rejects(ctrl.download("d", {} as never, request), { status: 404 });
   }
 });

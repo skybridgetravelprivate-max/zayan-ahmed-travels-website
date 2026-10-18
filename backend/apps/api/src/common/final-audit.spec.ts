@@ -45,7 +45,11 @@ test("OCR authorizes the target entity permission and customer branch before wri
 test("downloads and every sensitive PDF resolve owner authorization before reading storage or rendering", async () => {
   let reads = 0;
   const db: Record<string, { findUnique: () => Promise<Record<string, unknown>> }> = { storedDocument: { findUnique: async () => ({ entityType: "customer", entityId: "b", uploadedById: user.id }) }, customer: { findUnique: async () => ({ branchId: "b" }) } };
-  const ctrl = new DocumentsController(db as never, { get: async () => { reads++; } } as never);
+  const ctrl = new DocumentsController(
+    db as never,
+    { get: async () => { reads++; } } as never,
+    {} as never,
+  );
   await assert.rejects(ctrl.download("doc", {} as never, req({ ...user, permissions: [...user.permissions, "customer.view"] })), { status: 404 });
   const pdf = new PdfController(db as never, { pipeA4: () => { reads++; } } as never);
   await assert.rejects(pdf.salary("salary", "", {} as never, req()), { status: 403 });
