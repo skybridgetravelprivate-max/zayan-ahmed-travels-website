@@ -51,6 +51,25 @@ The code intentionally does not enable uploads when these values are present. Ch
 
 Supabase database backups **do not include Storage object bytes**; they retain database metadata only. Before enabling uploads, provision and verify an independent, private, encrypted object backup outside this project’s bucket, with a manifest of object key, byte size, and SHA-256. Set and approve the backup retention period separately; do not assume database-backup retention covers documents.
 
+### Provider-neutral fixture tooling
+
+`backend/scripts/document-backup.mjs` provides offline `export`, `verify`, `restore`, and `reconcile` commands for explicitly marked synthetic fixtures only. A fixture uses the `zat-synthetic-document-fixture` JSON format and an object directory whose keys start with `synthetic/`. Export creates a new local directory containing `metadata.json`, `objects/`, and a SHA-256 `manifest.json`; verify checks metadata, object bytes, content signatures, sizes, checksums, and exact object inventory. Restore writes another verified local snapshot directory, and reconcile reports counts only without deleting or listing object names.
+
+The tooling is not a provider adapter: it does not encrypt snapshots, transfer them to an independent destination, restore PostgreSQL rows, configure a bucket, or test application authorization or anonymous denial. **Snapshots are unencrypted plain local files**; restrictive file permissions are best-effort and are not encryption. SHA-256 detects accidental corruption when compared to the manifest, but does not authenticate a manifest against deliberate replacement. Its tests use temporary directories and synthetic fixture bytes only. A passing fixture test is not a successful backup or recovery drill. Do not point it at customer data or treat local snapshots as protected backups.
+
+Writes are staged in a sibling temporary directory, verified, and then published by rename; caught failures remove the temporary directory and an existing destination is refused. Abrupt process or machine termination may leave a hidden temporary staging directory, but should not publish it as a completed snapshot. Inspect the target parent and verify no backup process is active before manually removing stale staging directories; the tool does not automatically delete them.
+
+The tool rejects existing symbolic links in selected paths and links within the object tree. It is intended for trusted local fixture directories, not protection against another local process actively replacing paths during an operation.
+
+Example commands (with a synthetic fixture and pre-existing output parent):
+
+```text
+node scripts/document-backup.mjs export --metadata <fixture.json> --objects <fixture-objects> --destination <new-local-snapshot>
+node scripts/document-backup.mjs verify --backup <local-snapshot>
+node scripts/document-backup.mjs restore --backup <local-snapshot> --destination <new-local-restore>
+node scripts/document-backup.mjs reconcile --metadata <fixture.json> --objects <fixture-objects>
+```
+
 Recovery drill required before activation:
 
 1. Use only synthetic files in a non-production bucket and database.
