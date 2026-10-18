@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
+import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SiteNotice } from "@/components/layout/SiteNotice";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { allowSearchIndexing, site, siteDescription, siteOrigin } from "@/config/site";
@@ -49,11 +50,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
-        <JsonLd data={siteGraph()} />
-        <SiteNotice />
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <SiteChrome
+          header={<Header />}
+          footer={<Footer />}
+          notice={<SiteNotice />}
+          structuredData={<JsonLd data={siteGraph()} />}
+        >
+          {children}
+        </SiteChrome>
       </body>
     </html>
   );

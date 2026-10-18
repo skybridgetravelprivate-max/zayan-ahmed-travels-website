@@ -3,6 +3,12 @@ import { cookies } from "next/headers";
 
 export type StaffIdentity = { fullName: string; username: string; roleNames: string[]; permissions: string[]; isSuperAdmin: boolean };
 export type StaffResult = { status: "signed-out" | "unavailable" } | { status: "authenticated"; user: StaffIdentity };
+export type StaffApiPath =
+  | "/api/auth/me"
+  | "/api/v1/dashboard/summary"
+  | `/api/v1/leads${string}`;
+
+const leadApiPath = /^\/api\/v1\/leads(?:\/[A-Za-z0-9_-]{1,80})?(?:\?[A-Za-z0-9%&=._~+-]*)?$/;
 
 export function parseStaffIdentity(value: unknown): StaffIdentity | null {
   if (!value || typeof value !== "object") return null;
@@ -12,7 +18,14 @@ export function parseStaffIdentity(value: unknown): StaffIdentity | null {
   return { fullName: row.fullName, username: row.username, roleNames: row.roleNames, permissions: row.permissions, isSuperAdmin: row.isSuperAdmin };
 }
 
-export async function staffRequest(path: "/api/auth/me" | "/api/v1/dashboard/summary") {
+export async function staffRequest(path: StaffApiPath) {
+  if (
+    path !== "/api/auth/me" &&
+    path !== "/api/v1/dashboard/summary" &&
+    (path.length > 600 || !leadApiPath.test(path))
+  ) {
+    throw new Error("Invalid staff API path");
+  }
   const token = (await cookies()).get("access_token")?.value;
   if (!token || !/^[A-Za-z0-9._~-]+$/.test(token)) return null;
   const origin = new URL(process.env.API_URL || process.env.CRM_API_URL || "http://127.0.0.1:4000");
