@@ -78,6 +78,10 @@ export default async function StaffDashboard() {
       <h2 className="mt-8 text-xl font-semibold text-zayan-blue">
         Your workspace
       </h2>
+      <Link href="/admin/manage" className="mt-4 block rounded-2xl border border-line bg-surface p-5 hover:border-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue">
+        <span className="block text-lg font-semibold text-zayan-blue">Management console</span>
+        <span className="mt-2 block text-sm text-muted">Manage authorized customers, leads, assignments, tasks, travel records, and administration.</span>
+      </Link>
       {canViewLeads ? (
         <Link
           href="/admin/leads"

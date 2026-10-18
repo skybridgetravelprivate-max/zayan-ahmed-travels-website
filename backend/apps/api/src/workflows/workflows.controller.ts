@@ -8,7 +8,7 @@ import { AccountingService } from "../finance/accounting.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
-import { assertBranch, assertPeopleLinks, assertRecordBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
+import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
 import { NotifyService } from "../common/notify.service";
 
 const UMRAH_STEPS = [
@@ -152,56 +152,70 @@ export class WorkflowsController {
     @Body() body: Record<string, unknown>,
     @Req() req: Request & { user: AuthUser },
   ) {
-    assertBranch(req.user, body.branchId || req.user.defaultBranchId);
-    await assertPeopleLinks(this.prisma, req.user, body);
-    const net = Number(body.net ?? Number(body.fare ?? 0) + Number(body.tax ?? 0) - Number(body.discount ?? 0));
-    const cost = Number(body.cost ?? 0);
-    const profit = net - cost;
-    const paidAmount = Number(body.paidAmount ?? 0);
-    const ticket = await this.prisma.ticketSale.create({
-      data: {
-        ...body,
-        net,
-        profit,
-        paidAmount,
-        status: "ISSUED",
-      } as never,
-    });
-    const ar = await this.accounting.accountByCode("1300");
-    const rev = await this.accounting.accountByCode("4200");
-    const cogs = await this.accounting.accountByCode("5100");
-    const ap = await this.accounting.accountByCode("2100");
-    if (net > 0) {
-      await this.accounting.postJournal({
-        date: new Date(),
-        memo: `Ticket ${ticket.ticketNumber ?? ticket.id}`,
-        branchId: ticket.branchId,
-        userId: req.user.id,
-        kind: "SALE",
-        module: "ticket",
-        sourceId: ticket.id,
-        lines: [
-          { accountId: ar.id, debit: net, credit: 0, partyType: "customer", partyId: ticket.customerId ?? undefined },
-          { accountId: rev.id, debit: 0, credit: net },
-        ],
-      });
+    const allowed = new Set("ticketNumber customerId passengerId pnrId airlineId flightNumber sector departureAt arrivalAt fare tax commission discount net cost paidAmount cabin baggage currency exchangeRate agentId branchId supplierId groupId".split(" "));
+    if (!body || Object.keys(body).some(key => !allowed.has(key) || (body[key] !== null && !["string", "number"].includes(typeof body[key])))) throw new BadRequestException("Unsupported ticket field");
+    for (const [key, value] of Object.entries(body)) {
+      if (typeof value === "string" && (value.length > 300 || (key.endsWith("Id") && !/^[A-Za-z0-9_-]{1,80}$/.test(value)))) throw new BadRequestException("Invalid ticket field");
     }
-    if (cost > 0) {
-      await this.accounting.postJournal({
-        date: new Date(),
-        memo: `Ticket cost ${ticket.id}`,
-        branchId: ticket.branchId,
-        userId: req.user.id,
-        kind: "COST",
-        module: "ticket",
-        sourceId: ticket.id,
-        lines: [
-          { accountId: cogs.id, debit: cost, credit: 0 },
-          { accountId: ap.id, debit: 0, credit: cost, partyType: "supplier", partyId: ticket.supplierId ?? undefined },
-        ],
+    return this.prisma.$transaction(async tx => {
+      assertBranch(req.user, body.branchId || req.user.defaultBranchId);
+      await assertPeopleLinks(tx, req.user, body);
+      await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
+      const net = Number(body.net ?? Number(body.fare ?? 0) + Number(body.tax ?? 0) - Number(body.discount ?? 0));
+      const cost = Number(body.cost ?? 0);
+      const profit = net - cost;
+      const paidAmount = Number(body.paidAmount ?? 0);
+      if (![net, cost, paidAmount, Number(body.fare ?? 0), Number(body.tax ?? 0), Number(body.discount ?? 0)].every(n => Number.isFinite(n) && n >= 0) || paidAmount > net) throw new BadRequestException("Invalid ticket amounts");
+      const ticket = await tx.ticketSale.create({
+        data: {
+          ...body,
+          net,
+          profit,
+          paidAmount,
+          branchId: (body.branchId as string) || req.user.defaultBranchId,
+          paymentStatus: paidAmount >= net && net > 0 ? "PAID" : paidAmount > 0 ? "PARTIAL" : "UNPAID",
+          status: "ISSUED",
+        } as never,
       });
-    }
-    return ticket;
+      const ar = await this.accounting.accountByCode("1300", tx);
+      const rev = await this.accounting.accountByCode("4200", tx);
+      const cogs = await this.accounting.accountByCode("5100", tx);
+      const ap = await this.accounting.accountByCode("2100", tx);
+      if (net > 0) {
+        await this.accounting.postJournal({
+          db: tx,
+          date: new Date(),
+          memo: `Ticket ${ticket.ticketNumber ?? ticket.id}`,
+          branchId: ticket.branchId,
+          userId: req.user.id,
+          kind: "SALE",
+          module: "ticket",
+          sourceId: ticket.id,
+          lines: [
+            { accountId: ar.id, debit: net, credit: 0, partyType: "customer", partyId: ticket.customerId ?? undefined },
+            { accountId: rev.id, debit: 0, credit: net },
+          ],
+        });
+      }
+      if (cost > 0) {
+        await this.accounting.postJournal({
+          db: tx,
+          date: new Date(),
+          memo: `Ticket cost ${ticket.id}`,
+          branchId: ticket.branchId,
+          userId: req.user.id,
+          kind: "COST",
+          module: "ticket",
+          sourceId: ticket.id,
+          lines: [
+            { accountId: cogs.id, debit: cost, credit: 0 },
+            { accountId: ap.id, debit: 0, credit: cost, partyType: "supplier", partyId: ticket.supplierId ?? undefined },
+          ],
+        });
+      }
+      await this.audit.log({ db: tx, userId: req.user.id, action: "CREATE", entity: "ticketSale", entityId: ticket.id });
+      return ticket;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   @Post("tickets/:id/refund")
@@ -589,68 +603,74 @@ export class WorkflowsController {
     @Body() body: Record<string, unknown>,
     @Req() req: Request & { user: AuthUser },
   ) {
-    assertBranch(req.user, body.branchId || req.user.defaultBranchId);
-    await assertPeopleLinks(this.prisma, req.user, body);
-    for (const [field, model] of [["umrahBookingId", "umrahBooking"], ["hotelBookingId", "hotelBooking"]] as const) if (body[field]) await assertRecordBranch(this.prisma, req.user, model, body[field]);
-    const paxCount = Number(body.paxCount ?? 1);
-    if (!Number.isFinite(paxCount) || paxCount < 1) throw new BadRequestException("Passenger count must be at least 1");
-    const cost = Number(body.cost ?? 0);
-    const sellingPrice = Number(body.sellingPrice ?? 0);
-    if (cost < 0 || sellingPrice < 0) throw new BadRequestException("Financial totals cannot be negative");
-    const paid = Number(body.paid ?? 0);
-    if (paid - sellingPrice > 0.5) throw new BadRequestException("Paid amount exceeds selling total");
-    const tripDate = body.tripDate ? new Date(String(body.tripDate)) : new Date();
-    const bookingNumber = String(body.bookingNumber || (await this.seq.next("tr-bk", "TRN")));
-    const rec = await this.prisma.transportBooking.create({
-      data: {
-        bookingNumber,
-        customerId: (body.customerId as string) || null,
-        passengerId: (body.passengerId as string) || null,
-        vehicleId: (body.vehicleId as string) || null,
-        driverId: (body.driverId as string) || null,
-        vehicleType: (body.vehicleType as string) || null,
-        driverName: (body.driverName as string) || null,
-        driverContact: (body.driverContact as string) || null,
-        pickup: (body.pickup as string) || null,
-        dropoff: (body.dropoff as string) || null,
-        route: (body.route as string) || null,
-        tripDate,
-        tripTime: (body.tripTime as string) || null,
-        paxCount,
-        cost,
-        sellingPrice,
-        net: sellingPrice - cost,
-        paid,
-        paymentStatus: paid >= sellingPrice && sellingPrice > 0 ? "PAID" : paid > 0 ? "PARTIAL" : "UNPAID",
-        umrahBookingId: (body.umrahBookingId as string) || null,
-        hotelBookingId: (body.hotelBookingId as string) || null,
-        branchId: (body.branchId as string) || req.user.defaultBranchId,
-        status: String(body.status || "Reserved"),
-      },
-    });
-    const voucherNo = await this.seq.next("tr-v", "VCH");
-    await this.prisma.transportVoucher.create({ data: { voucherNo, bookingId: rec.id } });
-    await this.accounting.postSale({
-      userId: req.user.id,
-      module: "transport",
-      sourceId: rec.id,
-      amount: sellingPrice,
-      customerId: rec.customerId,
-      branchId: rec.branchId,
-      date: tripDate,
-      memo: `Transport ${rec.bookingNumber}`,
-    });
-    await this.accounting.postCost({
-      userId: req.user.id,
-      module: "transport",
-      sourceId: rec.id,
-      amount: cost,
-      branchId: rec.branchId,
-      date: tripDate,
-      memo: `Transport cost ${rec.bookingNumber}`,
-    });
-    await this.audit.log({ userId: req.user.id, action: "CREATE", entity: "transportBooking", entityId: rec.id, after: rec });
-    return rec;
+    return this.prisma.$transaction(async tx => {
+      assertBranch(req.user, body.branchId || req.user.defaultBranchId);
+      await assertPeopleLinks(tx, req.user, body);
+      await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
+      for (const [field, model] of [["umrahBookingId", "umrahBooking"], ["hotelBookingId", "hotelBooking"]] as const) if (body[field]) await assertRecordBranch(tx, req.user, model, body[field]);
+      const paxCount = Number(body.paxCount ?? 1);
+      if (!Number.isFinite(paxCount) || paxCount < 1) throw new BadRequestException("Passenger count must be at least 1");
+      const cost = Number(body.cost ?? 0);
+      const sellingPrice = Number(body.sellingPrice ?? 0);
+      if (![cost, sellingPrice].every(n => Number.isFinite(n) && n >= 0)) throw new BadRequestException("Financial totals cannot be negative or invalid");
+      const paid = Number(body.paid ?? 0);
+      if (!Number.isFinite(paid) || paid < 0) throw new BadRequestException("Invalid paid amount");
+      if (paid - sellingPrice > 0.5) throw new BadRequestException("Paid amount exceeds selling total");
+      const tripDate = body.tripDate ? new Date(String(body.tripDate)) : new Date();
+      const bookingNumber = String(body.bookingNumber || (await this.seq.next("tr-bk", "TRN", tx)));
+      const rec = await tx.transportBooking.create({
+        data: {
+          bookingNumber,
+          customerId: (body.customerId as string) || null,
+          passengerId: (body.passengerId as string) || null,
+          vehicleId: (body.vehicleId as string) || null,
+          driverId: (body.driverId as string) || null,
+          vehicleType: (body.vehicleType as string) || null,
+          driverName: (body.driverName as string) || null,
+          driverContact: (body.driverContact as string) || null,
+          pickup: (body.pickup as string) || null,
+          dropoff: (body.dropoff as string) || null,
+          route: (body.route as string) || null,
+          tripDate,
+          tripTime: (body.tripTime as string) || null,
+          paxCount,
+          cost,
+          sellingPrice,
+          net: sellingPrice - cost,
+          paid,
+          paymentStatus: paid >= sellingPrice && sellingPrice > 0 ? "PAID" : paid > 0 ? "PARTIAL" : "UNPAID",
+          umrahBookingId: (body.umrahBookingId as string) || null,
+          hotelBookingId: (body.hotelBookingId as string) || null,
+          branchId: (body.branchId as string) || req.user.defaultBranchId,
+          status: String(body.status || "Reserved"),
+        },
+      });
+      const voucherNo = await this.seq.next("tr-v", "VCH", tx);
+      await tx.transportVoucher.create({ data: { voucherNo, bookingId: rec.id } });
+      await this.accounting.postSale({
+        db: tx,
+        userId: req.user.id,
+        module: "transport",
+        sourceId: rec.id,
+        amount: sellingPrice,
+        customerId: rec.customerId,
+        branchId: rec.branchId,
+        date: tripDate,
+        memo: `Transport ${rec.bookingNumber}`,
+      });
+      await this.accounting.postCost({
+        db: tx,
+        userId: req.user.id,
+        module: "transport",
+        sourceId: rec.id,
+        amount: cost,
+        branchId: rec.branchId,
+        date: tripDate,
+        memo: `Transport cost ${rec.bookingNumber}`,
+      });
+      await this.audit.log({ db: tx, userId: req.user.id, action: "CREATE", entity: "transportBooking", entityId: rec.id, after: rec });
+      return rec;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   @Get("transport/intimation")

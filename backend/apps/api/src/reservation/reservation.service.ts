@@ -4,7 +4,7 @@ import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
-import { assertBranch, assertPeopleLinks, branchWhere } from "../auth/record-scope";
+import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
 
 export type StayRoomInput = {
@@ -264,6 +264,7 @@ export class ReservationService {
 
         assertBranch(user, input.branchId || user.defaultBranchId);
         await assertPeopleLinks(tx, user, input);
+        await assertPeopleLinksInBranch(tx, input, input.branchId || user.defaultBranchId);
         for (const segment of input.segments) for (const room of segment.rooms) await assertPeopleLinks(tx, user, room);
         await this.occupancyConflicts(input.id, input.segments, tx);
         const bookingNumber = await this.seq.next("htl-bk", "HTL", tx);

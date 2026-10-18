@@ -15,6 +15,7 @@ export function StaffNavigation({
 }) {
   const pathname = usePathname();
   const links = [
+    { label: "Management", href: "/admin/manage" },
     ...(canViewDashboard || canViewLeads
       ? [{ label: "Dashboard", href: "/admin" }]
       : []),
