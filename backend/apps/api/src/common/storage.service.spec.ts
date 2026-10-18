@@ -129,7 +129,7 @@ test("Supabase storage uses a private object API and never returns a public URL"
       assert.equal(calls[0].url, "https://project-ref.supabase.co/storage/v1/bucket/zat-private-documents");
       assert.equal(calls[0].headers.get("apikey"), "synthetic-server-only-key");
       assert.equal(calls[1].url, `https://project-ref.supabase.co/storage/v1/object/zat-private-documents/${result.key.slice("supabase/".length)}`);
-      assert.ok(calls[0].headers.get("authorization"));
+      assert.equal(calls[0].headers.get("authorization"), "Bearer synthetic-server-only-key");
       assert.equal(calls[1].headers.get("apikey"), "synthetic-server-only-key");
       assert.equal(calls[1].headers.get("x-upsert"), "false");
       assert.equal(calls[1].headers.get("content-type"), "application/pdf");

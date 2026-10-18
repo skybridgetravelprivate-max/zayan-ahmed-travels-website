@@ -134,7 +134,7 @@ export class StorageService {
           method: "GET",
           headers: {
             apikey: config.serviceKey,
-            Authorization: `******`,
+            Authorization: `Bearer ${config.serviceKey}`,
           },
           signal: AbortSignal.timeout(15000),
           cache: "no-store",
