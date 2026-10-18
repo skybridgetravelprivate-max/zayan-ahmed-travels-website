@@ -17,6 +17,7 @@ In the **existing, owner-confirmed Supabase project**, create the bucket `zat-pr
 - **Maximum object size:** 8,388,608 bytes (8 MiB), matching the API limit exactly.
 - **Allowed MIME types:** `application/pdf`, `image/jpeg`, `image/png`, `image/webp`, and `text/plain`.
 - Do not add permissive `anon` or `authenticated` object policies. Direct browser access is not part of this design. The server-side secret key bypasses RLS, so API authorization is the enforcement boundary.
+- Before every Supabase object operation, the API reads the configured bucket metadata and refuses access unless `public` is explicitly `false`. This detects a public or unverifiable bucket; it cannot prevent an administrator from changing bucket visibility immediately after the check. Restrict bucket-setting access and verify the setting during operations.
 
 Set these values only in the private Nest API environment:
 

@@ -124,9 +124,56 @@ export class StorageService {
     return { origin: url.origin, serviceKey, bucket };
   }
 
-  private supabasePath(key: string) {
-    validateKey(key);
+  private async assertPrivateBucket() {
     const config = this.supabaseConfig();
+    let response: Response;
+    try {
+      response = await fetch(
+        `${config.origin}/storage/v1/bucket/${encodeURIComponent(config.bucket)}`,
+        {
+          method: "GET",
+          headers: {
+            apikey: config.serviceKey,
+            Authorization: `******`,
+          },
+          signal: AbortSignal.timeout(15000),
+          cache: "no-store",
+          redirect: "error",
+        },
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        "Private document storage bucket could not be verified.",
+      );
+    }
+    if (!response.ok) {
+      throw new ServiceUnavailableException(
+        `Private document storage bucket verification failed (HTTP ${response.status}).`,
+      );
+    }
+    let bucket: unknown;
+    try {
+      bucket = await response.json();
+    } catch {
+      throw new ServiceUnavailableException(
+        "Private document storage bucket could not be verified.",
+      );
+    }
+    if (
+      !bucket ||
+      typeof bucket !== "object" ||
+      !("public" in bucket) ||
+      bucket.public !== false
+    ) {
+      throw new ServiceUnavailableException(
+        "Configured document storage bucket is not private.",
+      );
+    }
+    return config;
+  }
+
+  private supabasePath(key: string, config: ReturnType<StorageService["supabaseConfig"]>) {
+    validateKey(key);
     const objectPath = key
       .slice(PRIVATE_KEY_PREFIX.length)
       .split("/")
@@ -145,8 +192,9 @@ export class StorageService {
     key: string,
     body?: Buffer,
     mimeType?: string,
+    config?: ReturnType<StorageService["supabaseConfig"]>,
   ) {
-    const target = this.supabasePath(key);
+    const target = this.supabasePath(key, config ?? await this.assertPrivateBucket());
     const response = await fetch(method === "DELETE" ? target.bucketUrl : target.url, {
       method,
       headers: {
@@ -218,11 +266,12 @@ export class StorageService {
       : `${new Date().getUTCFullYear()}/${randomUUID()}${file.extension}`;
 
     if (driver === "supabase") {
+      const config = await this.assertPrivateBucket();
       try {
-        await this.supabaseRequest("POST", key, buffer, mime);
+        await this.supabaseRequest("POST", key, buffer, mime, config);
       } catch (uploadError) {
         try {
-          await this.supabaseRequest("DELETE", key);
+          await this.supabaseRequest("DELETE", key, undefined, undefined, config);
         } catch (cleanupError) {
           this.logCleanupFailure(key, cleanupError);
           throw new ServiceUnavailableException(
