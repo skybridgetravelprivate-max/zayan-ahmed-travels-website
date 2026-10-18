@@ -5,7 +5,7 @@ import { DemoForm, MessageField, TextField } from "@/components/forms/DemoForm";
 export function GroupBookingForm() {
   return (
     <DemoForm
-      submitLabel="Submit"
+      submitLabel="Send group booking inquiry"
       inquiryType="group-booking"
       fieldIds={{
         name: "group-name",

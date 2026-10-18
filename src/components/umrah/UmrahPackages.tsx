@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useState } from "react";
 import { PlaceholderArt, type ArtTone } from "@/components/home/PlaceholderArt";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -49,7 +49,6 @@ export function UmrahPackages({ packages = [] }: { packages?: readonly PublicUmr
   const [duration, setDuration] = useState<string>(durations[0]);
   const [category, setCategory] = useState<string>(hotelCategories[0]);
   const [priceLabel, setPriceLabel] = useState<string>(priceBands[0].label);
-  const [note, setNote] = useState("");
 
   const band = priceBands.find((item) => item.label === priceLabel) ?? priceBands[0];
 
@@ -64,61 +63,52 @@ export function UmrahPackages({ packages = [] }: { packages?: readonly PublicUmr
     [band.max, band.min, category, duration],
   );
 
-  function onSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setNote("This form does not check package availability. Contact us for current options.");
-  }
-
   return (
     <div className="space-y-8">
-      <form
-        className="rounded-3xl border border-line bg-surface p-4 shadow-xl sm:p-6"
-        autoComplete="off"
-        onSubmit={onSearch}
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field id={`${baseId}-city`} label="Departure city" placeholder="Islamabad" />
-          <Field id={`${baseId}-month`} label="Travel month" type="month" />
-        </div>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs leading-5 text-muted">
-            For current package availability and booking assistance, contact us.
-          </p>
-          <Button type="submit">Search</Button>
-        </div>
-        {note ? (
-          <p role="status" className="mt-3 text-sm font-medium text-zayan-blue">
-            {note}
-          </p>
-        ) : null}
-      </form>
-
-      <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-        <h2 className="text-base font-semibold text-zayan-blue">Filters</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <SelectField
-            id={`${baseId}-duration`}
-            label="Duration"
-            value={duration}
-            options={durations}
-            onChange={setDuration}
-          />
-          <SelectField
-            id={`${baseId}-category`}
-            label="Hotel Category"
-            value={category}
-            options={hotelCategories}
-            onChange={setCategory}
-          />
-          <SelectField
-            id={`${baseId}-price`}
-            label="Price"
-            value={priceLabel}
-            options={priceBands.map((item) => item.label)}
-            onChange={setPriceLabel}
-          />
-        </div>
+      <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <p className="max-w-2xl text-sm leading-6 text-muted">
+          Current package availability is not searched here. The contact form
+          sends an inquiry; it does not reserve a package.
+        </p>
+        <Button href="#inquiry" className="shrink-0">
+          Send Umrah inquiry
+        </Button>
       </div>
+
+      {!live ? (
+        <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+          <h2 className="text-base font-semibold text-zayan-blue">
+            Filter sample packages
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            These filters only change the example cards below; they do not
+            search current packages.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <SelectField
+              id={`${baseId}-duration`}
+              label="Duration"
+              value={duration}
+              options={durations}
+              onChange={setDuration}
+            />
+            <SelectField
+              id={`${baseId}-category`}
+              label="Hotel Category"
+              value={category}
+              options={hotelCategories}
+              onChange={setCategory}
+            />
+            <SelectField
+              id={`${baseId}-price`}
+              label="Price"
+              value={priceLabel}
+              options={priceBands.map((item) => item.label)}
+              onChange={setPriceLabel}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-zayan-blue">
@@ -189,25 +179,6 @@ export function UmrahPackages({ packages = [] }: { packages?: readonly PublicUmr
         )}
       </div>
     </div>
-  );
-}
-
-function Field({
-  id,
-  label,
-  type = "text",
-  placeholder,
-}: {
-  id: string;
-  label: string;
-  type?: string;
-  placeholder?: string;
-}) {
-  return (
-    <label htmlFor={id} className="block text-sm font-medium">
-      {label}
-      <input id={id} name={id} type={type} placeholder={placeholder} className={fieldClass} />
-    </label>
   );
 }
 

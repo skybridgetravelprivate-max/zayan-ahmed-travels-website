@@ -5,7 +5,7 @@ import { DemoForm, MessageField, TextField } from "@/components/forms/DemoForm";
 export function ContactForm() {
   return (
     <DemoForm
-      submitLabel="Submit"
+      submitLabel="Send contact inquiry"
       inquiryType="contact"
       fieldIds={{
         name: "contact-name",

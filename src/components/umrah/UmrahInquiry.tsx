@@ -15,7 +15,7 @@ export function UmrahInquiry() {
           {site.legalName} can walk through a sample package with you. This
           inquiry is checked on the website, then sent to the travel desk.
         </p>
-        <ServiceInquiryForm type="umrah" submitLabel="Start an inquiry" />
+        <ServiceInquiryForm type="umrah" submitLabel="Send Umrah inquiry" />
       </div>
     </section>
   );

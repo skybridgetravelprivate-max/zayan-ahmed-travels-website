@@ -94,9 +94,15 @@ export function HotelSearch() {
         </div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            For current hotel availability and booking assistance, contact us.
+            This button checks the destination and date fields in this browser
+            only. It does not search live room availability or send details.
           </p>
-          <Button type="submit">Search</Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="submit" variant="outline">
+              Check stay details
+            </Button>
+            <Button href="/contact">Open contact form</Button>
+          </div>
         </div>
         {note ? (
           <p
@@ -109,7 +115,13 @@ export function HotelSearch() {
       </form>
 
       <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-        <h2 className="text-base font-semibold text-zayan-blue">Filters</h2>
+        <h2 className="text-base font-semibold text-zayan-blue">
+          Filter sample hotels
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          These filters only change the example cards below; they do not search
+          current properties or rates.
+        </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <SelectField
             id={`${baseId}-price`}

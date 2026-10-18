@@ -124,10 +124,16 @@ export function TicketSearch() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            For current ticket availability and booking assistance, contact us.
+            This button runs local form validation only. It does not search
+            live seats or send these details.
             {trip !== "Round Trip" ? " Return is unused for One Way." : ""}
           </p>
-          <Button type="submit">Search</Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="submit" variant="outline">
+              Check trip details
+            </Button>
+            <Button href="/contact">Open contact form</Button>
+          </div>
         </div>
         {notice ? (
           <p

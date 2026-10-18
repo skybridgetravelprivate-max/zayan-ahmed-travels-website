@@ -16,7 +16,7 @@ export function VisaInquiry() {
           is checked on the website, then sent to the travel desk. It does not
           submit an application.
         </p>
-        <ServiceInquiryForm type="visa" submitLabel="Start an inquiry" />
+        <ServiceInquiryForm type="visa" submitLabel="Send visa inquiry" />
       </div>
     </section>
   );

@@ -14,10 +14,25 @@ function isCurrent(pathname: string, href: string) {
 const focusRing =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange";
 
+const primaryDesktopLabels = new Set([
+  "Flights",
+  "Hotels",
+  "Tours",
+  "Umrah",
+  "Visas",
+  "Contact",
+]);
+
 export function Header() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const primaryItems = navItems.filter((item) =>
+    primaryDesktopLabels.has(item.label),
+  );
+  const moreItems = navItems.filter(
+    (item) => item.label !== "Home" && !primaryDesktopLabels.has(item.label),
+  );
 
   function closeMenu() {
     setOpen(false);
@@ -41,7 +56,7 @@ export function Header() {
       <div className="mx-auto flex min-h-16 max-w-[96rem] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className={`flex min-w-0 items-center gap-3 rounded-xl ${focusRing}`}
+          className={`flex shrink-0 items-center gap-3 rounded-xl ${focusRing}`}
           onClick={closeMenu}
         >
           <span
@@ -50,19 +65,19 @@ export function Header() {
           >
             <span className="text-zayan-orange">Z</span>A
           </span>
-          <span className="min-w-0 leading-tight">
-            <span className="block truncate text-sm font-bold text-zayan-blue sm:text-base">
+          <span className="leading-tight">
+            <span className="block whitespace-nowrap text-xs font-bold text-zayan-blue sm:text-sm lg:text-base">
               {site.shortName}
             </span>
-            <span className="block truncate text-[11px] text-muted sm:text-xs">
+            <span className="hidden text-[11px] text-muted sm:block sm:text-xs">
               {site.tagline}
             </span>
           </span>
         </Link>
 
         <nav aria-label="Primary" className="hidden xl:block">
-          <ul className="flex flex-wrap items-center justify-end gap-0.5 xl:gap-1">
-            {navItems.map((item) => {
+          <ul className="flex items-center justify-end gap-0.5 whitespace-nowrap">
+            {primaryItems.map((item) => {
               const current = isCurrent(pathname, item.href);
 
               return (
@@ -70,7 +85,7 @@ export function Header() {
                   <Link
                     href={item.href}
                     aria-current={current ? "page" : undefined}
-                    className={`rounded-full px-2.5 py-2 text-sm font-medium transition-colors ${focusRing} ${
+                    className={`rounded-full px-2 py-2 text-sm font-medium transition-colors ${focusRing} ${
                       current
                         ? "bg-zayan-blue text-white"
                         : "text-foreground hover:bg-zayan-blue/5 hover:text-zayan-blue"
@@ -81,6 +96,50 @@ export function Header() {
                 </li>
               );
             })}
+            <li>
+              <details className="group relative">
+                <summary
+                  className={`flex cursor-pointer list-none items-center gap-1 rounded-full px-2.5 py-2 text-sm font-medium text-foreground transition-colors marker:hidden hover:bg-zayan-blue/5 hover:text-zayan-blue ${focusRing}`}
+                >
+                  More
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 16 16"
+                    className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
+                  >
+                    <path
+                      d="m3 6 5 5 5-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </summary>
+                <ul className="absolute right-0 top-full z-50 mt-2 grid w-56 gap-1 rounded-2xl border border-line bg-surface p-2 shadow-xl">
+                  {moreItems.map((item) => {
+                    const current = isCurrent(pathname, item.href);
+
+                    return (
+                      <li key={item.label}>
+                        <Link
+                          href={item.href}
+                          aria-current={current ? "page" : undefined}
+                          className={`block rounded-xl px-3 py-2 text-sm font-medium ${focusRing} ${
+                            current
+                              ? "bg-zayan-blue text-white"
+                              : "text-foreground hover:bg-zayan-blue/5 hover:text-zayan-blue"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            </li>
           </ul>
         </nav>
 

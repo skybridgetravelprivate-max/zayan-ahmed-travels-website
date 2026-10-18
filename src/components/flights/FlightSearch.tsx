@@ -156,10 +156,16 @@ export function FlightSearch() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted">
-            For current flight availability and booking assistance, contact us.
+            This button runs local form validation only. It does not search
+            live flights or send these details.
             {trip !== "Round Trip" ? " Return is unused for this trip type." : ""}
           </p>
-          <Button type="submit">Search</Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="submit" variant="outline">
+              Check trip details
+            </Button>
+            <Button href="/contact">Open contact form</Button>
+          </div>
         </div>
         {notice ? (
           <p
@@ -172,7 +178,13 @@ export function FlightSearch() {
       </form>
 
       <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-        <h2 className="text-base font-semibold text-zayan-blue">Filters</h2>
+        <h2 className="text-base font-semibold text-zayan-blue">
+          Filter sample flights
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          These filters only change the example cards below; they do not search
+          current fares.
+        </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <FilterSelect
             id={`${baseId}-airline`}
