@@ -25,6 +25,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit",
     "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/jwt.guard.spec.ts apps/api/src/common/storage.service.spec.ts apps/api/src/documents/documents.controller.spec.ts apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts apps/api/src/website/website-inquiries.controller.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs apps/api/src/common/security-audit.spec.ts apps/api/src/common/final-audit.spec.ts apps/api/src/common/pr16-review.spec.ts apps/api/src/resources/lead-access.spec.ts",
+    "test:document-backup": "node --test scripts/document-backup.spec.mjs",
     "test:e2e": "npx tsx scripts/e2e-api.mjs",
     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs"
   },
