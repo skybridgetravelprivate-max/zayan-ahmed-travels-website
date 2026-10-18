@@ -12,14 +12,14 @@ export class ComplaintsController {
 
   @Get()
   @RequirePermission("complaint.view")
-  list(@Query() query: Record<string, string>) {
-    return this.complaints.list(query);
+  list(@Query() query: Record<string, string>, @Req() req: Request & { user: AuthUser }) {
+    return this.complaints.list(req.user, query);
   }
 
   @Get(":id")
   @RequirePermission("complaint.view")
-  get(@Param("id") id: string) {
-    return this.complaints.get(id);
+  get(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
+    return this.complaints.get(req.user, id);
   }
 
   @Post()

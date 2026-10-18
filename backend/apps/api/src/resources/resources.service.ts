@@ -4,7 +4,8 @@ import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, can } from "../auth/auth.types";
 import { RESOURCES, actionPermission } from "./registry";
-import { assertPassengerBranch, branchIds } from "../auth/record-scope";
+import { assertPassengerBranch, assertPeopleLinks, assertRecordBranch, branchIds } from "../auth/record-scope";
+import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/document-scope";
 import { hashPassword, assertPasswordPolicy } from "../common/password";
 
 function redactSecrets(value: unknown): unknown {
@@ -49,6 +50,7 @@ export class ResourcesService {
   }
 
   private assert(user: AuthUser, resource: string, action: "view" | "create" | "edit" | "delete") {
+    if (resource === "tickets" && (action === "edit" || action === "delete")) throw new ForbiddenException("Use the transactional ticket workflows");
     if (resource === "documents" && action !== "view") throw new ForbiddenException("Use the authorized document upload endpoint");
     if (resource === "audit-logs" && action !== "view") throw new ForbiddenException("Audit records are read-only");
     if (["journals", "receipts", "payments", "expenses", "ticket-refunds"].includes(resource) && action !== "view") throw new ForbiddenException("Use the transactional finance endpoints");
@@ -69,6 +71,8 @@ export class ResourcesService {
 
   private branchWhere(user: AuthUser, meta: ReturnType<ResourcesService["meta"]>, extra: Record<string, unknown> = {}) {
     if (meta.model === "passenger" && !user.isSuperAdmin) return { ...extra, customer: { branchId: { in: branchIds(user) } } };
+    if (!user.isSuperAdmin && meta.model === "passengerDocument") return { ...extra, passenger: { customer: { branchId: { in: branchIds(user) } } } };
+    if (!user.isSuperAdmin && meta.model === "ticketRefund") return { ...extra, ticket: { branchId: { in: branchIds(user) } } };
     if (!meta.branchField || user.isSuperAdmin) return extra;
     const ids = this.allowedBranchIds(user);
     if (!ids || ids.length === 0) {
@@ -80,6 +84,10 @@ export class ResourcesService {
   }
 
   private async assertRowBranch(user: AuthUser, meta: ReturnType<ResourcesService["meta"]>, row: Record<string, unknown>) {
+    if (meta.model === "storedDocument") await authorizeStoredDocument(this.prisma, user, row);
+    if (meta.model === "passengerDocument") await assertRecordBranch(this.prisma, user, "passenger", row.passengerId);
+    if (meta.model === "ticketRefund") await assertRecordBranch(this.prisma, user, "ticketSale", row.ticketId);
+    if (meta.model === "customer" && row.leadId) await assertRecordBranch(this.prisma, user, "lead", row.leadId);
     if (meta.model === "passenger") await assertPassengerBranch(this.prisma, user, row.customerId);
     if (!meta.branchField || user.isSuperAdmin) return;
     const ids = this.allowedBranchIds(user) ?? [];
@@ -90,6 +98,10 @@ export class ResourcesService {
   async list(resource: string, user: AuthUser, query: Record<string, string>) {
     this.assert(user, resource, "view");
     const meta = this.meta(resource);
+    if (resource === "documents" && !user.isSuperAdmin) {
+      if (!query.entityType || !query.entityId) throw new ForbiddenException("Select an authorized document owner");
+      await authorizeDocumentOwner(this.prisma, user, query.entityType, query.entityId);
+    }
     const page = Math.max(1, Number(query.page ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize ?? 20)));
     const where: Record<string, unknown> = this.branchWhere(user, meta);
@@ -130,9 +142,9 @@ export class ResourcesService {
     const meta = this.meta(resource);
     const include =
       resource === "leads"
-        ? { assignedUser: true, assignedAgent: true, followUps: true, quotations: true }
+        ? { assignedUser: true, assignedAgent: true, followUps: true, quotations: { where: this.branchWhere(user, this.meta("quotations")) } }
         : resource === "customers"
-          ? { quotations: true, umrahBookings: true, tickets: true }
+          ? { quotations: { where: this.branchWhere(user, this.meta("quotations")) }, umrahBookings: { where: this.branchWhere(user, this.meta("umrah-bookings")) }, tickets: { where: this.branchWhere(user, this.meta("tickets")) } }
           : undefined;
     const row = await this.delegate(resource).findUnique({
       where: { id },
@@ -182,7 +194,15 @@ export class ResourcesService {
       data.balance = Number(data.net) - paid;
       data.profit = Number(data.net) - cost;
     }
+    await assertPeopleLinks(this.prisma, user, data);
+    if (data.leadId) await assertRecordBranch(this.prisma, user, "lead", data.leadId);
+    if (data.quotationId) await assertRecordBranch(this.prisma, user, "quotation", data.quotationId);
     if (resource === "passengers") await assertPassengerBranch(this.prisma, user, data.customerId);
+    if (resource === "passenger-documents" && data.documentId) {
+      const doc = await this.prisma.storedDocument.findUnique({ where: { id: String(data.documentId) } });
+      if (!doc) throw new NotFoundException();
+      await authorizeStoredDocument(this.prisma, user, doc);
+    }
     const created = await this.delegate(resource).create({ data });
     await this.audit.log({
       userId: user.id,
@@ -215,7 +235,15 @@ export class ResourcesService {
       data.passwordHash = await hashPassword(data.password as string);
       delete data.password;
     }
+    await assertPeopleLinks(this.prisma, user, data);
+    if (data.leadId) await assertRecordBranch(this.prisma, user, "lead", data.leadId);
+    if (data.quotationId) await assertRecordBranch(this.prisma, user, "quotation", data.quotationId);
     if (resource === "passengers" && Object.hasOwn(data, "customerId")) await assertPassengerBranch(this.prisma, user, data.customerId);
+    if (resource === "passenger-documents" && data.documentId) {
+      const doc = await this.prisma.storedDocument.findUnique({ where: { id: String(data.documentId) } });
+      if (!doc) throw new NotFoundException();
+      await authorizeStoredDocument(this.prisma, user, doc);
+    }
     const updated = await this.delegate(resource).update({ where: { id }, data });
     await this.audit.log({
       userId: user.id,

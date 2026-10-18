@@ -113,7 +113,7 @@ test("posted reservation edits reject changed amounts or parties before writes",
 test("reservation cancellation offsets sale and cost atomically and rollback preserves original", async () => {
   for (const fail of [false, true]) {
     let committed = { cancelled: false, offsets: [] as { debit: number; credit: number }[][] };
-    const booking = { staySegments: [], cancelledAt: null };
+    const booking = { branchId: "a", paid: 0, staySegments: [], cancelledAt: null };
     const journals = [100, 50].map((n, i) => ({ entryNumber: "J" + i, lines: [{ accountId: "a" + i, debit: n, credit: 0, partyType: "customer", partyId: "a" }, { accountId: "b" + i, debit: 0, credit: n }] }));
     const prisma = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => {
       const draft = structuredClone(committed);
@@ -177,5 +177,15 @@ test("generic CRUD cannot forge attachment ownership or bypass transactional tic
     await assert.rejects(svc.create(resource, admin, { storageKey: "foreign", entityType: "customer", entityId: "a" }), { status: 403 });
     await assert.rejects(svc.update(resource, "foreign", admin, { entityId: "a" }), { status: 403 });
     await assert.rejects(svc.remove(resource, "foreign", admin), { status: 403 });
+  }
+});
+
+
+test("refunds reject sub-cent inputs before posting", async () => {
+  for (const refundAmount of [100.009, 0.001, NaN, Infinity]) {
+    const h = refundsHarness();
+    await assert.rejects(h.ctrl.refund("t", { refundAmount, reason: "test" }, req()), { status: 400 });
+    assert.equal(h.state().journals.length, 0);
+    assert.equal(h.state().refunds.length, 0);
   }
 });

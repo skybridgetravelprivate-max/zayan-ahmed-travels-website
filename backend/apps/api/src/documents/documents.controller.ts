@@ -19,7 +19,7 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
 import { NotFoundException } from "@nestjs/common";
-import { authorizeDocumentOwner } from "./document-scope";
+import { authorizeDocumentOwner, authorizeStoredDocument } from "./document-scope";
 import { DocumentPdfService } from "./document-pdf.service";
 
 @Controller("v1/documents")
@@ -63,8 +63,7 @@ export class DocumentsController {
   async download(@Param("id") id: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
     const doc = await this.prisma.storedDocument.findUnique({ where: { id } });
     if (!doc) return res.status(404).send("Not found");
-    if (doc.entityType && doc.entityId) await authorizeDocumentOwner(this.prisma, req.user, doc.entityType, doc.entityId);
-    else if (!req.user.isSuperAdmin && doc.uploadedById !== req.user.id) throw new NotFoundException();
+    await authorizeStoredDocument(this.prisma, req.user, doc);
     const buf = await this.storage.get(doc.storageKey);
     res.setHeader("Content-Type", doc.mimeType);
     res.setHeader("X-Content-Type-Options", "nosniff");

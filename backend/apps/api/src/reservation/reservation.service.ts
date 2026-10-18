@@ -4,6 +4,7 @@ import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
+import { assertBranch, assertPeopleLinks, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
 
 export type StayRoomInput = {
@@ -210,13 +211,15 @@ export class ReservationService {
 
     const bookingId = await this.prisma.$transaction(
       async (tx) => {
-        await this.occupancyConflicts(input.id, input.segments, tx);
         if (input.id) {
           await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${input.id} FOR UPDATE`;
-          const existing = await tx.hotelBooking.findUnique({ where: { id: input.id } });
+          const existing = await tx.hotelBooking.findUnique({ where: { id: input.id }, include: { staySegments: { include: { rooms: true } } } });
           if (!existing) throw new NotFoundException();
+          assertBranch(user, existing.branchId);
+          if (existing.staySegments?.some(segment => segment.rooms.some(room => room.checkinAt || ["CHECKED_IN", "CHECKED_OUT"].includes(room.status)))) throw new BadRequestException("A started stay cannot be replaced through reservation editing.");
           // These totals and parties already own posted sale/cost entries.
-          const financial = { cost: tot.cost, sellingPrice: tot.selling, discount: tot.discount, tax: tot.tax, commission: tot.commission, net: tot.net, paid };
+          const updatePaid = input.paid === undefined ? Number(existing.paid) : paid;
+          const financial = { cost: tot.cost, sellingPrice: tot.selling, discount: tot.discount, tax: tot.tax, commission: tot.commission, net: tot.net, paid: updatePaid };
           if (Object.entries(financial).some(([key, value]) => !money(value).equals(existing[key as keyof typeof existing] as Prisma.Decimal)) ||
               (input.customerId || existing.customerId) !== existing.customerId ||
               (input.passengerId || existing.passengerId) !== existing.passengerId ||
@@ -226,6 +229,9 @@ export class ReservationService {
             throw new BadRequestException("Posted reservation amounts and parties cannot be changed.");
           }
           if (existing.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+          await assertPeopleLinks(tx, user, input);
+          for (const segment of input.segments) for (const room of segment.rooms) await assertPeopleLinks(tx, user, room);
+          await this.occupancyConflicts(input.id, input.segments, tx);
           const row = await tx.hotelBooking.update({
             where: { id: input.id },
             data: {
@@ -243,8 +249,8 @@ export class ReservationService {
               tax: money(tot.tax),
               commission: money(tot.commission),
               net: money(tot.net),
-              paid: money(paid),
-              balance: money(Math.max(tot.net - paid, 0)),
+              paid: money(updatePaid),
+              balance: money(Math.max(tot.net - updatePaid, 0)),
               supplierId: input.supplierId || first.supplierId || existing.supplierId,
               notes: input.notes,
               specialRequests: input.specialRequests,
@@ -256,6 +262,10 @@ export class ReservationService {
           return row.id;
         }
 
+        assertBranch(user, input.branchId || user.defaultBranchId);
+        await assertPeopleLinks(tx, user, input);
+        for (const segment of input.segments) for (const room of segment.rooms) await assertPeopleLinks(tx, user, room);
+        await this.occupancyConflicts(input.id, input.segments, tx);
         const bookingNumber = await this.seq.next("htl-bk", "HTL", tx);
         const row = await tx.hotelBooking.create({
           data: {
@@ -279,7 +289,7 @@ export class ReservationService {
             balance: money(Math.max(tot.net - paid, 0)),
             supplierId: input.supplierId || first.supplierId,
             agentId: input.agentId,
-            branchId: input.branchId,
+            branchId: input.branchId || user.defaultBranchId,
             notes: input.notes,
             specialRequests: input.specialRequests,
             status: "DEFINITE",
@@ -292,7 +302,7 @@ export class ReservationService {
           sourceId: row.id,
           amount: Number(tot.net),
           customerId: input.customerId,
-          branchId: input.branchId,
+          branchId: input.branchId || user.defaultBranchId,
           memo: `Hotel ${row.bookingNumber}`,
           db: tx,
         });
@@ -327,6 +337,7 @@ export class ReservationService {
     assertCan(user, "hotel.booking");
     const row = await this.prisma.hotelBooking.findUnique({ where: { id }, include: this.include() });
     if (!row) throw new NotFoundException();
+    assertBranch(user, row.branchId);
     return row;
   }
 
@@ -334,6 +345,7 @@ export class ReservationService {
     assertCan(user, "hotel.booking");
     return this.prisma.hotelBooking.findMany({
       where: {
+        ...branchWhere(user),
         kind: q.kind || undefined,
         hotelId: q.hotelId || undefined,
         cancelledAt: q.status === "CANCELLED" ? { not: null } : q.status === "ACTIVE" ? null : undefined,
@@ -351,31 +363,31 @@ export class ReservationService {
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
-    const active = { segment: { booking: { cancelledAt: null } } };
+    const active = { segment: { booking: { ...branchWhere(user), cancelledAt: null } } };
     const [voucherTotal, cancelled, inHouse, arriving, departing, vacantHint, hotelRows, preview] = await Promise.all([
-      this.prisma.hotelBooking.count(),
-      this.prisma.hotelBooking.count({ where: { cancelledAt: { not: null } } }),
+      this.prisma.hotelBooking.count({ where: branchWhere(user) }),
+      this.prisma.hotelBooking.count({ where: { ...branchWhere(user), cancelledAt: { not: null } } }),
       this.prisma.hotelStayRoom.count({ where: { status: "CHECKED_IN", ...active } }),
       this.prisma.hotelStayRoom.count({
         where: {
           status: { notIn: ["CHECKED_IN", "CHECKED_OUT", "CANCELLED", "TRANSFERRED"] },
-          segment: { booking: { cancelledAt: null }, checkIn: { gte: start, lt: end } },
+          segment: { booking: { ...branchWhere(user), cancelledAt: null }, checkIn: { gte: start, lt: end } },
         },
       }),
       this.prisma.hotelStayRoom.count({
         where: {
           status: { notIn: ["CHECKED_OUT", "CANCELLED"] },
-          segment: { booking: { cancelledAt: null }, checkOut: { gte: start, lt: end } },
+          segment: { booking: { ...branchWhere(user), cancelledAt: null }, checkOut: { gte: start, lt: end } },
         },
       }),
       this.prisma.hotelStayRoom.count({ where: { status: "VACANT", ...active } }),
       this.prisma.hotelStayRoom.groupBy({
         by: ["status"],
-        where: { segment: { booking: { cancelledAt: null } } },
+        where: active,
         _count: { _all: true },
       }),
       this.prisma.hotelBooking.findMany({
-        where: { cancelledAt: null },
+        where: { ...branchWhere(user), cancelledAt: null },
         include: this.include(),
         orderBy: { checkIn: "desc" },
         take: 500,
@@ -409,81 +421,98 @@ export class ReservationService {
     };
   }
 
-  private async roomOrThrow(id: string) {
-    const room = await this.prisma.hotelStayRoom.findUnique({
+  private async roomOrThrow(user: AuthUser, id: string, db: Prisma.TransactionClient) {
+    const room = await db.hotelStayRoom.findUnique({
       where: { id },
       include: { segment: { include: { booking: true } }, pax: true },
     });
     if (!room) throw new NotFoundException("Room unit not found.");
+    assertBranch(user, room.segment.booking.branchId);
     if (room.segment.booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
     return room;
   }
 
   async checkin(user: AuthUser, roomId: string, at?: string, roomNumber?: string, ip?: string) {
     assertCan(user, "reservation.checkin");
-    const room = await this.roomOrThrow(roomId);
-    if (room.status === "CHECKED_OUT") throw new BadRequestException("Cannot check in a checked-out room.");
-    if (room.status === "CHECKED_IN") throw new BadRequestException("Room is already checked in.");
-    if (!room.pax.length) throw new BadRequestException("Assign PAX before check-in.");
-    const row = await this.prisma.hotelStayRoom.update({
-      where: { id: roomId },
-      data: { status: "CHECKED_IN", checkinAt: at ? new Date(at) : new Date(), roomNumber: roomNumber || room.roomNumber },
+    return this.prisma.$transaction(async (tx) => {
+      const source = await tx.hotelStayRoom.findUnique({ where: { id: roomId }, select: { segment: { select: { bookingId: true } } } });
+      if (!source) throw new NotFoundException("Room unit not found.");
+      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${source.segment.bookingId} FOR UPDATE`;
+      const room = await this.roomOrThrow(user, roomId, tx);
+      if (room.status === "CHECKED_OUT") throw new BadRequestException("Cannot check in a checked-out room.");
+      if (room.status === "CHECKED_IN") throw new BadRequestException("Room is already checked in.");
+      if (!room.pax.length) throw new BadRequestException("Assign PAX before check-in.");
+      const row = await tx.hotelStayRoom.update({
+        where: { id: roomId },
+        data: { status: "CHECKED_IN", checkinAt: at ? new Date(at) : new Date(), roomNumber: roomNumber || room.roomNumber },
+      });
+      await this.audit.log({ userId: user.id, action: "checkin", entity: "HotelStayRoom", entityId: roomId, after: row, ipAddress: ip, db: tx });
+      return row;
     });
-    await this.audit.log({ userId: user.id, action: "checkin", entity: "HotelStayRoom", entityId: roomId, after: row, ipAddress: ip });
-    return row;
   }
 
   async checkout(user: AuthUser, roomId: string, at?: string, ip?: string) {
     assertCan(user, "reservation.checkout");
-    const room = await this.roomOrThrow(roomId);
-    if (room.status !== "CHECKED_IN") throw new BadRequestException("Check-in required before checkout.");
-    const when = at ? new Date(at) : new Date();
-    if (room.checkinAt && when < room.checkinAt) throw new BadRequestException("Checkout cannot be before check-in.");
-    const row = await this.prisma.hotelStayRoom.update({
-      where: { id: roomId },
-      data: { status: "CHECKED_OUT", checkoutAt: when },
+    return this.prisma.$transaction(async (tx) => {
+      const source = await tx.hotelStayRoom.findUnique({ where: { id: roomId }, select: { segment: { select: { bookingId: true } } } });
+      if (!source) throw new NotFoundException("Room unit not found.");
+      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${source.segment.bookingId} FOR UPDATE`;
+      const room = await this.roomOrThrow(user, roomId, tx);
+      if (room.status !== "CHECKED_IN") throw new BadRequestException("Check-in required before checkout.");
+      const when = at ? new Date(at) : new Date();
+      if (room.checkinAt && when < room.checkinAt) throw new BadRequestException("Checkout cannot be before check-in.");
+      const row = await tx.hotelStayRoom.update({
+        where: { id: roomId },
+        data: { status: "CHECKED_OUT", checkoutAt: when },
+      });
+      await this.audit.log({ userId: user.id, action: "checkout", entity: "HotelStayRoom", entityId: roomId, after: row, ipAddress: ip, db: tx });
+      return row;
     });
-    await this.audit.log({ userId: user.id, action: "checkout", entity: "HotelStayRoom", entityId: roomId, after: row, ipAddress: ip });
-    return row;
   }
 
   async transfer(user: AuthUser, fromRoomId: string, toRoomId: string | undefined, roomNumber: string | undefined, ip?: string) {
     assertCan(user, "reservation.transfer");
-    const from = await this.roomOrThrow(fromRoomId);
-    let toId = toRoomId;
-    if (!toId) {
-      const created = await this.prisma.hotelStayRoom.create({
-        data: {
-          segmentId: from.segmentId,
-          roomTypeId: from.roomTypeId,
-          occupancy: from.occupancy,
-          roomNumber: roomNumber || "",
-          status: from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED",
-          checkinAt: from.checkinAt,
-          pax: { create: from.pax.map((p) => ({ passengerId: p.passengerId })) },
-        },
-      });
-      toId = created.id;
-    } else {
-      const to = await this.roomOrThrow(toId);
-      await this.prisma.hotelStayRoomPax.createMany({
-        data: from.pax.map((p) => ({ stayRoomId: to.id, passengerId: p.passengerId })),
-        skipDuplicates: true,
-      });
-      await this.prisma.hotelStayRoom.update({
-        where: { id: to.id },
-        data: {
-          roomNumber: roomNumber || to.roomNumber,
-          status: to.status === "VACANT" ? (from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED") : to.status,
-          checkinAt: to.checkinAt || from.checkinAt,
-        },
-      });
-    }
-    await this.prisma.hotelStayRoomPax.deleteMany({ where: { stayRoomId: from.id } });
-    await this.prisma.hotelStayRoom.update({ where: { id: from.id }, data: { status: "TRANSFERRED" } });
-    await this.prisma.hotelStayTransfer.create({ data: { fromRoomId: from.id, toRoomId: toId, userId: user.id } });
-    await this.audit.log({ userId: user.id, action: "transfer", entity: "HotelStayRoom", entityId: from.id, after: { toId }, ipAddress: ip });
-    return { fromId: from.id, toId };
+    return this.prisma.$transaction(async (tx) => {
+      const source = await tx.hotelStayRoom.findUnique({ where: { id: fromRoomId }, select: { segment: { select: { bookingId: true } } } });
+      if (!source) throw new NotFoundException("Room unit not found.");
+      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${source.segment.bookingId} FOR UPDATE`;
+      const from = await this.roomOrThrow(user, fromRoomId, tx);
+      let toId = toRoomId;
+      if (!toId) {
+        const created = await tx.hotelStayRoom.create({
+          data: {
+            segmentId: from.segmentId,
+            roomTypeId: from.roomTypeId,
+            occupancy: from.occupancy,
+            roomNumber: roomNumber || "",
+            status: from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED",
+            checkinAt: from.checkinAt,
+            pax: { create: from.pax.map((p) => ({ passengerId: p.passengerId })) },
+          },
+        });
+        toId = created.id;
+      } else {
+        const to = await this.roomOrThrow(user, toId, tx);
+        if (to.segment.bookingId !== from.segment.bookingId) throw new BadRequestException("Transfer rooms within the same reservation.");
+        await tx.hotelStayRoomPax.createMany({
+          data: from.pax.map((p) => ({ stayRoomId: to.id, passengerId: p.passengerId })),
+          skipDuplicates: true,
+        });
+        await tx.hotelStayRoom.update({
+          where: { id: to.id },
+          data: {
+            roomNumber: roomNumber || to.roomNumber,
+            status: to.status === "VACANT" ? (from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED") : to.status,
+            checkinAt: to.checkinAt || from.checkinAt,
+          },
+        });
+      }
+      await tx.hotelStayRoomPax.deleteMany({ where: { stayRoomId: from.id } });
+      await tx.hotelStayRoom.update({ where: { id: from.id }, data: { status: "TRANSFERRED" } });
+      await tx.hotelStayTransfer.create({ data: { fromRoomId: from.id, toRoomId: toId, userId: user.id } });
+      await this.audit.log({ userId: user.id, action: "transfer", entity: "HotelStayRoom", entityId: from.id, after: { toId }, ipAddress: ip, db: tx });
+      return { fromId: from.id, toId };
+    });
   }
 
   async cancel(user: AuthUser, bookingId: string, reason: string, ip?: string) {
@@ -494,8 +523,9 @@ export class ReservationService {
       await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${bookingId} FOR UPDATE`;
       const booking = await tx.hotelBooking.findUnique({ where: { id: bookingId }, include: this.include() });
       if (!booking) throw new NotFoundException();
+      assertBranch(user, booking.branchId);
       if (booking.cancelledAt) throw new BadRequestException("Already cancelled.");
-      if (booking.staySegments.some(s => s.rooms.some(r => r.status === "CHECKED_IN"))) throw new BadRequestException("Cannot cancel while rooms are checked in.");
+      if (booking.staySegments.some(s => s.rooms.some(r => r.checkinAt || ["CHECKED_IN", "CHECKED_OUT"].includes(r.status)))) throw new BadRequestException("Cannot fully cancel a reservation after a stay has started.");
       const journals = await tx.journalEntry.findMany({
         where: { module: "reservation", sourceId: bookingId, status: "POSTED", kind: { in: ["SALE", "COST"] } }, include: { lines: true },
       });
@@ -507,7 +537,7 @@ export class ReservationService {
           lines: journal.lines.map(line => ({ accountId: line.accountId, debit: Number(line.credit), credit: Number(line.debit), partyType: line.partyType || undefined, partyId: line.partyId || undefined })),
         });
       }
-      const row = await tx.hotelBooking.update({ where: { id: bookingId }, data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED", balance: 0 } });
+      const row = await tx.hotelBooking.update({ where: { id: bookingId }, data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED", balance: money(-Number(booking.paid)) } });
       await this.audit.log({ userId: user.id, action: "cancel", entity: "HotelBooking", entityId: bookingId, before: booking, after: row, ipAddress: ip, db: tx });
       return row;
     });
@@ -518,6 +548,9 @@ export class ReservationService {
     if (!roomIds?.length) throw new BadRequestException("Select at least one room to split.");
     const booking = await this.get(user, bookingId);
     if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+    if (Number(booking.net) !== 0 || Number(booking.cost) !== 0 || Number(booking.paid) !== 0) throw new BadRequestException("Posted financial reservations cannot be split.");
+    const ownedIds = new Set(booking.staySegments.flatMap(segment => segment.rooms.map(room => room.id)));
+    if (roomIds.some(id => !ownedIds.has(id))) throw new NotFoundException("Room does not belong to this reservation");
     const move = new Set(roomIds);
     const childSegs: StaySegmentInput[] = [];
     for (const seg of booking.staySegments) {
