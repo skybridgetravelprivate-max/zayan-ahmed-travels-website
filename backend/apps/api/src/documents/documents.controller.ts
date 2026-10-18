@@ -1,11 +1,16 @@
 import {
+  BadRequestException,
   Controller,
+  Delete,
   Get,
+  Logger,
+  NotFoundException,
   Param,
   Post,
   Query,
   Req,
   Res,
+  ServiceUnavailableException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -15,19 +20,22 @@ import type { Request, Response } from "express";
 import { PrismaService } from "../common/prisma.service";
 import { MAX_UPLOAD_BYTES, StorageService } from "../common/storage.service";
 import { safeDownloadName } from "../common/storage-path";
+import { AuditService } from "../common/audit.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
-import { NotFoundException } from "@nestjs/common";
 import { authorizeDocumentOwner, authorizeStoredDocument } from "./document-scope";
 import { DocumentPdfService } from "./document-pdf.service";
 
 @Controller("v1/documents")
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class DocumentsController {
+  private readonly logger = new Logger(DocumentsController.name);
+
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private audit: AuditService,
   ) {}
 
   @Post("upload")
@@ -42,20 +50,69 @@ export class DocumentsController {
     @Query() q: { entityType?: string; entityId?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
+    if (!file?.buffer) throw new BadRequestException("A file is required.");
     if (!q.entityType || !q.entityId) throw new NotFoundException("Document owner required");
     await authorizeDocumentOwner(this.prisma, req.user, q.entityType, q.entityId);
     const stored = await this.storage.put(file.buffer, file.originalname, file.mimetype);
-    return this.prisma.storedDocument.create({
-      data: {
-        fileName: stored.fileName,
-        mimeType: stored.mimeType,
-        sizeBytes: stored.size,
-        storageKey: stored.key,
-        entityType: q.entityType,
-        entityId: q.entityId,
-        uploadedById: req.user.id,
-      },
-    });
+    try {
+      const document = await this.prisma.storedDocument.create({
+        data: {
+          fileName: stored.fileName,
+          mimeType: stored.mimeType,
+          sizeBytes: stored.size,
+          storageKey: stored.key,
+          entityType: q.entityType,
+          entityId: q.entityId,
+          uploadedById: req.user.id,
+        },
+        select: {
+          id: true,
+          fileName: true,
+          mimeType: true,
+          sizeBytes: true,
+          entityType: true,
+          entityId: true,
+          status: true,
+          uploadedById: true,
+          createdAt: true,
+        },
+      });
+      return document;
+    } catch (metadataError) {
+      let persistedDocument;
+      try {
+        persistedDocument = await this.prisma.storedDocument.findFirst({
+          where: { storageKey: stored.key },
+          select: {
+            id: true,
+            fileName: true,
+            mimeType: true,
+            sizeBytes: true,
+            entityType: true,
+            entityId: true,
+            status: true,
+            uploadedById: true,
+            createdAt: true,
+          },
+        });
+      } catch (verificationError) {
+        const reason = verificationError instanceof Error ? verificationError.name : "UnknownError";
+        this.logger.error(`Document metadata outcome is uncertain for storage key ${stored.key} (${reason}).`);
+        throw new ServiceUnavailableException(
+          "Document metadata outcome is uncertain; storage reconciliation requires operator attention.",
+        );
+      }
+      if (persistedDocument) return persistedDocument;
+      try {
+        await this.storage.delete(stored.key);
+      } catch (cleanupError) {
+        this.storage.logCleanupFailure(stored.key, cleanupError);
+        throw new ServiceUnavailableException(
+          "Document metadata was not saved; storage cleanup requires operator attention.",
+        );
+      }
+      throw metadataError;
+    }
   }
 
   @Get(":id/download")
@@ -66,9 +123,56 @@ export class DocumentsController {
     await authorizeStoredDocument(this.prisma, req.user, doc);
     const buf = await this.storage.get(doc.storageKey);
     res.setHeader("Content-Type", doc.mimeType);
+    res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Disposition", `attachment; filename="${safeDownloadName(doc.fileName)}"`);
     res.send(buf);
+  }
+
+  @Delete(":id")
+  @RequirePermission("document.delete")
+  async delete(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
+    const document = await this.prisma.storedDocument.findUnique({ where: { id } });
+    if (!document) throw new NotFoundException("Document not found");
+    await authorizeStoredDocument(this.prisma, req.user, document);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.storedDocument.delete({ where: { id } });
+      await this.audit.log({
+        userId: req.user.id,
+        action: "document.delete",
+        entity: "StoredDocument",
+        entityId: id,
+        before: { mimeType: document.mimeType, sizeBytes: document.sizeBytes },
+        after: { storageCleanup: "pending" },
+        ipAddress: req.ip,
+        db: tx,
+      });
+    });
+    try {
+      await this.storage.delete(document.storageKey);
+    } catch (cleanupError) {
+      this.storage.logCleanupFailure(document.storageKey, cleanupError);
+      throw new ServiceUnavailableException(
+        "Document record was removed; storage object cleanup requires operator attention.",
+      );
+    }
+    try {
+      await this.audit.log({
+        userId: req.user.id,
+        action: "document.storage_cleanup",
+        entity: "StoredDocument",
+        entityId: id,
+        after: { status: "complete" },
+        ipAddress: req.ip,
+      });
+    } catch (auditError) {
+      const reason = auditError instanceof Error ? auditError.name : "UnknownError";
+      this.logger.error(`Document deletion audit confirmation is pending for ${id} (${reason}).`);
+      throw new ServiceUnavailableException(
+        "Document and storage object were removed; audit confirmation requires operator attention.",
+      );
+    }
+    return { ok: true };
   }
 }
 
