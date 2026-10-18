@@ -3,7 +3,7 @@ import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { NotifyService } from "../common/notify.service";
-import { assertBranch, assertPeopleLinks, branchWhere } from "../auth/record-scope";
+import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
 import { AuthUser } from "../auth/auth.types";
 
 const TERMINAL = new Set(["Closed", "Cancelled"]);
@@ -45,6 +45,13 @@ export class ComplaintsService {
 
   async list(user: AuthUser, query: Record<string, string>) {
     const where: Record<string, unknown> = branchWhere(user);
+    if (!user.isSuperAdmin) {
+      const peopleScope = customerBranchWhere(user);
+      where.AND = [
+        { customer: { is: peopleScope } },
+        { OR: [{ passengerId: null }, { passenger: { is: { customer: { is: peopleScope } } } }] },
+      ];
+    }
     if (query.status) where.status = query.status;
     if (query.module) where.module = query.module;
     if (query.category) where.category = query.category;
@@ -78,6 +85,7 @@ export class ComplaintsService {
     if (!row) throw new NotFoundException("Complaint not found");
     assertBranch(user, row.branchId);
     await assertPeopleLinks(this.prisma, user, row);
+    await assertPeopleLinksInBranch(this.prisma, row, row.branchId);
     const documents = await this.prisma.storedDocument.findMany({
       where: { entityType: "complaint", entityId: id },
       orderBy: { createdAt: "desc" },
@@ -91,6 +99,7 @@ export class ComplaintsService {
     if (!String(b.description || "").trim()) throw new BadRequestException("Description is required.");
     assertBranch(user, user.defaultBranchId);
     await assertPeopleLinks(this.prisma, user, b);
+    await assertPeopleLinksInBranch(this.prisma, b, user.defaultBranchId);
     const complaintNumber = await this.seq.next("cmp", "CMP");
     const row = await this.prisma.complaint.create({
       data: {
@@ -139,6 +148,14 @@ export class ComplaintsService {
     assertBranch(user, existing.branchId);
     if (TERMINAL.has(existing.status)) throw new BadRequestException("Closed or cancelled complaints cannot be edited.");
     await assertPeopleLinks(this.prisma, user, body);
+    await assertPeopleLinksInBranch(
+      this.prisma,
+      {
+        customerId: existing.customerId,
+        passengerId: body.passengerId === undefined ? existing.passengerId : body.passengerId,
+      },
+      existing.branchId,
+    );
     const data: Record<string, unknown> = {};
     const keys: (keyof ComplaintBody)[] = [
       "passengerId",

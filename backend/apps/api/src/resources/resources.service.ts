@@ -4,7 +4,7 @@ import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, can } from "../auth/auth.types";
 import { RESOURCES, actionPermission } from "./registry";
-import { assertPassengerBranch, assertPeopleLinks, assertRecordBranch, branchIds, customerBranchWhere } from "../auth/record-scope";
+import { assertPassengerBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchIds, customerBranchWhere } from "../auth/record-scope";
 import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/document-scope";
 import { hashPassword, assertPasswordPolicy } from "../common/password";
 
@@ -196,6 +196,7 @@ export class ResourcesService {
       data.profit = Number(data.net) - cost;
     }
     await assertPeopleLinks(this.prisma, user, data);
+    if (resource === "complaints") await assertPeopleLinksInBranch(this.prisma, data, data.branchId);
     if (data.leadId) await assertRecordBranch(this.prisma, user, "lead", data.leadId);
     if (data.quotationId) await assertRecordBranch(this.prisma, user, "quotation", data.quotationId);
     if (resource === "passengers") await assertPassengerBranch(this.prisma, user, data.customerId);
@@ -237,6 +238,16 @@ export class ResourcesService {
       delete data.password;
     }
     await assertPeopleLinks(this.prisma, user, data);
+    if (resource === "complaints") {
+      await assertPeopleLinksInBranch(
+        this.prisma,
+        {
+          customerId: Object.hasOwn(data, "customerId") ? data.customerId : before.customerId,
+          passengerId: Object.hasOwn(data, "passengerId") ? data.passengerId : before.passengerId,
+        },
+        Object.hasOwn(data, "branchId") ? data.branchId : before.branchId,
+      );
+    }
     if (data.leadId) await assertRecordBranch(this.prisma, user, "lead", data.leadId);
     if (data.quotationId) await assertRecordBranch(this.prisma, user, "quotation", data.quotationId);
     if (resource === "passengers" && Object.hasOwn(data, "customerId")) await assertPassengerBranch(this.prisma, user, data.customerId);

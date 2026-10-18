@@ -170,6 +170,60 @@ test("dedicated Umrah and complaint paths cannot attach or expose foreign passen
   await assert.rejects(complaints.remove(user, "b"), { status: 404 });
 });
 
+test("complaints keep linked people in the complaint branch across dedicated and generic writers", async () => {
+  const multiBranchUser = {
+    ...user,
+    branchIds: ["a", "b"],
+    permissions: [...user.permissions, "complaint.create", "complaint.edit"],
+  };
+  const existing = { id: "complaint-a", branchId: "a", customerId: "customer-a", passengerId: "passenger-b", status: "Open" };
+  let creates = 0;
+  let updates = 0;
+  let listWhere: Record<string, unknown> | undefined;
+  const db = {
+    customer: {
+      findUnique: async ({ where }: { where: { id: string } }) => ({
+        branchId: where.id.endsWith("-b") ? "b" : "a",
+        leadId: null,
+      }),
+    },
+    passenger: { findUnique: async () => ({ customerId: "customer-b" }) },
+    complaint: {
+      findUnique: async () => existing,
+      findMany: async ({ where }: { where: Record<string, unknown> }) => { listWhere = where; return []; },
+      create: async () => { creates++; return existing; },
+      update: async () => { updates++; return existing; },
+    },
+  };
+  const complaints = new ComplaintsService(db as never, { next: async () => "CMP1" } as never, audit as never, {} as never);
+  await assert.rejects(
+    complaints.create(multiBranchUser, { customerId: "customer-a", passengerId: "passenger-b", description: "test" }),
+    { status: 404 },
+  );
+  await assert.rejects(complaints.update(multiBranchUser, "complaint-a", { passengerId: "passenger-b" }), { status: 404 });
+  await assert.rejects(complaints.get(multiBranchUser, "complaint-a"), { status: 404 });
+  assert.equal(creates, 0);
+  assert.equal(updates, 0);
+
+  const resources = new ResourcesService(db as never, { next: async () => "CMP1" } as never, audit as never);
+  await assert.rejects(
+    resources.create("complaints", multiBranchUser, { customerId: "customer-a", passengerId: "passenger-b", description: "test" }),
+    { status: 404 },
+  );
+  await assert.rejects(resources.update("complaints", "complaint-a", multiBranchUser, { passengerId: "passenger-b" }), { status: 404 });
+  assert.equal(creates, 0);
+  assert.equal(updates, 0);
+  await resources.update("complaints", "complaint-a", multiBranchUser, { passengerId: null });
+  assert.equal(updates, 1);
+
+  await complaints.list(user, {});
+  const branchScope = { branchId: { in: ["a"] }, AND: [{ OR: [{ leadId: null }, { lead: { branchId: { in: ["a"] } } }] }] };
+  assert.deepEqual(listWhere?.AND, [
+    { customer: { is: branchScope } },
+    { OR: [{ passengerId: null }, { passenger: { is: { customer: { is: branchScope } } } }] },
+  ]);
+});
+
 test("passenger ownership follows the same linked-lead restriction as dedicated CRM routes", async () => {
   const svc = new ResourcesService({ passenger: { findUnique: async () => ({ customerId: "a" }) }, customer: { findUnique: async () => ({ branchId: "a", leadId: "foreign" }) }, lead: { findUnique: async () => ({ branchId: "b" }) } } as never, {} as never, audit as never);
   await assert.rejects(svc.get("passengers", "p", user), { status: 404 });

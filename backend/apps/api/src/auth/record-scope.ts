@@ -48,3 +48,30 @@ export async function assertPeopleLinks(db: ScopeDb, user: AuthUser, body: { cus
     for (const id of body.passengerIds) await assertRecordBranch(db, user, "passenger", id);
   }
 }
+
+export async function assertPeopleLinksInBranch(
+  db: ScopeDb,
+  body: { customerId?: unknown; passengerId?: unknown },
+  branchId: unknown,
+) {
+  if (branchId == null) return;
+  if (typeof branchId !== "string" || !branchId) throw new NotFoundException();
+
+  const assertCustomerBranch = async (id: unknown) => {
+    if (typeof id !== "string" || !id) throw new NotFoundException();
+    const customer = await db.customer.findUnique({ where: { id } });
+    if (!customer || customer.branchId !== branchId) throw new NotFoundException();
+    if (customer.leadId) {
+      const lead = await db.lead.findUnique({ where: { id: customer.leadId } });
+      if (!lead || lead.branchId !== branchId) throw new NotFoundException();
+    }
+  };
+
+  if (body.customerId) await assertCustomerBranch(body.customerId);
+  if (body.passengerId) {
+    if (typeof body.passengerId !== "string") throw new NotFoundException();
+    const passenger = await db.passenger.findUnique({ where: { id: body.passengerId } });
+    if (!passenger?.customerId) throw new NotFoundException();
+    await assertCustomerBranch(passenger.customerId);
+  }
+}

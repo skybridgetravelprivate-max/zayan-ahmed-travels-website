@@ -76,6 +76,34 @@ test("website linking requires super-admin and explicit ownership confirmation",
   await assert.rejects(controller.verify({ websiteCustomerId: "web", crmCustomerId: "crm" }, request(admin)), { status: 400 });
 });
 
+test("verified website link checks normalized email and writes the link and audit in one transaction", async () => {
+  let websiteUpdate: unknown;
+  let auditRecord: unknown;
+  const tx = {
+    websiteCustomer: {
+      findUnique: async () => ({ id: "web", email: "owner@example.test" }),
+      update: async (args: unknown) => { websiteUpdate = args; },
+    },
+    customer: { findUnique: async () => ({ id: "crm", email: " OWNER@example.test ", deletedAt: null }) },
+    auditLog: { create: async (args: unknown) => { auditRecord = args; } },
+  };
+  const controller = new WebsiteCustomerLinkController({ $transaction: async (run: (db: typeof tx) => unknown) => run(tx) } as never);
+  assert.deepEqual(
+    await controller.verify({ ownershipVerified: true, websiteCustomerId: "web", crmCustomerId: "crm" }, request(admin)),
+    { ok: true },
+  );
+  assert.deepEqual(websiteUpdate, { where: { id: "web" }, data: { crmCustomerId: "crm" } });
+  assert.deepEqual(auditRecord, {
+    data: {
+      userId: admin.id,
+      action: "VERIFY_WEBSITE_CUSTOMER_LINK",
+      entity: "WebsiteCustomer",
+      entityId: "web",
+      after: { crmCustomerId: "crm" },
+    },
+  });
+});
+
 test("global financial dashboard does not expose company data to scoped staff", async () => {
   const controller = new DashboardController({} as never);
   await assert.rejects(controller.summary({}, request()), { status: 403 });
@@ -87,6 +115,59 @@ test("receipt rejects a customer mismatch before any financial posting", async (
   const tx = { umrahBooking: { findUnique: async () => ({ customerId: "owner", branchId: "branch-a" }) } };
   const controller = new FinanceController({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, {} as never, { postReceipt: async () => { posted = true; } } as never);
   await assert.rejects(controller.createReceipt({ bookingId: "booking", customerId: "other", amount: 10, method: "CASH" }, request(admin)), { status: 400 });
+  assert.equal(posted, false);
+});
+
+test("receipt journal, balance, receipt and audit share the serializable transaction", async () => {
+  const writes: string[] = [];
+  let isolationLevel: string | undefined;
+  const tx = {
+    umrahBooking: {
+      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 5, net: 100, status: "DRAFT" }),
+      update: async ({ data }: { data: { paid: { toNumber(): number } } }) => { writes.push("booking"); assert.equal(data.paid.toNumber(), 15); },
+    },
+    receipt: { create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
+  };
+  const controller = new FinanceController(
+    { $transaction: async (run: (db: typeof tx) => unknown, options: { isolationLevel: string }) => { isolationLevel = options.isolationLevel; return run(tx); } } as never,
+    { next: async (_key: string, _prefix: string, db: unknown) => { assert.equal(db, tx); writes.push("sequence"); return "REC1"; } } as never,
+    { log: async (input: { db: unknown }) => { assert.equal(input.db, tx); writes.push("audit"); } } as never,
+    { postReceipt: async (input: { db: unknown }) => { assert.equal(input.db, tx); writes.push("journal"); return { id: "journal" }; } } as never,
+  );
+  const result = await controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin));
+  assert.deepEqual(result, { id: "receipt" });
+  assert.equal(isolationLevel, "Serializable");
+  assert.deepEqual(writes, ["journal", "sequence", "receipt", "booking", "audit"]);
+});
+
+test("receipt posting requests serializable isolation and propagates transaction conflicts", async () => {
+  let isolationLevel: string | undefined;
+  const tx = {
+    umrahBooking: {
+      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 0, net: 100, status: "DRAFT" }),
+      update: async () => ({}),
+    },
+    receipt: { create: async () => ({ id: "receipt" }) },
+  };
+  const conflict = new Error("serialization conflict");
+  const prisma = {
+    $transaction: async (_run: (db: typeof tx) => unknown, options: { isolationLevel: string }) => {
+      isolationLevel = options.isolationLevel;
+      throw conflict;
+    },
+  };
+  let posted = false;
+  const controller = new FinanceController(
+    prisma as never,
+    {} as never,
+    {} as never,
+    { postReceipt: async () => { posted = true; return { id: "journal" }; } } as never,
+  );
+  await assert.rejects(
+    controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin)),
+    error => error === conflict,
+  );
+  assert.equal(isolationLevel, "Serializable");
   assert.equal(posted, false);
 });
 
