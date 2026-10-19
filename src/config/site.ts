@@ -56,6 +56,7 @@ export const navItems = [
   { label: "Corporate", href: "/corporate" },
   { label: "Groups", href: "/group-booking" },
   { label: "Account", href: "/account" },
+  { label: "Staff login", href: "/admin/login" },
 ] as const;
 
 export const policyLinks = [
@@ -66,3 +67,4 @@ export const policyLinks = [
   { label: "Cancellations", href: "/cancellation-policy" },
   { label: "Payments", href: "/payment-methods" },
 ] as const;
+
