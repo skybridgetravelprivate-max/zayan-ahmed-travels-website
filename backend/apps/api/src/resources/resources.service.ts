@@ -9,6 +9,7 @@ import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/do
 import { hashPassword, assertPasswordPolicy } from "../common/password";
 import { Prisma } from "@prisma/client";
 import { assertHotelRoomLinks } from "../reservation/hotel-links";
+import { assertBookablePackage } from "../umrah/package-catalog";
 
 function redactSecrets(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
@@ -188,6 +189,7 @@ export class ResourcesService {
       data.net = selling - discount + tax;
     }
     if (resource === "umrah-bookings") {
+      await assertBookablePackage(this.prisma, data.packageId);
       const selling = Number(data.sellingPrice ?? 0);
       const discount = Number(data.discount ?? 0);
       const tax = Number(data.tax ?? 0);
@@ -229,6 +231,7 @@ export class ResourcesService {
     await this.assertRowBranch(user, meta, before as Record<string, unknown>);
     if (resource === "hotel-bookings" && await this.prisma.journalEntry.findFirst({ where: { module: "reservation", sourceId: id, status: "POSTED" } })) throw new ForbiddenException("Use the reservation workflow for posted bookings");
     const data = this.sanitize(resource, body, false);
+    if (resource === "umrah-bookings" && Object.hasOwn(data, "packageId")) await assertBookablePackage(this.prisma, data.packageId);
     if (meta.branchField && Object.hasOwn(data, meta.branchField)) {
       await this.assertRowBranch(user, meta, data);
     }

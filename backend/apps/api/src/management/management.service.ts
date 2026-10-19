@@ -9,6 +9,7 @@ import { ResourcesService } from "../resources/resources.service";
 import { RESOURCES } from "../resources/registry";
 import { assertPasswordPolicy, hashPassword } from "../common/password";
 import { allowedModule, fieldsFor, MANAGEMENT, ManagementField, modelFor, moduleContract } from "./management.catalog";
+import { packageCatalog } from "../umrah/package-catalog";
 
 export function parseFields(fields: ManagementField[], value: unknown, create: boolean) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new BadRequestException("Invalid form");
@@ -33,7 +34,7 @@ export function parseFields(fields: ManagementField[], value: unknown, create: b
     } else {
       if (typeof v !== "string") throw new BadRequestException(`Invalid ${f.label}`);
       const text = v.trim();
-      if (!text || text.length > (/[Nn]otes|description|body|terms/.test(f.name) ? 10000 : 300) || /\u0000/.test(text)) throw new BadRequestException(`Invalid ${f.label}`);
+      if (!text || text.length > (/[Nn]otes|description|body|terms|flightInfo/.test(f.name) ? 10000 : 300) || /\u0000/.test(text)) throw new BadRequestException(`Invalid ${f.label}`);
       if (f.options && !f.options.includes(text)) throw new BadRequestException(`Invalid ${f.label}`);
       if (f.reference && !/^[A-Za-z0-9_-]{1,80}$/.test(text)) throw new BadRequestException(`Invalid ${f.label}`);
       if (/email/i.test(f.name) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) throw new BadRequestException("Invalid email");
@@ -56,6 +57,15 @@ export class ManagementService {
 
   catalog(user: AuthUser) {
     return Object.keys(MANAGEMENT).filter(key => allowedModule(user, key)).map(key => moduleContract(user, key));
+  }
+  async umrahCatalog(user: AuthUser) {
+    if (!can(user, "umrah.view")) throw new ForbiddenException();
+    const rows = await this.prisma.umrahPackage.findMany({ take: 1001, orderBy: { packageNumber: "asc" }, select: {
+      id: true, packageNumber: true, flightInfo: true, departureCity: true, arrivalCity: true, departureDate: true,
+      makkahNights: true, madinahNights: true, roomType: true, adultPrice: true, childPrice: true, infantPrice: true,
+      status: true, isPublic: true, description: true, makkahHotel: { select: { name: true, distance: true } }, madinahHotel: { select: { name: true, distance: true } },
+    } });
+    return { ...packageCatalog(user, rows.slice(0, 1000)), truncated: rows.length > 1000 };
   }
   async options(user: AuthUser, resource: string, q = "") {
     if (q.length > 100) throw new BadRequestException("Invalid search");

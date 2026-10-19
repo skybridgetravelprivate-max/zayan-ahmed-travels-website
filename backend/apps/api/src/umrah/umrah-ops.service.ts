@@ -6,6 +6,7 @@ import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
 import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
+import { assertBookablePackage } from "./package-catalog";
 
 const money = (n: number) => new Prisma.Decimal(Number(n || 0).toFixed(2));
 
@@ -58,6 +59,7 @@ export class UmrahOpsService {
     if (!body.id) assertCan(user, "umrah.create");
     const customerId = String(body.customerId || "");
     if (!customerId) throw new BadRequestException("Customer is required.");
+    await assertBookablePackage(db, body.packageId);
     await assertPeopleLinks(db, user, body);
     if (body.id) await assertRecordBranch(db, user, "umrahBooking", body.id);
     else {
