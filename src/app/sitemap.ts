@@ -10,7 +10,7 @@ import { demoPackages } from "@/config/umrah";
 import { demoVisas } from "@/config/visa";
 
 const staticPaths = [
-  ...navItems.filter((item) => item.href !== "/account").map((item) => item.href),
+  ...navItems.filter((item) => item.href !== "/account" && !item.href.startsWith("/admin")).map((item) => item.href),
   ...policyLinks.map((item) => item.href),
 ];
 
@@ -35,3 +35,4 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: new URL(path, origin).href,
   }));
 }
+
