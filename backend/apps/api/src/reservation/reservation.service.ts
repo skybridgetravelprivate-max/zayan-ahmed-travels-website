@@ -6,6 +6,7 @@ import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
 import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
+import { assertHotelRoomLinks } from "./hotel-links";
 
 export type StayRoomInput = {
   id?: string;
@@ -211,6 +212,7 @@ export class ReservationService {
 
     const bookingId = await this.prisma.$transaction(
       async (tx) => {
+        for (const segment of input.segments) for (const room of segment.rooms) await assertHotelRoomLinks(tx, { ...room, hotelId: segment.hotelId });
         if (input.id) {
           await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${input.id} FOR UPDATE`;
           const existing = await tx.hotelBooking.findUnique({ where: { id: input.id }, include: { staySegments: { include: { rooms: true } } } });

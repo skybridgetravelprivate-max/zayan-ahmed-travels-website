@@ -3,10 +3,43 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WorkflowsController } from "../workflows/workflows.controller";
 import { UmrahOpsService } from "../umrah/umrah-ops.service";
+import { CrmService } from "../crm/crm.service";
+import { ResourcesService } from "../resources/resources.service";
+import { ReservationService } from "../reservation/reservation.service";
+import { assertHotelRoomLinks } from "../reservation/hotel-links";
+import { ManagementController } from "./management.controller";
+import { CrmController } from "../crm/crm.controller";
+import { FinanceController } from "../finance/finance.controller";
+import { ComplaintsController } from "../complaints/complaints.controller";
+import { ReservationController } from "../reservation/reservation.controller";
+import { UmrahOpsController } from "../umrah/umrah-ops.controller";
+import { RequestMethod } from "@nestjs/common";
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { STAFF_WORKFLOWS } from "../../../../../src/lib/staff-workflows";
 import type { AuthUser } from "../auth/auth.types";
 
 const user: AuthUser = { id: "synthetic-user", email: "synthetic@example.invalid", username: "synthetic", fullName: "Synthetic", isSuperAdmin: false, branchIds: ["a"], defaultBranchId: "a", roleNames: [], permissions: ["ticket.create", "transport.create", "umrah.create"] };
 const req = { user } as never;
+
+test("every management workflow targets an existing POST route with the matching permission", () => {
+  const routes = new Map<string, string | undefined>();
+  for (const controller of [ManagementController, CrmController, FinanceController, ComplaintsController, ReservationController, UmrahOpsController, WorkflowsController]) {
+    const prefix = Reflect.getMetadata(PATH_METADATA, controller);
+    for (const name of Object.getOwnPropertyNames(controller.prototype)) {
+      const handler = controller.prototype[name as keyof typeof controller.prototype];
+      if (typeof handler !== "function" || Reflect.getMetadata(METHOD_METADATA, handler) !== RequestMethod.POST) continue;
+      const path = Reflect.getMetadata(PATH_METADATA, handler);
+      routes.set(`/${["api", prefix, path].join("/").split("/").filter(Boolean).join("/")}`, Reflect.getMetadata("permission", handler));
+    }
+  }
+  for (const actions of Object.values(STAFF_WORKFLOWS)) for (const action of actions) {
+    assert.ok(routes.has(action.path), `Missing backend route for ${action.label}: ${action.path}`);
+    // Management routes authorize inside the service; all other controllers use
+    // the permission decorator, which must agree with the frontend action.
+    if (!action.path.startsWith("/api/v1/management/")) assert.equal(routes.get(action.path), action.permission, action.label);
+    for (const field of action.fields) assert.ok(field.name && field.type && field.label, `${action.label}: invalid form field`);
+  }
+});
 
 function harness(failCost = false) {
   const state = { records: [] as unknown[], journals: [] as unknown[], audits: [] as unknown[], vouchers: [] as unknown[] };
@@ -79,4 +112,45 @@ test("Umrah creation passes the transaction through number, ledger and audit ope
   await assert.rejects(failed.umrah.save(user, body));
   assert.equal(failed.state.records.length, 0);
   assert.equal(failed.state.journals.length, 0);
+});
+
+test("quotation items reject invalid quantities and amounts before database access", async () => {
+  const svc = new CrmService({} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  for (const data of [{ quantity: 0 }, { quantity: -1 }, { quantity: 1.5 }, { quantity: Infinity }, { quantity: 2147483648 }, { quantity: "2" }, { cost: -1 }, { sellingPrice: NaN }, { cost: {} }, { description: 42 }]) {
+    await assert.rejects(svc.addQuoteItem("quote", { description: "Synthetic", ...data } as never), { status: 400 });
+  }
+});
+
+test("quotation item quantities and amounts reach the existing recalculation", async () => {
+  let created: unknown;
+  const db = { quotation: { findUnique: async () => ({ id: "quote", items: [{ quantity: 2, sellingPrice: 10, cost: 5 }], discount: 0, tax: 0 }), update: async ({ data }: { data: unknown }) => data }, quotationItem: { create: async ({ data }: { data: unknown }) => { created = data; } } };
+  const svc = new CrmService(db as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  const result = await svc.addQuoteItem("quote", { description: " Synthetic ", quantity: 2, sellingPrice: 10, cost: 5 });
+  assert.deepEqual(created, { quotationId: "quote", description: "Synthetic", quantity: 2, sellingPrice: 10, cost: 5 });
+  assert.deepEqual(result, { sellingTotal: 20, costTotal: 10, net: 20 });
+});
+
+test("hotel references reject foreign, missing, deleted and mismatched physical rooms", async () => {
+  const db = { hotelRoomType: { findUnique: async ({ where }: { where: { id: string } }) => where.id === "missing" ? null : { hotelId: where.id === "foreign" ? "b" : "a" } }, hotelRoom: { findUnique: async ({ where }: { where: { id: string } }) => ({ hotelId: where.id === "foreign" ? "b" : "a", roomTypeId: "type-a", deletedAt: where.id === "deleted" ? new Date() : null }) } };
+  await assertHotelRoomLinks(db as never, { hotelId: "a", roomTypeId: "type-a", hotelRoomId: "room-a" });
+  for (const input of [{ hotelId: "a", roomTypeId: "foreign" }, { hotelId: "a", roomTypeId: "missing" }, { hotelId: "a", hotelRoomId: "foreign" }, { hotelId: "a", hotelRoomId: "deleted" }, { hotelId: "a", roomTypeId: "type-other", hotelRoomId: "room-a" }]) await assert.rejects(assertHotelRoomLinks(db as never, input), { status: 400 });
+});
+
+test("generic physical-room create and edit reject another hotel's room type before writes", async () => {
+  let writes = 0;
+  const db = { hotelRoomType: { findUnique: async () => ({ hotelId: "b" }) }, hotelRoom: { findUnique: async () => ({ id: "room", hotelId: "a", roomTypeId: "old" }), create: async () => { writes++; }, update: async () => { writes++; } } };
+  const svc = new ResourcesService(db as never, {} as never, {} as never);
+  const admin = { ...user, isSuperAdmin: true };
+  await assert.rejects(svc.create("hotel-physical-rooms", admin, { hotelId: "a", roomNumber: "1", roomTypeId: "foreign" }), { status: 400 });
+  await assert.rejects(svc.update("hotel-physical-rooms", "room", admin, { roomTypeId: "foreign" }), { status: 400 });
+  assert.equal(writes, 0);
+});
+
+test("reservation graph rejects another hotel's room type inside its transaction", async () => {
+  let writes = 0;
+  const tx = { hotelRoomType: { findUnique: async () => ({ hotelId: "b" }) }, hotelBooking: { create: async () => { writes++; } } };
+  const db = { $transaction: async (run: (tx: unknown) => unknown) => run(tx) };
+  const svc = new ReservationService(db as never, {} as never, {} as never, {} as never);
+  await assert.rejects(svc.save({ ...user, isSuperAdmin: true }, { segments: [{ hotelId: "a", checkIn: "2026-10-20", checkOut: "2026-10-22", rooms: [{ roomTypeId: "foreign" }] }] }), { status: 400 });
+  assert.equal(writes, 0);
 });

@@ -19,7 +19,7 @@ export const STAFF_WORKFLOWS: Record<string, StaffWorkflow[]> = {
   customers: [workflow("quote", "Create customer quotation", "quotation.create", "/api/v1/crm/customers/:id/quotation", [])],
   quotations: [
     workflow("create", "New quotation", "quotation.create", "/api/v1/crm/quotations", [ref("customerId", "Customer", "customers"), ref("leadId", "Lead", "leads")], false),
-    workflow("item", "Add quotation item", "quotation.edit", "/api/v1/crm/quotations/:id/items", [text("description", "Description"), { ...money("quantity", "Quantity"), type: "Int" }, money("sellingPrice", "Selling price"), money("cost", "Cost")]),
+    workflow("item", "Add quotation item", "quotation.edit", "/api/v1/crm/quotations/:id/items", [text("description", "Description"), { ...money("quantity", "Quantity"), type: "Int", min: 1 }, money("sellingPrice", "Selling price"), money("cost", "Cost")]),
     workflow("send", "Mark quotation sent", "quotation.edit", "/api/v1/crm/quotations/:id/send", [], true, { caution: "Updates quotation status. This does not imply an email was delivered." }),
   ],
   complaints: [

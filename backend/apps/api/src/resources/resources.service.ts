@@ -8,6 +8,7 @@ import { assertPassengerBranch, assertPeopleLinks, assertPeopleLinksInBranch, as
 import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/document-scope";
 import { hashPassword, assertPasswordPolicy } from "../common/password";
 import { Prisma } from "@prisma/client";
+import { assertHotelRoomLinks } from "../reservation/hotel-links";
 
 function redactSecrets(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
@@ -206,6 +207,7 @@ export class ResourcesService {
       if (!doc) throw new NotFoundException();
       await authorizeStoredDocument(this.prisma, user, doc);
     }
+    if (["hotel-physical-rooms", "hotel-bookings"].includes(resource)) await assertHotelRoomLinks(this.prisma, data);
     const created = await this.delegate(resource).create({ data });
     await this.audit.log({
       userId: user.id,
@@ -257,6 +259,7 @@ export class ResourcesService {
       if (!doc) throw new NotFoundException();
       await authorizeStoredDocument(this.prisma, user, doc);
     }
+    if (["hotel-physical-rooms", "hotel-bookings"].includes(resource)) await assertHotelRoomLinks(this.prisma, { ...before, ...data });
     const updated = await this.delegate(resource).update({ where: { id }, data });
     await this.audit.log({
       userId: user.id,

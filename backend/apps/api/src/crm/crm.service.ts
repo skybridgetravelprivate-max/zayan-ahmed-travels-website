@@ -759,16 +759,22 @@ export class CrmService {
   }
 
   async addQuoteItem(id: string, body: { description: string; quantity?: number; sellingPrice?: number; cost?: number }) {
+    if (!body || typeof body.description !== "string" || !body.description.trim() || body.description.length > 10000) throw new BadRequestException("Description required (maximum 10000 characters)");
+    const quantity = body.quantity ?? 1;
+    const sellingPrice = body.sellingPrice ?? 0;
+    const cost = body.cost ?? 0;
+    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647) throw new BadRequestException("Quantity must be a positive whole number");
+    if ([sellingPrice, cost].some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1e12)) throw new BadRequestException("Enter valid non-negative quotation amounts");
     const q = await this.prisma.quotation.findUnique({ where: { id } });
     if (!q) throw new NotFoundException();
     if (!body.description?.trim()) throw new BadRequestException("Description required");
     await this.prisma.quotationItem.create({
       data: {
         quotationId: id,
-        description: body.description,
-        quantity: Number(body.quantity ?? 1),
-        sellingPrice: Number(body.sellingPrice ?? 0),
-        cost: Number(body.cost ?? 0),
+        description: body.description.trim(),
+        quantity,
+        sellingPrice,
+        cost,
       },
     });
     return this.recalcQuote(id);
