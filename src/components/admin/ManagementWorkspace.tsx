@@ -63,7 +63,7 @@ function Field({ field, row, disabled, create }: { field: ManagementField; row: 
     {field.reference ? <ReferenceInput field={{ ...field, required }} value={initial} disabled={disabled} /> : field.type === "Boolean" ? <select {...base} id={`field-${field.name}`} defaultValue={initial || "false"}><option value="false">No</option><option value="true">Yes</option></select>
       : field.options ? <select {...base} id={`field-${field.name}`}><option value="">Select…</option>{field.options.map(option => <option key={option} value={option}>{field.optionLabels?.[option] || option.replaceAll("_", " ")}</option>)}</select>
       : /notes|description|body|terms/i.test(field.name) ? <textarea {...base} id={`field-${field.name}`} rows={4} maxLength={10000} />
-      : <input {...base} id={`field-${field.name}`} type={field.type === "DateTime" ? "datetime-local" : ["Int", "Float", "Decimal"].includes(field.type) ? "number" : /email/i.test(field.name) ? "email" : "text"} step={field.type === "Int" ? "1" : "any"} maxLength={300} defaultValue={field.type === "DateTime" ? initial.slice(0,16) : initial} />}
+      : <input {...base} id={`field-${field.name}`} type={field.type === "DateTime" ? "datetime-local" : ["Int", "Float", "Decimal"].includes(field.type) ? "number" : /email/i.test(field.name) ? "email" : "text"} min={field.min ?? (["Int", "Float", "Decimal"].includes(field.type) ? 0 : undefined)} step={field.type === "Int" ? "1" : "any"} maxLength={300} defaultValue={field.type === "DateTime" ? initial.slice(0,16) : initial} />}
   </div>;
 }
 
@@ -167,7 +167,7 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
       for (const field of workflow.fields) {
         if (["Int", "Float", "Decimal"].includes(field.type) && data[field.name] !== undefined) {
           const n = Number(data[field.name]);
-          if (!Number.isFinite(n) || n < 0 || (field.type === "Int" && !Number.isInteger(n))) throw new Error("Enter valid non-negative amounts and whole quantities.");
+          if (!Number.isFinite(n) || n < (field.min ?? 0) || (field.type === "Int" && !Number.isInteger(n))) throw new Error(`Enter a valid ${field.label.toLowerCase()} (minimum ${field.min ?? 0}${field.type === "Int" ? ", whole numbers only" : ""}).`);
           data[field.name] = n;
         }
       }

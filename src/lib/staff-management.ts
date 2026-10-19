@@ -1,4 +1,4 @@
-export type ManagementField = { name: string; label: string; type: string; required: boolean; nullable: boolean; options?: string[]; optionLabels?: Record<string, string>; reference?: string };
+export type ManagementField = { name: string; label: string; type: string; required: boolean; nullable: boolean; options?: string[]; optionLabels?: Record<string, string>; reference?: string; min?: number };
 export type ManagementModule = { key: string; title: string; group: string; fields: ManagementField[]; writeFields: ManagementField[]; canCreate: boolean; canEdit: boolean };
 export type ManagementRow = { id: string; version: string | null } & Record<string, unknown>;
 export function displayValue(value: unknown): string {
