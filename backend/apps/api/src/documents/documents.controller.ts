@@ -191,7 +191,7 @@ export class PdfController {
     const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true, customer: true } });
     if (!q) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, q.quotationNumber, m, (doc) => {
+    return this.pdf.pipeA4(res, q.quotationNumber, m, (doc) => {
       doc.fontSize(16).text(`Quotation ${q.quotationNumber}`);
       this.pdf.writeKV(doc, [
         ["Document no.", q.quotationNumber],
@@ -216,14 +216,14 @@ export class PdfController {
     });
     if (!b) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, b.bookingNumber, m, (doc) => {
+    return this.pdf.pipeA4(res, b.bookingNumber, m, (doc) => {
       doc.fontSize(16).text(`Umrah Booking ${b.bookingNumber}`);
       this.pdf.writeKV(doc, [
         ["Document no.", b.bookingNumber],
         ["Date", b.createdAt.toDateString()],
         ["Customer", b.customer.fullName],
-        ["Departure", b.departureDate?.toDateString() || "—"],
-        ["Return", b.returnDate?.toDateString() || "—"],
+        ["Departure", b.departureDate?.toDateString() || "-"],
+        ["Return", b.returnDate?.toDateString() || "-"],
       ]);
       (b.passengers || []).forEach((p) => doc.text(`PAX: ${p.passenger?.fullName || p.passengerId}`));
       this.pdf.customerLines(m, [
@@ -248,7 +248,7 @@ export class PdfController {
     });
     if (!v) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, v.voucherNo, m, (doc) => {
+    return this.pdf.pipeA4(res, v.voucherNo, m, (doc) => {
       doc.fontSize(16).text(`Accommodation Voucher ${v.voucherNo}`);
       this.pdf.writeKV(doc, [
         ["Document no.", v.voucherNo],
@@ -268,7 +268,7 @@ export class PdfController {
     });
     if (!b) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, b.bookingNumber, m, (doc) => {
+    return this.pdf.pipeA4(res, b.bookingNumber, m, (doc) => {
       doc.fontSize(16).text(`Hotel Reservation ${b.bookingNumber}`);
       this.pdf.writeKV(doc, [
         ["Document no.", b.bookingNumber],
@@ -289,12 +289,25 @@ export class PdfController {
     const v = await this.prisma.transportVoucher.findUnique({ where: { id }, include: { booking: true } });
     if (!v) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, v.voucherNo, m, (doc) => {
+    return this.pdf.pipeA4(res, v.voucherNo, m, (doc) => {
       doc.fontSize(16).text(`Transport Voucher ${v.voucherNo}`);
       this.pdf.writeKV(doc, [
         ["Document no.", v.voucherNo],
-        ["Route", `${v.booking.pickup} → ${v.booking.dropoff}`],
+        ["Route", `${v.booking.pickup} -> ${v.booking.dropoff}`],
       ]);
+    });
+  }
+
+  @Get("transport-booking/:id")
+  async transportBooking(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "transportBooking", id);
+    const booking = await this.prisma.transportBooking.findUnique({ where: { id }, include: { customer: true } });
+    if (!booking) return res.status(404).send("Not found");
+    const priceMode = this.pdf.parseMode(mode);
+    return this.pdf.pipeA4(res, booking.bookingNumber, priceMode, doc => {
+      doc.fontSize(16).text(`Transport Booking ${booking.bookingNumber}`);
+      this.pdf.writeKV(doc, [["Reference", booking.bookingNumber], ["Customer", booking.customer?.fullName || "-"], ["Pickup", booking.pickup || "-"], ["Drop-off", booking.dropoff || "-"], ["Trip date", booking.tripDate.toDateString()], ["Passengers", String(booking.paxCount)], ["Status", booking.status]]);
+      this.pdf.customerLines(priceMode, [{ label: "Total", value: String(booking.net) }, { label: "Paid", value: String(booking.paid) }]).forEach(line => doc.text(`${line.label}: ${line.value}`));
     });
   }
 
@@ -304,13 +317,13 @@ export class PdfController {
     const t = await this.prisma.ticketSale.findUnique({ where: { id }, include: { customer: true, passenger: true, airline: true } });
     if (!t) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, t.ticketNumber || t.id, m, (doc) => {
+    return this.pdf.pipeA4(res, t.ticketNumber || t.id, m, (doc) => {
       doc.fontSize(16).text(`Ticket Invoice ${t.ticketNumber || t.id}`);
       this.pdf.writeKV(doc, [
-        ["PNR / ticket", `${t.pnrId || "—"} / ${t.ticketNumber || "—"}`],
+        ["PNR / ticket", `${t.pnrId || "-"} / ${t.ticketNumber || "-"}`],
         ["Customer", t.customer?.fullName ?? t.passenger?.fullName ?? "-"],
-        ["Airline", t.airline?.name || t.flightNumber || "—"],
-        ["Sector", t.sector || "—"],
+        ["Airline", t.airline?.name || t.flightNumber || "-"],
+        ["Sector", t.sector || "-"],
       ]);
       this.pdf.customerLines(m, [
         { label: "Fare", value: String(t.fare) },
@@ -327,12 +340,12 @@ export class PdfController {
     const r = await this.prisma.ticketRefund.findUnique({ where: { id }, include: { ticket: { include: { customer: true } } } });
     if (!r) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, r.id, m, (doc) => {
+    return this.pdf.pipeA4(res, r.id, m, (doc) => {
       doc.fontSize(16).text(`Ticket Refund ${r.id}`);
       this.pdf.writeKV(doc, [
         ["Ticket", r.ticket.ticketNumber || r.ticketId],
         ["Customer", r.ticket.customer?.fullName ?? "-"],
-        ["Reason", r.reason || "—"],
+        ["Reason", r.reason || "-"],
         ["Date", r.refundedAt.toDateString()],
       ]);
       this.pdf.customerLines(m, [
@@ -348,7 +361,7 @@ export class PdfController {
     const inv = await this.prisma.serviceInvoice.findUnique({ where: { id }, include: { customer: true, lines: true } });
     if (!inv) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, inv.invoiceNumber, m, (doc) => {
+    return this.pdf.pipeA4(res, inv.invoiceNumber, m, (doc) => {
       doc.fontSize(16).text(`Service Invoice ${inv.invoiceNumber}`);
       this.pdf.writeKV(doc, [
         ["Document no.", inv.invoiceNumber],
@@ -366,7 +379,7 @@ export class PdfController {
     const r = await this.prisma.receipt.findUnique({ where: { id }, include: { customer: true } });
     if (!r) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, r.receiptNo, m, (doc) => {
+    return this.pdf.pipeA4(res, r.receiptNo, m, (doc) => {
       doc.fontSize(16).text(`Receipt ${r.receiptNo}`);
       this.pdf.writeKV(doc, [
         ["Document no.", r.receiptNo],
@@ -378,13 +391,25 @@ export class PdfController {
     });
   }
 
+  @Get("visa-application/:id")
+  async visaApplication(@Param("id") id: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
+    await authorizeDocumentOwner(this.prisma, req.user, "visaApplication", id);
+    const application = await this.prisma.visaApplication.findUnique({ where: { id }, include: { customer: true } });
+    if (!application) return res.status(404).send("Not found");
+    return this.pdf.pipeA4(res, application.applicationNo, "EXCLUDED", doc => {
+      doc.fontSize(16).text(`Visa Application ${application.applicationNo}`);
+      this.pdf.writeKV(doc, [["Reference", application.applicationNo], ["Customer", application.customer?.fullName || "-"], ["Destination", application.country], ["Category", application.category], ["Status", application.status]]);
+      doc.fontSize(9).text("Application record only. This is not a visa or a guarantee of approval.");
+    });
+  }
+
   @Get("salary-slip/:id")
   async salary(@Param("id") id: string, @Query("mode") mode: string, @Res() res: Response, @Req() req: Request & { user: AuthUser }) {
     await authorizeDocumentOwner(this.prisma, req.user, "salarySlip", id);
     const s = await this.prisma.salarySlip.findUnique({ where: { id }, include: { employee: true } });
     if (!s) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
-    this.pdf.pipeA4(res, s.slipNo, m, (doc) => {
+    return this.pdf.pipeA4(res, s.slipNo, m, (doc) => {
       doc.fontSize(16).text(`Salary Slip ${s.slipNo}`);
       doc.text(s.employee.fullName);
       this.pdf.customerLines(m, [{ label: "Net", value: String(s.net) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
