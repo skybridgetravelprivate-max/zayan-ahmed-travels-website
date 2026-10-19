@@ -65,7 +65,7 @@ export function BookingList({
       <AccountState
         status="empty"
         title="No bookings yet"
-        message="Trips you book later will appear here. Sample bookings are not part of this account."
+        message="Your linked bookings will appear here when available."
       />
     );
   }

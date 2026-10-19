@@ -16,11 +16,11 @@ const features = [
   },
   {
     title: "Umrah groups",
-    description: "Sample support for families and larger Umrah parties. Nothing is reserved here.",
+    description: "Planning enquiries for families and larger Umrah parties. Availability requires confirmation.",
   },
   {
     title: "Shared transport",
-    description: "Demo note for coaches or private cars sized to the group.",
+    description: "Ask about coaches or private cars suitable for your group.",
   },
   {
     title: "Clear headcount",
@@ -50,7 +50,7 @@ export default function GroupBookingPage() {
         id="features"
         eyebrow="Groups"
         title="Services and features"
-        description="Sample points for a group inquiry. They are not a live allotment."
+        description="Share your group requirements. An inquiry does not hold an allotment."
       >
         <ul className="grid gap-4 sm:grid-cols-2">
           {features.map((feature) => (

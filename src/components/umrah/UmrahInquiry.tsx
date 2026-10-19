@@ -12,8 +12,8 @@ export function UmrahInquiry() {
           Ready to ask about Umrah?
         </h2>
         <p className="max-w-2xl text-base leading-7 text-white/85">
-          {site.legalName} can walk through a sample package with you. This
-          inquiry is checked on the website, then sent to the travel desk.
+          Ask {site.legalName} about your preferred dates, hotels and room arrangements.
+          Your inquiry is sent to the travel desk; it does not confirm a booking.
         </p>
         <ServiceInquiryForm type="umrah" submitLabel="Send Umrah inquiry" />
       </div>
