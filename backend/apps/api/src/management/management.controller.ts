@@ -14,6 +14,8 @@ export class ManagementController {
     res.setHeader("Cache-Control", "private, no-store");
     return this.management.catalog(req.user);
   }
+  @Get("umrah/catalog")
+  umrahCatalog(@Req() req: Request & { user: AuthUser }) { return this.management.umrahCatalog(req.user); }
   @Get("options/:resource")
   options(@Param("resource") resource: string, @Query("q") q: string | undefined, @Req() req: Request & { user: AuthUser }) { return this.management.options(req.user, resource, q); }
   @Get("leads/:id/assignees")

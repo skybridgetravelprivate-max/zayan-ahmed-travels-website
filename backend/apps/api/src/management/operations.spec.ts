@@ -16,10 +16,31 @@ import { UmrahOpsController } from "../umrah/umrah-ops.controller";
 import { RequestMethod } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { STAFF_WORKFLOWS } from "../../../../../src/lib/staff-workflows";
+import { packageCatalog, assertBookablePackage } from "../umrah/package-catalog";
 import type { AuthUser } from "../auth/auth.types";
 
 const user: AuthUser = { id: "synthetic-user", email: "synthetic@example.invalid", username: "synthetic", fullName: "Synthetic", isSuperAdmin: false, branchIds: ["a"], defaultBranchId: "a", roleNames: [], permissions: ["ticket.create", "transport.create", "umrah.create"] };
 const req = { user } as never;
+
+test("Umrah catalog requires permission, groups room variants and excludes costs", async () => {
+  assert.throws(() => packageCatalog(user, []), { status: 403 });
+  const base = { id: "sharing", packageNumber: "QFC-UP-123456-SHARING", flightInfo: "Synthetic Air\nISB-JED\n22 Oct\nUG-123456\nSA 100 22 Oct ISB-JED 10:00 - 12:00\n0\nSeats", description: "Captured: 2026-10-19T00:00:00Z", makkahNights: 8, madinahNights: 6, adultPrice: 100, childPrice: 80, infantPrice: 20, roomType: "SHARING", status: "REVIEW_REQUIRED", isPublic: false, makkahHotel: { name: "Synthetic Makkah", distance: "500 M" }, madinahHotel: null, adultCost: "NEVER_EXPOSE" };
+  const result = packageCatalog({ ...user, permissions: ["umrah.view"] }, [base, { ...base, id: "quad", packageNumber: "QFC-UP-123456-QUAD", roomType: "QUAD", adultPrice: 110 }] as never);
+  assert.equal(result.groups.length, 1); assert.equal(result.groups[0].offers.length, 1); assert.equal(result.groups[0].offers[0].rates.length, 2);
+  assert.equal(result.groups[0].sourceSeats, 0); assert.equal(result.canEdit, false); assert.doesNotMatch(JSON.stringify(result), /NEVER_EXPOSE|adultCost/);
+  await assert.rejects(assertBookablePackage({ umrahPackage: { findUnique: async () => ({ status: "REVIEW_REQUIRED" }) } } as never, "sharing"), { status: 400 });
+  await assertBookablePackage({ umrahPackage: { findUnique: async () => ({ status: "ACTIVE" }) } } as never, "active");
+});
+
+test("dedicated and generic Umrah writers reject unreviewed packages before booking writes", async () => {
+  let writes = 0;
+  const tx = { umrahPackage: { findUnique: async () => ({ status: "REVIEW_REQUIRED" }) }, umrahBooking: { create: async () => { writes++; } } };
+  const db = { ...tx, $transaction: async (run: (tx: unknown) => unknown) => run(tx) };
+  const body = { packageId: "source-draft", customerId: "customer-a" };
+  await assert.rejects(new UmrahOpsService(db as never, {} as never, {} as never, {} as never).save(user, body), /Review and activate/);
+  await assert.rejects(new ResourcesService(db as never, { next: async () => "test-number" } as never, {} as never).create("umrah-bookings", { ...user, isSuperAdmin: true }, body), /Review and activate/);
+  assert.equal(writes, 0);
+});
 
 test("every management workflow targets an existing POST route with the matching permission", () => {
   const routes = new Map<string, string | undefined>();
