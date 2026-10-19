@@ -8,7 +8,7 @@ import type { InquiryType } from "@/lib/inquiries";
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-white/30 bg-white px-3 py-2.5 text-sm text-foreground focus:border-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange";
 
-export function ServiceInquiryForm({ type, submitLabel }: { type: InquiryType; submitLabel: string }) {
+export function ServiceInquiryForm({ type, submitLabel, context }: { type: InquiryType; submitLabel: string; context?: string }) {
   const baseId = useId();
   const pendingRef = useRef(false);
   const [pending, setPending] = useState(false);
@@ -61,7 +61,7 @@ export function ServiceInquiryForm({ type, submitLabel }: { type: InquiryType; s
                 travellers: data.get("travellers"),
               }
             : {}),
-          message: data.get("message"),
+          message: type === "umrah" && context ? `${context}\n\n${data.get("message") || ""}` : data.get("message"),
         }),
       });
       setNotice(await readInquiryNotice(response));
@@ -184,7 +184,7 @@ export function ServiceInquiryForm({ type, submitLabel }: { type: InquiryType; s
       ) : null}
       <label htmlFor={`${baseId}-message`} className="block text-sm font-medium sm:col-span-2">
         {type === "corporate" ? "Request details" : "Message"}
-        <textarea id={`${baseId}-message`} name="message" required rows={4} className={fieldClass} {...invalid(baseId, "message", fieldErrors)} />
+        <textarea id={`${baseId}-message`} name="message" required rows={4} maxLength={4000 - (type === "umrah" && context ? context.length + 2 : 0)} className={fieldClass} {...invalid(baseId, "message", fieldErrors)} />
         <FieldError id={`${baseId}-message-error`} message={fieldErrors.message} />
       </label>
       <div className="sm:col-span-2">
