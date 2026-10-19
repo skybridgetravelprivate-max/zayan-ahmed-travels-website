@@ -4,6 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SiteNotice } from "@/components/layout/SiteNotice";
+import { WhatsAppButton } from "@/components/layout/WhatsAppButton";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { allowSearchIndexing, site, siteDescription, siteOrigin } from "@/config/site";
 import { siteGraph } from "@/lib/structured-data";
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           {children}
         </SiteChrome>
+        <WhatsAppButton />
       </body>
     </html>
   );
