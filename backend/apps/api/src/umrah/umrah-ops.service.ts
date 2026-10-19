@@ -4,7 +4,7 @@ import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
-import { assertBranch, assertPeopleLinks, assertRecordBranch, branchWhere } from "../auth/record-scope";
+import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
 
 const money = (n: number) => new Prisma.Decimal(Number(n || 0).toFixed(2));
@@ -43,6 +43,7 @@ export class UmrahOpsService {
     const tax = Number(input.tax || 0);
     const commission = Number(input.commission || 0);
     const paid = Number(input.paid || 0);
+    if (![cost, selling, discount, tax, commission, paid].every(n => Number.isFinite(n) && n >= 0)) throw new BadRequestException("Invalid financial amounts");
     const net = selling - discount + tax;
     if (cost < 0 || net < 0) throw new BadRequestException("Financial totals cannot be negative.");
     if (paid - net > 0.5) throw new BadRequestException("Paid amount exceeds selling total.");
@@ -50,15 +51,22 @@ export class UmrahOpsService {
   }
 
   async save(user: AuthUser, body: Record<string, unknown>, ip?: string) {
+    return this.prisma.$transaction(tx => this.saveWithDb(user, body, tx, ip), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  private async saveWithDb(user: AuthUser, body: Record<string, unknown>, db: Prisma.TransactionClient, ip?: string) {
     if (!body.id) assertCan(user, "umrah.create");
     const customerId = String(body.customerId || "");
     if (!customerId) throw new BadRequestException("Customer is required.");
-    await assertPeopleLinks(this.prisma, user, body);
-    if (body.id) await assertRecordBranch(this.prisma, user, "umrahBooking", body.id);
-    else assertBranch(user, user.defaultBranchId);
+    await assertPeopleLinks(db, user, body);
+    if (body.id) await assertRecordBranch(db, user, "umrahBooking", body.id);
+    else {
+      assertBranch(user, body.branchId || user.defaultBranchId);
+      await assertPeopleLinksInBranch(db, body, body.branchId || user.defaultBranchId);
+    }
     const tot = this.totals(body as { cost?: number; sellingPrice?: number; discount?: number; tax?: number; commission?: number; paid?: number });
     const passengers = Array.isArray(body.passengerIds) ? (body.passengerIds as string[]) : [];
-    const bookingNumber = body.id ? undefined : await this.seq.next("umr-bk", "UMR");
+    const bookingNumber = body.id ? undefined : await this.seq.next("umr-bk", "UMR", db);
     const data = {
       customerId,
       packageId: (body.packageId as string) || null,
@@ -89,21 +97,22 @@ export class UmrahOpsService {
     let row;
     if (body.id) {
       assertCan(user, "umrah.edit");
-      row = await this.prisma.umrahBooking.update({ where: { id: String(body.id) }, data });
+      row = await db.umrahBooking.update({ where: { id: String(body.id) }, data });
     } else {
       assertCan(user, "umrah.create");
-      row = await this.prisma.umrahBooking.create({
-        data: { ...data, branchId: user.defaultBranchId, bookingNumber: bookingNumber as string, status: "DRAFT" },
+      row = await db.umrahBooking.create({
+        data: { ...data, branchId: (body.branchId as string) || user.defaultBranchId, bookingNumber: bookingNumber as string, status: "DRAFT" },
       });
     }
     if (passengers.length) {
-      await this.prisma.umrahBookingPassenger.deleteMany({ where: { bookingId: row.id } });
-      await this.prisma.umrahBookingPassenger.createMany({
+      await db.umrahBookingPassenger.deleteMany({ where: { bookingId: row.id } });
+      await db.umrahBookingPassenger.createMany({
         data: passengers.map((passengerId) => ({ bookingId: row.id, passengerId })),
       });
     }
     if (!body.id) {
       await this.accounting.postSale({
+        db,
         userId: user.id,
         module: "umrah",
         sourceId: row.id,
@@ -113,6 +122,7 @@ export class UmrahOpsService {
         memo: `Umrah ${row.bookingNumber}`,
       });
       await this.accounting.postCost({
+        db,
         userId: user.id,
         module: "umrah",
         sourceId: row.id,
@@ -121,8 +131,8 @@ export class UmrahOpsService {
         memo: `Umrah cost ${row.bookingNumber}`,
       });
     }
-    await this.audit.log({ userId: user.id, action: body.id ? "update" : "create", entity: "UmrahBooking", entityId: row.id, after: row, ipAddress: ip });
-    return this.prisma.umrahBooking.findUnique({ where: { id: row.id }, include: { passengers: true, customer: true } });
+    await this.audit.log({ db, userId: user.id, action: body.id ? "update" : "create", entity: "UmrahBooking", entityId: row.id, after: row, ipAddress: ip });
+    return db.umrahBooking.findUnique({ where: { id: row.id }, include: { passengers: true, customer: true } });
   }
 
   async lifecycle(user: AuthUser, id: string, step: string, ip?: string) {

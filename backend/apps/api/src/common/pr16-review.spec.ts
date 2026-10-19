@@ -165,7 +165,8 @@ test("reservation edits preserve omitted paid amount and reject replacing starte
 
 test("dedicated Umrah and complaint paths cannot attach or expose foreign passengers", async () => {
   const db = { passenger: { findUnique: async () => ({ customerId: "b" }) }, customer: { findUnique: async ({ where }: { where: { id: string } }) => ({ branchId: where.id }) }, complaint: { findUnique: async () => ({ branchId: "b" }) } };
-  const umrah = new UmrahOpsService(db as never, {} as never, audit as never, {} as never);
+  const transactionalDb = { ...db, $transaction: async (run: (tx: typeof db) => Promise<unknown>) => run(db) };
+  const umrah = new UmrahOpsService(transactionalDb as never, {} as never, audit as never, {} as never);
   await assert.rejects(umrah.save({ ...user, permissions: ["umrah.create"] }, { customerId: "a", passengerIds: ["b"] }), { status: 404 });
   const complaints = new ComplaintsService(db as never, {} as never, audit as never, {} as never);
   await assert.rejects(complaints.create(user, { customerId: "a", passengerId: "b", description: "test" }), { status: 404 });

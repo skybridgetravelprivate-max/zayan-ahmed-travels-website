@@ -7,6 +7,7 @@ import { RESOURCES, actionPermission } from "./registry";
 import { assertPassengerBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchIds, customerBranchWhere } from "../auth/record-scope";
 import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/document-scope";
 import { hashPassword, assertPasswordPolicy } from "../common/password";
+import { Prisma } from "@prisma/client";
 
 function redactSecrets(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
@@ -160,7 +161,7 @@ export class ResourcesService {
   async create(resource: string, user: AuthUser, body: Record<string, unknown>, ip?: string) {
     this.assert(user, resource, "create");
     const meta = this.meta(resource);
-    const data = this.sanitize(body, true);
+    const data = this.sanitize(resource, body, true);
     delete data.id;
     if (meta.number && !data[meta.number.field]) {
       data[meta.number.field] = await this.seq.next(meta.number.key, meta.number.prefix);
@@ -225,7 +226,7 @@ export class ResourcesService {
     if (!before) throw new NotFoundException();
     await this.assertRowBranch(user, meta, before as Record<string, unknown>);
     if (resource === "hotel-bookings" && await this.prisma.journalEntry.findFirst({ where: { module: "reservation", sourceId: id, status: "POSTED" } })) throw new ForbiddenException("Use the reservation workflow for posted bookings");
-    const data = this.sanitize(body, false);
+    const data = this.sanitize(resource, body, false);
     if (meta.branchField && Object.hasOwn(data, meta.branchField)) {
       await this.assertRowBranch(user, meta, data);
     }
@@ -289,7 +290,10 @@ export class ResourcesService {
     return { ok: true };
   }
 
-  private sanitize(body: Record<string, unknown>, nestedCreate: boolean) {
+  private sanitize(resource: string, body: Record<string, unknown>, nestedCreate: boolean) {
+    const model = Prisma.dmmf.datamodel.models.find(m => m.name.toLowerCase() === this.meta(resource).model.toLowerCase());
+    const dates = new Set(model?.fields.filter(f => f.type === "DateTime").map(f => f.name));
+    const booleans = new Set(model?.fields.filter(f => f.type === "Boolean").map(f => f.name));
     const data: Record<string, unknown> = { ...body };
     delete data.passwordHash;
     delete data.refreshTokenHash;
@@ -297,9 +301,9 @@ export class ResourcesService {
     const nestedOk = new Set(nestedCreate ? ["items", "lines", "components"] : []);
     for (const [k, v] of Object.entries(data)) {
       if (v === "") data[k] = null;
-      else if (v === "true") data[k] = true;
-      else if (v === "false") data[k] = false;
-      else if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) data[k] = new Date(v);
+      else if (booleans.has(k) && v === "true") data[k] = true;
+      else if (booleans.has(k) && v === "false") data[k] = false;
+      else if (dates.has(k) && typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) data[k] = new Date(v);
       else if (v && typeof v === "object" && !(v instanceof Date)) {
         if (nestedOk.has(k) && Array.isArray(v)) {
           data[k] = {

@@ -2,6 +2,9 @@ import { GlobalFinanceGuard } from "./auth/global-finance.guard";
 import { CrmScopeGuard } from "./crm/crm-scope.guard";
 import { WebsiteCustomerLinkController } from "./website/website-customer-link.controller";
 import { Module } from "@nestjs/common";
+import { ManagementController } from "./management/management.controller";
+import { ManagementService } from "./management/management.service";
+import { ManagementOriginGuard } from "./management/management.guard";
 import { JwtModule } from "@nestjs/jwt";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
@@ -52,6 +55,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60000, limit: 120 }] }),
   ],
   controllers: [
+    ManagementController,
     WebsiteCustomerLinkController,
     AuthController,
     DashboardController,
@@ -80,6 +84,8 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     HealthController,
   ],
   providers: [
+    ManagementService,
+    ManagementOriginGuard,
     GlobalFinanceGuard,
     CrmScopeGuard,
     PrismaService,

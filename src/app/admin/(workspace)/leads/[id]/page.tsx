@@ -123,6 +123,7 @@ function LeadDetails({ lead }: { lead: StaffLeadDetail }) {
       <p className="mt-2 text-sm text-muted">
         Read-only record. Status and assignment changes are not available here.
       </p>
+      <Link href={`/admin/manage/leads?record=${encodeURIComponent(lead.id)}`} className="mt-3 inline-block rounded-xl border border-line px-4 py-2 font-semibold underline">Open management controls</Link>
       <div className="mt-5 flex flex-wrap gap-3">
         <a
           href={`tel:${contactPhone}`}
