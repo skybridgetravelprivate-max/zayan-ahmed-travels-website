@@ -219,7 +219,7 @@ test("business journals cannot be reversed independently of their source records
 
 test("a stale draft-post request cannot overwrite a concurrently changed journal", async () => {
   let auditCalled = false;
-  const tx = { journalEntry: { findUnique: async () => ({ status: "DRAFT", lines: [{ debit: 10, credit: 0 }, { debit: 0, credit: 10 }] }), updateMany: async () => ({ count: 0 }) } };
+  const tx = { $queryRaw: async () => [{ id: "a", isPosting: true, status: "ACTIVE", deletedAt: null }, { id: "b", isPosting: true, status: "ACTIVE", deletedAt: null }], journalEntry: { findUnique: async () => ({ status: "DRAFT", lines: [{ accountId: "a", debit: 10, credit: 0 }, { accountId: "b", debit: 0, credit: 10 }] }), updateMany: async () => ({ count: 0 }) } };
   const service = new AccountingService({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, { log: async () => { auditCalled = true; } } as never);
   await assert.rejects(service.postExisting("changed-journal", "staff"), /status changed/);
   assert.equal(auditCalled, false);

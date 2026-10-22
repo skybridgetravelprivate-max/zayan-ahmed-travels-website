@@ -43,6 +43,19 @@ export class AccountingService {
     return db ?? this.prisma;
   }
 
+  private async assertPostingAccounts(db: Db, lines: { accountId: string }[]) {
+    const ids = [...new Set(lines.map(line => line.accountId))].sort();
+    if (!ids.length || ids.some(id => typeof id !== "string" || !id)) throw new BadRequestException("Invalid journal account");
+    // Hold eligibility stable until the enclosing posting transaction completes.
+    const accounts = await db.$queryRaw<{ id: string; isPosting: boolean; status: string; deletedAt: Date | null }[]>(Prisma.sql`
+      SELECT id, "isPosting", status, "deletedAt" FROM "ChartOfAccount"
+      WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR SHARE
+    `);
+    if (accounts.length !== ids.length || accounts.some(a => !a.isPosting || a.status !== "ACTIVE" || a.deletedAt !== null)) {
+      throw new BadRequestException("Journal accounts must be active, undeleted posting accounts");
+    }
+  }
+
   async accountByCode(code: string, db?: Db) {
     const a = await this.store(db).chartOfAccount.findUnique({ where: { code } });
     if (!a) throw new BadRequestException(`Account ${code} missing`);
@@ -101,6 +114,7 @@ export class AccountingService {
     const credit = lines.reduce((s, l) => s + l.credit, 0);
     if (Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
     const status = params.status || "POSTED";
+    await this.assertPostingAccounts(db, lines);
     const entryNumber = await this.seq.next("jv", "ZAT-JV", db);
     const entry = await db.journalEntry.create({
       data: {
@@ -123,11 +137,13 @@ export class AccountingService {
 
   async postExisting(id: string, userId: string) {
     return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "JournalEntry" WHERE id = ${id} FOR UPDATE`;
       const j = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } });
       if (!j || j.status !== "DRAFT") throw new BadRequestException("Only draft journals can be posted");
       const debit = j.lines.reduce((sum, line) => sum + Number(line.debit), 0);
       const credit = j.lines.reduce((sum, line) => sum + Number(line.credit), 0);
       if (j.lines.length < 2 || !Number.isFinite(debit) || !Number.isFinite(credit) || debit <= 0 || Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
+      await this.assertPostingAccounts(tx, j.lines);
       const claimed = await tx.journalEntry.updateMany({ where: { id, status: "DRAFT" }, data: { status: "POSTED", postedAt: new Date() } });
       if (claimed.count !== 1) throw new BadRequestException("Journal status changed");
       await this.audit.log({ userId, action: "POST", entity: "journalEntry", entityId: id, db: tx });

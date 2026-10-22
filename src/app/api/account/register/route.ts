@@ -9,6 +9,9 @@ export async function POST(request: Request) {
     return accountResponse({ ok: false, error: "Send the registration as JSON." }, 400);
   }
 
-  const result = await registerCustomer(body);
-  return accountResponse(result.body, result.status);
+  const result = await runCustomerAuth("register", body, () => registerCustomer(body));
+  const response = accountResponse(result.body, result.status);
+  if (result.status === 429) response.headers.set("Retry-After", "900");
+  return response;
 }
+import { runCustomerAuth } from "@/server/customer-auth/rate-limit";

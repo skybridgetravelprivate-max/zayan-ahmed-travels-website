@@ -26,11 +26,11 @@ test("passenger CRUD scopes lists and rejects foreign records, attachment, reass
     await assert.rejects(svc.update("passengers", id, user, {}), { status: 404 });
     await assert.rejects(svc.remove("passengers", id, user), { status: 404 });
   }
-  await assert.rejects(svc.create("passengers", user, { customerId: "b" }), { status: 404 });
+  await assert.rejects(svc.create("passengers", user, { fullName: "Passenger", customerId: "b" }), { status: 404 });
   await assert.rejects(svc.update("passengers", "a", user, { customerId: "b" }), { status: 404 });
   await assert.rejects(svc.update("passengers", "a", user, { customerId: null }), { status: 404 });
   assert.equal(writes, 0);
-  await svc.create("passengers", user, { customerId: "a" });
+  await svc.create("passengers", user, { fullName: "Passenger", customerId: "a" });
   assert.equal(writes, 1);
 });
 
@@ -62,7 +62,7 @@ test("downloads and every sensitive PDF resolve owner authorization before readi
 
 test("foreign lead and quotation conversion stop before sequences, customer, booking or journal writes", async () => {
   const db = { lead: { findUnique: async () => ({ branchId: "b" }) }, quotation: { findUnique: async () => ({ branchId: "b", customerId: "b" }) } };
-  const ctrl = new WorkflowsController(db as never, {} as never, audit as never, {} as never, {} as never);
+  const ctrl = new WorkflowsController({ ...db, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ ...db, $queryRaw: async () => [] }) } as never, {} as never, audit as never, {} as never, {} as never);
   await assert.rejects(ctrl.convertLead("b", req()), { status: 404 });
   await assert.rejects(ctrl.convertQuote("b", req()), { status: 404 });
 });
@@ -76,7 +76,7 @@ function refundsHarness(fail = false) {
     let release!: () => void;
     const before = tail; tail = new Promise<void>(r => { release = r; });
     let draft: typeof state; let locked = false;
-    const tx = { $queryRaw: async (sql: TemplateStringsArray, id: string) => { assert.match(sql.join("?"), /TicketSale.*FOR UPDATE/); assert.equal(id, "t"); await before; locked = true; draft = structuredClone(state); },
+    const tx = { $queryRaw: async (sql: TemplateStringsArray | { values: string[] }, id: string) => { if (!Array.isArray(sql)) return (sql as { values: string[] }).values.map(id => ({ id, isPosting: true, status: "ACTIVE", deletedAt: null })); assert.match((sql as TemplateStringsArray).join("?"), /TicketSale.*FOR UPDATE/); assert.equal(id, "t"); await before; locked = true; draft = structuredClone(state); },
       ticketSale: { findUnique: async () => { assert.ok(locked); return { id: "t", branchId: "a", net: 100, paidAmount: 100, paymentStatus: "PAID", status: draft.status, refunds: draft.refunds }; }, update: async ({ data }: { data: Record<string, unknown> }) => { draft.status = String(data.status); } },
       ticketRefund: { create: async ({ data }: { data: Record<string, unknown> }) => { if (fail) throw Error("injected insert failure"); draft.refunds.push(data as { netRefund: number }); return data; } },
       chartOfAccount: { findUnique: async ({ where }: { where: { id: string; code?: string; customer?: unknown } }) => ({ id: where.code }) },

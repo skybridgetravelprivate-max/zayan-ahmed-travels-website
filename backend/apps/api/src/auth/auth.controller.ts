@@ -115,17 +115,39 @@ export class AuthController {
   @Post("refresh")
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
-    if (!raw) throw new UnauthorizedException();
+    if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{1,80}\.[a-f0-9]{96}$/.test(raw)) throw new UnauthorizedException();
     const [sessionId, token] = raw.split(".");
+    const now = new Date();
     const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
-    if (!session || session.revokedAt || session.expiresAt < new Date()) throw new UnauthorizedException();
-    const hash = createHash("sha256").update(token ?? "").digest("hex");
-    if (hash !== session.refreshTokenHash) throw new UnauthorizedException();
+    if (!session || session.revokedAt || session.expiresAt <= now) throw new UnauthorizedException();
+    const hash = createHash("sha256").update(token).digest("hex");
+    if (hash !== session.refreshTokenHash) {
+      await this.prisma.session.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: now } });
+      res.clearCookie(ACCESS_COOKIE, this.cookieOpts(0));
+      res.clearCookie(REFRESH_COOKIE, this.cookieOpts(0));
+      throw new UnauthorizedException("Session must be renewed");
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
+    if (!user || user.deletedAt || user.status !== "ACTIVE" || (user.lockedUntil && user.lockedUntil > now)) throw new UnauthorizedException();
+    const refreshRaw = randomBytes(48).toString("hex");
+    const refreshTokenHash = createHash("sha256").update(refreshRaw).digest("hex");
+    const rotated = await this.prisma.session.updateMany({
+      where: { id: sessionId, refreshTokenHash: hash, revokedAt: null, expiresAt: { gt: now } },
+      data: { refreshTokenHash },
+    });
+    if (rotated.count !== 1) {
+      await this.prisma.session.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: now } });
+      res.clearCookie(ACCESS_COOKIE, this.cookieOpts(0));
+      res.clearCookie(REFRESH_COOKIE, this.cookieOpts(0));
+      throw new UnauthorizedException("Session must be renewed");
+    }
     const access = await this.jwt.signAsync(
       { sub: session.userId, sid: session.id },
       { secret: process.env.JWT_SECRET, expiresIn: 15 * 60 },
     );
     res.cookie(ACCESS_COOKIE, access, this.cookieOpts(15 * 60 * 1000));
+    res.cookie(REFRESH_COOKIE, `${session.id}.${refreshRaw}`, this.cookieOpts(Math.max(0, session.expiresAt.getTime() - Date.now())));
+
     return { ok: true };
   }
 

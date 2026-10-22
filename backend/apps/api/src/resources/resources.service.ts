@@ -4,12 +4,12 @@ import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, can } from "../auth/auth.types";
 import { RESOURCES, actionPermission } from "./registry";
-import { assertPassengerBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchIds, customerBranchWhere } from "../auth/record-scope";
+import { assertPassengerBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch } from "../auth/record-scope";
 import { authorizeDocumentOwner, authorizeStoredDocument } from "../documents/document-scope";
-import { hashPassword, assertPasswordPolicy } from "../common/password";
 import { Prisma } from "@prisma/client";
 import { assertHotelRoomLinks } from "../reservation/hotel-links";
-import { assertBookablePackage } from "../umrah/package-catalog";
+import { MANAGEMENT, fieldsFor, parseFields } from "./resource-contract";
+import { resourceScope, validateResourceLinks } from "./resource-scope";
 
 function redactSecrets(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
@@ -58,6 +58,11 @@ export class ResourcesService {
     if (resource === "audit-logs" && action !== "view") throw new ForbiddenException("Audit records are read-only");
     if (["journals", "receipts", "payments", "expenses", "ticket-refunds"].includes(resource) && action !== "view") throw new ForbiddenException("Use the transactional finance endpoints");
     if (["roles", "users"].includes(resource) && action !== "view" && !user.isSuperAdmin) throw new ForbiddenException("Only super administrators may modify roles");
+    if (action !== "view") {
+      const spec = MANAGEMENT[resource];
+      if (!spec?.write || (action === "create" && spec.create === false) || ["roles", "users"].includes(resource) && action === "delete") throw new ForbiddenException("Use the dedicated workflow for this operation");
+      if (spec.superOnly && !user.isSuperAdmin) throw new ForbiddenException();
+    }
     const perm = actionPermission(this.meta(resource), action);
     if (!can(user, perm) && !can(user, `${this.meta(resource).permission}.${action}`)) {
       if (perm === "user.manage" && can(user, "user.manage")) return;
@@ -73,26 +78,26 @@ export class ResourcesService {
   }
 
   private branchWhere(user: AuthUser, meta: ReturnType<ResourcesService["meta"]>, extra: Record<string, unknown> = {}) {
-    if (meta.model === "customer" && !user.isSuperAdmin) return { ...extra, ...customerBranchWhere(user) };
-    if (meta.model === "passenger" && !user.isSuperAdmin) return { ...extra, customer: customerBranchWhere(user) };
-    if (!user.isSuperAdmin && meta.model === "passengerDocument") return { ...extra, passenger: { customer: customerBranchWhere(user) } };
-    if (!user.isSuperAdmin && meta.model === "ticketRefund") return { ...extra, ticket: { branchId: { in: branchIds(user) } } };
-    if (!meta.branchField || user.isSuperAdmin) return extra;
-    const ids = this.allowedBranchIds(user);
-    if (!ids || ids.length === 0) {
-      extra[meta.branchField] = { in: ["__none__"] };
-      return extra;
-    }
-    extra[meta.branchField] = { in: ids };
-    return extra;
+    const resource = Object.keys(RESOURCES).find(key => RESOURCES[key] === meta)!;
+    // Document lists are separately scoped to an authorized owner before querying.
+    if (resource === "documents") return extra;
+    return { ...extra, ...resourceScope(user, resource) };
   }
 
   private async assertRowBranch(user: AuthUser, meta: ReturnType<ResourcesService["meta"]>, row: Record<string, unknown>) {
+    this.branchWhere(user, meta);
     if (meta.model === "storedDocument") await authorizeStoredDocument(this.prisma, user, row);
     if (meta.model === "passengerDocument") await assertRecordBranch(this.prisma, user, "passenger", row.passengerId);
     if (meta.model === "ticketRefund") await assertRecordBranch(this.prisma, user, "ticketSale", row.ticketId);
     if (meta.model === "customer" && row.leadId) await assertRecordBranch(this.prisma, user, "lead", row.leadId);
     if (meta.model === "passenger") await assertPassengerBranch(this.prisma, user, row.customerId);
+    if (!user.isSuperAdmin && ["followUp", "task"].includes(meta.model)) {
+      if (row.leadId) await assertRecordBranch(this.prisma, user, "lead", row.leadId);
+      if (row.customerId) await assertRecordBranch(this.prisma, user, "customer", row.customerId);
+      if (!row.leadId && !row.customerId && row.assignedUserId !== user.id) throw new NotFoundException();
+    }
+    if (!user.isSuperAdmin && meta.model === "ticketReissue") await assertRecordBranch(this.prisma, user, "ticketSale", row.originalTicketId);
+    if (!user.isSuperAdmin && meta.model === "notification" && row.userId !== user.id) throw new NotFoundException();
     if (!meta.branchField || user.isSuperAdmin) return;
     const ids = this.allowedBranchIds(user) ?? [];
     const bid = row[meta.branchField];
@@ -160,19 +165,16 @@ export class ResourcesService {
     return redactSecrets(row);
   }
 
-  async create(resource: string, user: AuthUser, body: Record<string, unknown>, ip?: string) {
+  async create(resource: string, user: AuthUser, body: Record<string, unknown>, ip?: string): Promise<Record<string, unknown>> {
+    if (typeof this.prisma.$transaction === "function") return this.prisma.$transaction(tx =>
+      new ResourcesService(tx as PrismaService, new SequenceService(tx as PrismaService), new AuditService(tx as PrismaService)).create(resource, user, body, ip),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     this.assert(user, resource, "create");
     const meta = this.meta(resource);
     const data = this.sanitize(resource, body, true);
     delete data.id;
     if (meta.number && !data[meta.number.field]) {
       data[meta.number.field] = await this.seq.next(meta.number.key, meta.number.prefix);
-    }
-    if (resource === "users") {
-      if (typeof data.password !== "string") throw new BadRequestException("password required");
-      assertPasswordPolicy(data.password as string);
-      data.passwordHash = await hashPassword(data.password as string);
-      delete data.password;
     }
     if (meta.branchField && !data[meta.branchField] && user.defaultBranchId) {
       data[meta.branchField] = user.defaultBranchId;
@@ -182,24 +184,8 @@ export class ResourcesService {
       const bid = data[meta.branchField];
       if (typeof bid !== "string" || !allowed.includes(bid)) throw new ForbiddenException();
     }
-    if (resource === "quotations") {
-      const selling = Number(data.sellingTotal ?? 0);
-      const discount = Number(data.discount ?? 0);
-      const tax = Number(data.tax ?? 0);
-      data.net = selling - discount + tax;
-    }
-    if (resource === "umrah-bookings") {
-      await assertBookablePackage(this.prisma, data.packageId);
-      const selling = Number(data.sellingPrice ?? 0);
-      const discount = Number(data.discount ?? 0);
-      const tax = Number(data.tax ?? 0);
-      const cost = Number(data.cost ?? 0);
-      const paid = Number(data.paid ?? 0);
-      data.net = selling - discount + tax;
-      data.balance = Number(data.net) - paid;
-      data.profit = Number(data.net) - cost;
-    }
     await assertPeopleLinks(this.prisma, user, data);
+    await validateResourceLinks(this.prisma, user, resource, data);
     if (resource === "complaints") await assertPeopleLinksInBranch(this.prisma, data, data.branchId);
     if (data.leadId) await assertRecordBranch(this.prisma, user, "lead", data.leadId);
     if (data.quotationId) await assertRecordBranch(this.prisma, user, "quotation", data.quotationId);
@@ -223,7 +209,10 @@ export class ResourcesService {
     return created;
   }
 
-  async update(resource: string, id: string, user: AuthUser, body: Record<string, unknown>, ip?: string) {
+  async update(resource: string, id: string, user: AuthUser, body: Record<string, unknown>, ip?: string): Promise<unknown> {
+    if (typeof this.prisma.$transaction === "function") return this.prisma.$transaction(tx =>
+      new ResourcesService(tx as PrismaService, new SequenceService(tx as PrismaService), new AuditService(tx as PrismaService)).update(resource, id, user, body, ip),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     this.assert(user, resource, "edit");
     const meta = this.meta(resource);
     const before = await this.delegate(resource).findUnique({ where: { id } });
@@ -231,18 +220,15 @@ export class ResourcesService {
     await this.assertRowBranch(user, meta, before as Record<string, unknown>);
     if (resource === "hotel-bookings" && await this.prisma.journalEntry.findFirst({ where: { module: "reservation", sourceId: id, status: "POSTED" } })) throw new ForbiddenException("Use the reservation workflow for posted bookings");
     const data = this.sanitize(resource, body, false);
-    if (resource === "umrah-bookings" && Object.hasOwn(data, "packageId")) await assertBookablePackage(this.prisma, data.packageId);
+    if (resource === "leads" && Object.hasOwn(data, "branchId") && data.branchId !== before.branchId && !can(user, "lead.assign")) throw new ForbiddenException("Lead assignment permission is required to change branch");
+    if (resource === "umrah-groups" && Object.hasOwn(data, "totalSeats") && Number(data.totalSeats) < Number(before.reservedSeats)) throw new BadRequestException("Capacity cannot be lower than reserved seats");
+    await validateResourceLinks(this.prisma, user, resource, data, before);
     if (meta.branchField && Object.hasOwn(data, meta.branchField)) {
       await this.assertRowBranch(user, meta, data);
     }
     delete data.id;
     meta.omitOnWrite?.forEach((k) => delete data[k]);
     delete data.passwordHash;
-    if (resource === "users" && typeof data.password === "string" && data.password) {
-      assertPasswordPolicy(data.password as string);
-      data.passwordHash = await hashPassword(data.password as string);
-      delete data.password;
-    }
     await assertPeopleLinks(this.prisma, user, data);
     if (resource === "complaints") {
       await assertPeopleLinksInBranch(
@@ -277,7 +263,10 @@ export class ResourcesService {
     return redactSecrets(updated);
   }
 
-  async remove(resource: string, id: string, user: AuthUser, ip?: string) {
+  async remove(resource: string, id: string, user: AuthUser, ip?: string): Promise<{ ok: boolean }> {
+    if (typeof this.prisma.$transaction === "function") return this.prisma.$transaction(tx =>
+      new ResourcesService(tx as PrismaService, new SequenceService(tx as PrismaService), new AuditService(tx as PrismaService)).remove(resource, id, user, ip),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     this.assert(user, resource, "delete");
     const meta = this.meta(resource);
     const before = await this.delegate(resource).findUnique({ where: { id } });
@@ -296,36 +285,8 @@ export class ResourcesService {
     return { ok: true };
   }
 
-  private sanitize(resource: string, body: Record<string, unknown>, nestedCreate: boolean) {
-    const model = Prisma.dmmf.datamodel.models.find(m => m.name.toLowerCase() === this.meta(resource).model.toLowerCase());
-    const dates = new Set(model?.fields.filter(f => f.type === "DateTime").map(f => f.name));
-    const booleans = new Set(model?.fields.filter(f => f.type === "Boolean").map(f => f.name));
-    const data: Record<string, unknown> = { ...body };
-    delete data.passwordHash;
-    delete data.refreshTokenHash;
-    delete data.tokenHash;
-    const nestedOk = new Set(nestedCreate ? ["items", "lines", "components"] : []);
-    for (const [k, v] of Object.entries(data)) {
-      if (v === "") data[k] = null;
-      else if (booleans.has(k) && v === "true") data[k] = true;
-      else if (booleans.has(k) && v === "false") data[k] = false;
-      else if (dates.has(k) && typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) data[k] = new Date(v);
-      else if (v && typeof v === "object" && !(v instanceof Date)) {
-        if (nestedOk.has(k) && Array.isArray(v)) {
-          data[k] = {
-            create: (v as Record<string, unknown>[]).map((row) => {
-              if (!row || typeof row !== "object") return {};
-              const clean: Record<string, unknown> = { ...row };
-              delete clean.id;
-              return clean;
-            }),
-          };
-        } else {
-          delete data[k];
-        }
-      }
-    }
-    return data;
+  private sanitize(resource: string, body: Record<string, unknown>, create: boolean) {
+    return parseFields(fieldsFor(resource, true), body, create);
   }
 
   async bulk(resource: string, user: AuthUser, ids: string[], action: string) {

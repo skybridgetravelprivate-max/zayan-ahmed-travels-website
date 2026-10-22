@@ -76,13 +76,13 @@ test("generic passenger document read/write/delete and reattachment resolve pass
   await assert.rejects(svc.get("passenger-documents", "d", user), { status: 404 });
   await assert.rejects(svc.update("passenger-documents", "d", user, {}), { status: 404 });
   await assert.rejects(svc.remove("passenger-documents", "d", user), { status: 404 });
-  await assert.rejects(svc.create("passenger-documents", user, { passengerId: "b" }), { status: 404 });
+  await assert.rejects(svc.create("passenger-documents", user, { kind: "passport", passengerId: "b" }), { status: 404 });
 });
 
 test("expiry alerts use customer branch scope and quotation conversion checks linked customer", async () => {
   let where: unknown;
   const db = { passenger: { findMany: async (args: { where: unknown }) => { where = args.where; return []; } }, quotation: { findUnique: async () => ({ branchId: "a", customerId: "b" }) }, customer: { findUnique: async () => ({ branchId: "b" }) } };
-  const ctrl = new WorkflowsController(db as never, {} as never, audit as never, {} as never, {} as never);
+  const ctrl = new WorkflowsController({ ...db, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ ...db, $queryRaw: async () => [] }) } as never, {} as never, audit as never, {} as never, {} as never);
   await ctrl.expiryAlerts(request);
   assert.deepEqual((where as { customer: unknown }).customer, { branchId: { in: ["a"] }, AND: [{ OR: [{ leadId: null }, { lead: { branchId: { in: ["a"] } } }] }] });
   await assert.rejects(ctrl.convertQuote("q", request), { status: 404 });
@@ -122,7 +122,7 @@ test("cancellation posts balanced party-preserving offsets and audit through the
     const originals = [100, 50].map((n, i) => ({ entryNumber: "J" + i, branchId: "a", lines: [{ accountId: "debit", debit: n, credit: 0, partyType: "customer", partyId: "c" }, { accountId: "credit", debit: 0, credit: n, partyType: "supplier", partyId: "s" }] }));
     const prisma = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => {
       const draft = structuredClone(committed); let locked = false;
-      const tx = { $queryRaw: async (sql: TemplateStringsArray) => { assert.match(sql.join("?"), /HotelBooking.*FOR UPDATE/); locked = true; },
+      const tx = { $queryRaw: async (sql: TemplateStringsArray | { values: string[] }) => { if (!Array.isArray(sql)) return (sql as { values: string[] }).values.map(id => ({ id, isPosting: true, status: "ACTIVE", deletedAt: null })); assert.match((sql as TemplateStringsArray).join("?"), /HotelBooking.*FOR UPDATE/); locked = true; },
         hotelBooking: { findUnique: async () => { assert.ok(locked); return { branchId: "a", paid: 25, cancelledAt: null, staySegments: [] }; }, update: async ({ data }: { data: { balance: { toNumber(): number } } }) => { assert.equal(data.balance.toNumber(), -25); if (fail) throw Error("injected update failure"); draft.cancelled = true; return data; } },
         journalEntry: { findMany: async () => originals, create: async ({ data }: { data: typeof draft.journals[number] }) => { draft.journals.push(data); return { id: "j" }; } },
         numberSequence: { upsert: async () => ({ current: 1, padLength: 6 }) }, auditLog: { create: async () => { draft.audits++; } },
@@ -140,14 +140,14 @@ test("cancellation posts balanced party-preserving offsets and audit through the
 test("all workflow source mutations and passenger attachment writes deny foreign records", async () => {
   const foreign = { branchId: "b", rooms: [] };
   const db = { umrahBooking: { findUnique: async () => foreign }, ticketSale: { findUnique: async () => foreign }, umrahGroup: { findUnique: async () => foreign }, starBooking: { findUnique: async () => foreign }, customer: { findUnique: async () => ({ branchId: "a" }) }, passenger: { findUnique: async () => ({ customerId: "b" }) } };
-  const ctrl = new WorkflowsController(db as never, {} as never, audit as never, {} as never, {} as never);
+  const ctrl = new WorkflowsController({ ...db, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ ...db, $queryRaw: async () => [] }) } as never, {} as never, audit as never, {} as never, {} as never);
   await assert.rejects(ctrl.umrahStep("b", {}, request), { status: 404 });
   await assert.rejects(ctrl.allocateSeats("b", { seats: 1 }, request), { status: 404 });
   await assert.rejects(ctrl.reissue("b", {}, request), { status: 404 });
   await assert.rejects(ctrl.getStar("b", request), { status: 404 });
   await assert.rejects(ctrl.allocateStar("b", { rooms: [] }, request), { status: 404 });
   const svc = new ResourcesService({ customer: { findUnique: async () => ({ branchId: "b" }) }, passenger: { findUnique: async () => ({ customerId: "b" }) } } as never, {} as never, audit as never);
-  await assert.rejects(svc.create("tickets", { ...user, permissions: ["ticket.create"] }, { passengerId: "b" }), { status: 404 });
+  await assert.rejects(svc.create("tickets", { ...user, permissions: ["ticket.create"] }, { passengerId: "b" }), { status: 403 });
   await assert.rejects(svc.update("tickets", "a", { ...user, permissions: ["ticket.edit"] }, { paidAmount: 1000 }), { status: 403 });
 });
 
@@ -212,7 +212,7 @@ test("complaints keep linked people in the complaint branch across dedicated and
 
   const resources = new ResourcesService(db as never, { next: async () => "CMP1" } as never, audit as never);
   await assert.rejects(
-    resources.create("complaints", multiBranchUser, { customerId: "customer-a", passengerId: "passenger-b", description: "test" }),
+    resources.create("complaints", multiBranchUser, { customerId: "customer-a", passengerId: "passenger-b", description: "test", module: "umrah", category: "service" }),
     { status: 404 },
   );
   await assert.rejects(resources.update("complaints", "complaint-a", multiBranchUser, { passengerId: "passenger-b" }), { status: 404 });

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -57,6 +57,20 @@ export class UmrahOpsService {
 
   private async saveWithDb(user: AuthUser, body: Record<string, unknown>, db: Prisma.TransactionClient, ip?: string) {
     if (!body.id) assertCan(user, "umrah.create");
+    const existing = body.id ? await db.umrahBooking.findUnique({ where: { id: String(body.id) } }) : null;
+    if (body.id && !existing) throw new NotFoundException();
+    if (existing) {
+      assertBranch(user, existing.branchId);
+      body = { ...existing, ...body };
+      if (existing.iataLocked && body.iataCode !== existing.iataCode) throw new ForbiddenException("IATA is locked");
+    }
+    const tot = this.totals(body as { cost?: number; sellingPrice?: number; discount?: number; tax?: number; commission?: number; paid?: number });
+    if (tot.paid !== Number(existing?.paid ?? 0)) throw new ForbiddenException("Use the receipt workflow to record payments");
+    const posted = existing && await db.journalEntry.findFirst({ where: { module: "umrah", sourceId: existing.id, status: { in: ["POSTED", "REVERSED"] } } });
+    if (posted && existing) {
+      const amounts = ["cost", "sellingPrice", "discount", "tax", "commission"] as const;
+      if (amounts.some(key => !new Prisma.Decimal(String(body[key] ?? 0)).equals(existing[key])) || body.customerId !== existing.customerId) throw new ForbiddenException("Posted amounts and customer are immutable; use financial adjustments");
+    }
     const customerId = String(body.customerId || "");
     if (!customerId) throw new BadRequestException("Customer is required.");
     await assertBookablePackage(db, body.packageId);
@@ -66,7 +80,6 @@ export class UmrahOpsService {
       assertBranch(user, body.branchId || user.defaultBranchId);
       await assertPeopleLinksInBranch(db, body, body.branchId || user.defaultBranchId);
     }
-    const tot = this.totals(body as { cost?: number; sellingPrice?: number; discount?: number; tax?: number; commission?: number; paid?: number });
     const passengers = Array.isArray(body.passengerIds) ? (body.passengerIds as string[]) : [];
     const bookingNumber = body.id ? undefined : await this.seq.next("umr-bk", "UMR", db);
     const data = {
@@ -81,10 +94,10 @@ export class UmrahOpsService {
       discount: money(tot.discount),
       tax: money(tot.tax),
       commission: money(tot.commission),
-      net: money(tot.net),
+      net: posted && existing ? existing.net : money(tot.net),
       paid: money(tot.paid),
-      balance: money(tot.balance),
-      profit: money(tot.profit),
+      balance: posted && existing ? existing.balance : money(tot.balance),
+      profit: posted && existing ? existing.profit : money(tot.profit),
       workflowStep: String(body.workflowStep || "Draft"),
       notes: (body.notes as string) || null,
       iataCode: (body.iataCode as string) || null,

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, ConflictException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
@@ -68,14 +68,19 @@ export class WorkflowsController {
   @Post("quotations/:id/convert-booking")
   @RequirePermission("quotation.convert")
   async convertQuote(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
-    const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true } });
+    return this.prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "Quotation" WHERE id = ${id} FOR UPDATE`;
+    const q = await tx.quotation.findUnique({ where: { id }, include: { items: true } });
     if (!q) throw new BadRequestException("Quotation not found");
     assertBranch(req.user, q.branchId);
     if (!q.customerId) throw new BadRequestException("Quotation has no customer");
-    await assertPeopleLinks(this.prisma, req.user, q);
-    if (q.leadId) await assertRecordBranch(this.prisma, req.user, "lead", q.leadId);
-    const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM");
-    const booking = await this.prisma.umrahBooking.create({
+    await assertPeopleLinks(tx, req.user, q);
+    if (q.leadId) await assertRecordBranch(tx, req.user, "lead", q.leadId);
+    const existing = await tx.umrahBooking.findFirst({ where: { quotationId: id } });
+    if (existing) return existing;
+    if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status)) throw new ConflictException("Quotation cannot be converted in its current state");
+    const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM", tx);
+    const booking = await tx.umrahBooking.create({
       data: {
         bookingNumber,
         customerId: q.customerId,
@@ -94,8 +99,9 @@ export class WorkflowsController {
         workflowStep: "QUOTATION",
       },
     });
-    await this.prisma.quotation.update({ where: { id }, data: { status: "CONVERTED" } });
+    await tx.quotation.update({ where: { id }, data: { status: "CONVERTED" } });
     await this.accounting.postSale({
+      db: tx,
       userId: req.user.id,
       module: "umrah",
       sourceId: booking.id,
@@ -105,6 +111,7 @@ export class WorkflowsController {
       memo: `Umrah ${booking.bookingNumber}`,
     });
     await this.accounting.postCost({
+      db: tx,
       userId: req.user.id,
       module: "umrah",
       sourceId: booking.id,
@@ -113,6 +120,7 @@ export class WorkflowsController {
       memo: `Umrah cost ${booking.bookingNumber}`,
     });
     return booking;
+    });
   }
 
   @Post("umrah-bookings/:id/advance")
@@ -138,12 +146,18 @@ export class WorkflowsController {
   @Post("umrah-groups/:id/allocate")
   @RequirePermission("umrah.edit")
   async allocateSeats(@Param("id") id: string, @Body() body: { seats: number }, @Req() req: Request & { user: AuthUser }) {
-    const g = await this.prisma.umrahGroup.findUnique({ where: { id } });
-    if (!g) throw new BadRequestException();
-    assertBranch(req.user, g.branchId);
-    const next = g.reservedSeats + Number(body.seats);
-    if (next > g.totalSeats) throw new BadRequestException("Overselling seats is not allowed");
-    return this.prisma.umrahGroup.update({ where: { id }, data: { reservedSeats: next } });
+    if (typeof body.seats !== "number" || !Number.isSafeInteger(body.seats) || body.seats <= 0) throw new BadRequestException("Seats must be a positive integer");
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "UmrahGroup" WHERE id = ${id} FOR UPDATE`;
+      const g = await tx.umrahGroup.findUnique({ where: { id } });
+      if (!g) throw new NotFoundException();
+      assertBranch(req.user, g.branchId);
+      const next = g.reservedSeats + body.seats;
+      if (g.reservedSeats < 0 || !Number.isSafeInteger(next) || next > g.totalSeats) throw new BadRequestException("Overselling seats is not allowed");
+      const row = await tx.umrahGroup.update({ where: { id }, data: { reservedSeats: next } });
+      await this.audit.log({ db: tx, userId: req.user.id, action: "ALLOCATE_SEATS", entity: "UmrahGroup", entityId: id, after: { seats: body.seats, reservedSeats: next } });
+      return row;
+    });
   }
 
   @Post("tickets")
@@ -292,12 +306,17 @@ export class WorkflowsController {
     },
     @Req() req: Request & { user: AuthUser },
   ) {
-    const original = await this.prisma.ticketSale.findUnique({ where: { id } });
+    return this.prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "TicketSale" WHERE id = ${id} FOR UPDATE`;
+    const original = await tx.ticketSale.findUnique({ where: { id } });
     if (!original) throw new BadRequestException();
     assertBranch(req.user, original.branchId);
-    await assertPeopleLinks(this.prisma, req.user, original);
+    await assertPeopleLinks(tx, req.user, original);
+    if (["REISSUED", "REFUNDED", "CANCELLED"].includes(original.status)) throw new ConflictException("Ticket cannot be reissued in its current state");
+    const fees = [body.airlineChangeFee ?? 0, body.agencyFee ?? 0, body.fareDifference ?? 0];
+    if (!fees.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Fees must be nonnegative amounts with at most two decimal places");
     const extra = Number(body.airlineChangeFee ?? 0) + Number(body.agencyFee ?? 0) + Number(body.fareDifference ?? 0);
-    const newTicket = await this.prisma.ticketSale.create({
+    const newTicket = await tx.ticketSale.create({
       data: {
         customerId: original.customerId,
         passengerId: original.passengerId,
@@ -316,12 +335,17 @@ export class WorkflowsController {
         paymentStatus: extra > 0 ? "PARTIAL" : original.paymentStatus,
       },
     });
+    let journalId: string | undefined;
     if (extra > 0) {
-      const ar = await this.accounting.accountByCode("1300");
-      const rev = await this.accounting.accountByCode("4200");
-      await this.accounting.postJournal({
+      const ar = await this.accounting.accountByCode("1300", tx);
+      const rev = await this.accounting.accountByCode("4200", tx);
+      const journal = await this.accounting.postJournal({
+        db: tx,
         date: new Date(),
         memo: `Ticket reissue ${original.ticketNumber}`,
+        kind: "REISSUE",
+        module: "ticket",
+        sourceId: newTicket.id,
         branchId: original.branchId,
         userId: req.user.id,
         lines: [
@@ -329,9 +353,11 @@ export class WorkflowsController {
           { accountId: rev.id, debit: 0, credit: extra },
         ],
       });
+      journalId = journal.id;
     }
-    const row = await this.prisma.ticketReissue.create({
+    const row = await tx.ticketReissue.create({
       data: {
+        journalId,
         originalTicketId: original.id,
         newTicketId: newTicket.id,
         oldItinerary: original.sector,
@@ -343,8 +369,10 @@ export class WorkflowsController {
         reason: body.reason,
       },
     });
-    await this.prisma.ticketSale.update({ where: { id: original.id }, data: { status: "REISSUED" } });
+    await tx.ticketSale.update({ where: { id: original.id }, data: { status: "REISSUED" } });
+    await this.audit.log({ db: tx, userId: req.user.id, action: "REISSUE", entity: "ticketSale", entityId: id, after: { reissueId: row.id, newTicketId: newTicket.id } });
     return { reissue: row, newTicket };
+    });
   }
 
   @Post("hotel-inventory/allocate")

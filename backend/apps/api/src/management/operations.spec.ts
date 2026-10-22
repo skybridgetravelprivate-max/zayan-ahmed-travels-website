@@ -38,7 +38,7 @@ test("dedicated and generic Umrah writers reject unreviewed packages before book
   const db = { ...tx, $transaction: async (run: (tx: unknown) => unknown) => run(tx) };
   const body = { packageId: "source-draft", customerId: "customer-a" };
   await assert.rejects(new UmrahOpsService(db as never, {} as never, {} as never, {} as never).save(user, body), /Review and activate/);
-  await assert.rejects(new ResourcesService(db as never, { next: async () => "test-number" } as never, {} as never).create("umrah-bookings", { ...user, isSuperAdmin: true }, body), /Review and activate/);
+  await assert.rejects(new ResourcesService(db as never, { next: async () => "test-number" } as never, {} as never).create("umrah-bookings", { ...user, isSuperAdmin: true }, body), { status: 403 });
   assert.equal(writes, 0);
 });
 

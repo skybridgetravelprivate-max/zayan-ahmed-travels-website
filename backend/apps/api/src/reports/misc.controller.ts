@@ -1,5 +1,5 @@
 import { GlobalFinanceGuard } from "../auth/global-finance.guard";
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { PrismaService } from "../common/prisma.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
@@ -10,6 +10,7 @@ import { MailService } from "../common/mail.service";
 import { WhatsAppService } from "../common/whatsapp.service";
 
 import { ReportsService } from "./reports.service";
+import { StaffAccessService } from "../auth/staff-access.service";
 
 @Controller("v1/reports")
 @UseGuards(JwtAuthGuard, PermissionGuard, GlobalFinanceGuard)
@@ -149,12 +150,7 @@ export class RbacController {
   @Post("roles/:id/permissions")
   @RequirePermission("role.manage")
   async setPerms(@Param("id") id: string, @Body() body: { permissionIds: string[] }, @Req() req: Request & { user: AuthUser }) {
-    if (!req.user.isSuperAdmin) throw new ForbiddenException();
-    await this.prisma.rolePermission.deleteMany({ where: { roleId: id } });
-    await this.prisma.rolePermission.createMany({
-      data: (body.permissionIds ?? []).map((permissionId) => ({ roleId: id, permissionId })),
-    });
-    return { ok: true };
+    return new StaffAccessService(this.prisma).setPermissions(req.user, id, body.permissionIds);
   }
 
   @Post("users/:id/roles")
@@ -164,30 +160,13 @@ export class RbacController {
     @Body() body: { roleIds: string[] },
     @Req() req: Request & { user: AuthUser },
   ) {
-    if (!req.user.isSuperAdmin) throw new ForbiddenException();
-    const superRoles = await this.prisma.role.findMany({
-      where: { name: { in: ["SUPER_ADMIN", "Super Admin"] } },
-      select: { id: true },
-    });
-    const superIds = new Set(superRoles.map((r) => r.id));
-    const wantsSuper = (body.roleIds ?? []).some((rid) => superIds.has(rid));
-    if (wantsSuper && !req.user.isSuperAdmin) throw new ForbiddenException();
-    await this.prisma.userRole.deleteMany({ where: { userId: id } });
-    await this.prisma.userRole.createMany({
-      data: (body.roleIds ?? []).map((roleId) => ({ userId: id, roleId })),
-    });
-    return { ok: true };
+    return new StaffAccessService(this.prisma).save(req.user, id, { roleIds: body.roleIds }, true);
   }
 
   @Post("users/:id/branches")
   @RequirePermission("user.manage")
   async setBranches(@Param("id") id: string, @Body() body: { branchIds: string[] }, @Req() req: Request & { user: AuthUser }) {
-    if (!req.user.isSuperAdmin) throw new ForbiddenException();
-    await this.prisma.userBranch.deleteMany({ where: { userId: id } });
-    await this.prisma.userBranch.createMany({
-      data: (body.branchIds ?? []).map((branchId) => ({ userId: id, branchId })),
-    });
-    return { ok: true };
+    return new StaffAccessService(this.prisma).save(req.user, id, { branchIds: body.branchIds }, true);
   }
 }
 

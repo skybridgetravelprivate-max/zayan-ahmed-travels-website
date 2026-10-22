@@ -22,7 +22,7 @@ export class AdminService {
     const drafts = await this.prisma.journalEntry.findMany({ where: { status: "DRAFT" } });
     let count = 0;
     for (const j of drafts) {
-      await this.prisma.journalEntry.update({ where: { id: j.id }, data: { status: "POSTED" } });
+      await this.accounting.postExisting(j.id, user.id);
       count += 1;
     }
     await this.audit.log({ userId: user.id, action: "post", entity: "JournalEntry", after: { count } });
