@@ -136,7 +136,7 @@ test("Umrah creation passes the transaction through number, ledger and audit ope
 });
 
 test("quotation items reject invalid quantities and amounts before database access", async () => {
-  const svc = new CrmService({} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  const svc = new CrmService({} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
   for (const data of [{ quantity: 0 }, { quantity: -1 }, { quantity: 1.5 }, { quantity: Infinity }, { quantity: 2147483648 }, { quantity: "2" }, { cost: -1 }, { sellingPrice: NaN }, { cost: {} }, { description: 42 }]) {
     await assert.rejects(svc.addQuoteItem("quote", { description: "Synthetic", ...data } as never), { status: 400 });
   }
@@ -145,7 +145,7 @@ test("quotation items reject invalid quantities and amounts before database acce
 test("quotation item quantities and amounts reach the existing recalculation", async () => {
   let created: unknown;
   const db = { quotation: { findUnique: async () => ({ id: "quote", items: [{ quantity: 2, sellingPrice: 10, cost: 5 }], discount: 0, tax: 0 }), update: async ({ data }: { data: unknown }) => data }, quotationItem: { create: async ({ data }: { data: unknown }) => { created = data; } } };
-  const svc = new CrmService(db as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  const svc = new CrmService(db as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
   const result = await svc.addQuoteItem("quote", { description: " Synthetic ", quantity: 2, sellingPrice: 10, cost: 5 });
   assert.deepEqual(created, { quotationId: "quote", description: "Synthetic", quantity: 2, sellingPrice: 10, cost: 5 });
   assert.deepEqual(result, { sellingTotal: 20, costTotal: 10, net: 20 });

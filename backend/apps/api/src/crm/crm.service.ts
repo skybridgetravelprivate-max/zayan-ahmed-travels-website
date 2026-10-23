@@ -1,3 +1,7 @@
+import { convertLeadToCustomer } from "./convert-lead";
+import { convertQuotationToBooking } from "./convert-quotation";
+import { AccountingService } from "../finance/accounting.service";
+import { assertBranch } from "../auth/record-scope";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -29,6 +33,7 @@ export class CrmService {
     private notify: NotifyService,
     private mail: MailService,
     private wa: WhatsAppService,
+    private accounting: AccountingService,
   ) {}
 
   private branchIds(user: AuthUser) {
@@ -386,44 +391,30 @@ export class CrmService {
   }
 
   async bookingFromLead(id: string, user: AuthUser) {
-    const lead = await this.prisma.lead.findUnique({ where: { id } });
-    if (!lead) throw new NotFoundException();
-    const customer = await this.convertLead(id, user);
-    const existingQuote = await this.prisma.quotation.findFirst({
-      where: { leadId: id },
-      orderBy: { createdAt: "desc" },
+    return this.prisma.$transaction(async tx => {
+      const customer = await convertLeadToCustomer(this.prisma, this.seq, this.audit, id, user, tx);
+      const lead = await tx.lead.findUniqueOrThrow({ where: { id } });
+      assertBranch(user, lead.branchId);
+      let quote = await tx.quotation.findFirst({ where: { leadId: id }, orderBy: { createdAt: "desc" } });
+      if (!quote) {
+        const amount = Number(lead.budget ?? 0);
+        if (!Number.isFinite(amount) || amount < 0) throw new BadRequestException("Invalid lead budget");
+        quote = await tx.quotation.create({ data: {
+          quotationNumber: await this.seq.next("quotation", "ZAT-QT", tx),
+          customerId: customer.id, leadId: id, agentId: lead.assignedAgentId,
+          branchId: lead.branchId, sellingTotal: amount, net: amount, status: "DRAFT",
+        } });
+      }
+      let booking = await convertQuotationToBooking(tx, this.seq, this.accounting, quote.id, user);
+      if (booking.status === "QUOTED" && booking.workflowStep === "QUOTATION") {
+        booking = await tx.umrahBooking.update({ where: { id: booking.id }, data: {
+          status: "CONFIRMED", workflowStep: "CUSTOMER_CONFIRMATION",
+          packageId: lead.packageId, departureDate: lead.travelDate, returnDate: lead.returnDate,
+        } });
+      }
+      await tx.lead.update({ where: { id }, data: { status: "CONFIRMED" } });
+      return booking;
     });
-    const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM");
-    const net = Number(existingQuote?.net ?? lead.budget ?? 0);
-    const cost = Number(existingQuote?.costTotal ?? 0);
-    const booking = await this.prisma.umrahBooking.create({
-      data: {
-        bookingNumber,
-        customerId: customer.id,
-        packageId: lead.packageId,
-        quotationId: existingQuote?.id,
-        agentId: lead.assignedAgentId,
-        branchId: lead.branchId,
-        departureDate: lead.travelDate,
-        returnDate: lead.returnDate,
-        cost,
-        sellingPrice: Number(existingQuote?.sellingTotal ?? lead.budget ?? 0),
-        discount: Number(existingQuote?.discount ?? 0),
-        tax: Number(existingQuote?.tax ?? 0),
-        net,
-        paid: 0,
-        balance: net,
-        profit: net - cost,
-        status: "CONFIRMED",
-        workflowStep: "CUSTOMER_CONFIRMATION",
-      },
-    });
-    if (existingQuote) {
-      await this.prisma.quotation.update({ where: { id: existingQuote.id }, data: { status: "CONVERTED" } });
-    }
-    await this.prisma.lead.update({ where: { id }, data: { status: "CONFIRMED" } });
-    await this.audit.log({ userId: user.id, action: "BOOKING", entity: "lead", entityId: id, after: booking });
-    return booking;
   }
 
   async archive(id: string, user: AuthUser, archived: boolean) {
@@ -485,29 +476,7 @@ export class CrmService {
   }
 
   async convertLead(id: string, user: AuthUser) {
-    const lead = await this.prisma.lead.findUnique({ where: { id } });
-    if (!lead) throw new NotFoundException("Lead not found");
-    const existing = await this.prisma.customer.findFirst({ where: { leadId: id } });
-    if (existing) return existing;
-    const customerNumber = await this.seq.next("customer", "ZAT-CUS");
-    const customer = await this.prisma.customer.create({
-      data: {
-        customerNumber,
-        fullName: lead.fullName,
-        fatherName: lead.fatherName,
-        phone: lead.mobile,
-        whatsapp: lead.whatsapp,
-        email: lead.email,
-        cnic: lead.cnic,
-        passportNumber: lead.passport,
-        branchId: lead.branchId,
-        agentId: lead.assignedAgentId,
-        leadId: lead.id,
-      },
-    });
-    await this.prisma.lead.update({ where: { id }, data: { status: "CONFIRMED" } });
-    await this.audit.log({ userId: user.id, action: "CONVERT", entity: "lead", entityId: id, after: customer });
-    return customer;
+    return convertLeadToCustomer(this.prisma, this.seq, this.audit, id, user);
   }
 
   async importLeads(user: AuthUser, rows: Record<string, string>[]) {

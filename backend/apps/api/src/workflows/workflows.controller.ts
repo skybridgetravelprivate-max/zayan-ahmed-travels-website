@@ -1,3 +1,5 @@
+import { convertLeadToCustomer } from "../crm/convert-lead";
+import { convertQuotationToBooking } from "../crm/convert-quotation";
 import { BadRequestException, ConflictException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { Request } from "express";
@@ -41,86 +43,13 @@ export class WorkflowsController {
   @Post("leads/:id/convert-customer")
   @RequirePermission("lead.edit")
   async convertLead(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
-    const lead = await this.prisma.lead.findUnique({ where: { id } });
-    if (!lead) throw new BadRequestException("Lead not found");
-    assertBranch(req.user, lead.branchId);
-    const customerNumber = await this.seq.next("customer", "ZAT-CUS");
-    const customer = await this.prisma.customer.create({
-      data: {
-        customerNumber,
-        fullName: lead.fullName,
-        fatherName: lead.fatherName,
-        phone: lead.mobile,
-        whatsapp: lead.whatsapp,
-        email: lead.email,
-        cnic: lead.cnic,
-        passportNumber: lead.passport,
-        branchId: lead.branchId,
-        agentId: lead.assignedAgentId,
-        leadId: lead.id,
-      },
-    });
-    await this.prisma.lead.update({ where: { id }, data: { status: "CONFIRMED" } });
-    await this.audit.log({ userId: req.user.id, action: "CONVERT", entity: "lead", entityId: id, after: customer });
-    return customer;
+    return convertLeadToCustomer(this.prisma, this.seq, this.audit, id, req.user);
   }
 
   @Post("quotations/:id/convert-booking")
   @RequirePermission("quotation.convert")
   async convertQuote(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
-    return this.prisma.$transaction(async tx => {
-    await tx.$queryRaw`SELECT id FROM "Quotation" WHERE id = ${id} FOR UPDATE`;
-    const q = await tx.quotation.findUnique({ where: { id }, include: { items: true } });
-    if (!q) throw new BadRequestException("Quotation not found");
-    assertBranch(req.user, q.branchId);
-    if (!q.customerId) throw new BadRequestException("Quotation has no customer");
-    await assertPeopleLinks(tx, req.user, q);
-    if (q.leadId) await assertRecordBranch(tx, req.user, "lead", q.leadId);
-    const existing = await tx.umrahBooking.findFirst({ where: { quotationId: id } });
-    if (existing) return existing;
-    if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status)) throw new ConflictException("Quotation cannot be converted in its current state");
-    const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM", tx);
-    const booking = await tx.umrahBooking.create({
-      data: {
-        bookingNumber,
-        customerId: q.customerId,
-        quotationId: q.id,
-        agentId: q.agentId,
-        branchId: q.branchId,
-        cost: q.costTotal,
-        sellingPrice: q.sellingTotal,
-        discount: q.discount,
-        tax: q.tax,
-        net: q.net,
-        paid: 0,
-        balance: q.net,
-        profit: Number(q.net) - Number(q.costTotal),
-        status: "QUOTED",
-        workflowStep: "QUOTATION",
-      },
-    });
-    await tx.quotation.update({ where: { id }, data: { status: "CONVERTED" } });
-    await this.accounting.postSale({
-      db: tx,
-      userId: req.user.id,
-      module: "umrah",
-      sourceId: booking.id,
-      amount: Number(booking.net),
-      customerId: booking.customerId,
-      branchId: booking.branchId,
-      memo: `Umrah ${booking.bookingNumber}`,
-    });
-    await this.accounting.postCost({
-      db: tx,
-      userId: req.user.id,
-      module: "umrah",
-      sourceId: booking.id,
-      amount: Number(booking.cost),
-      branchId: booking.branchId,
-      memo: `Umrah cost ${booking.bookingNumber}`,
-    });
-    return booking;
-    });
+    return this.prisma.$transaction(tx => convertQuotationToBooking(tx, this.seq, this.accounting, id, req.user));
   }
 
   @Post("umrah-bookings/:id/advance")
