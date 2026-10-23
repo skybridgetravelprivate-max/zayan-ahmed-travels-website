@@ -15,7 +15,7 @@ export class MailService {
 
   async send(to: string, subject: string, html: string) {
     if (!process.env.SMTP_HOST) {
-      console.warn("SMTP not configured; email skipped", { to, subject });
+      console.warn("SMTP not configured; email skipped");
       return { skipped: true };
     }
     return this.transporter.sendMail({
