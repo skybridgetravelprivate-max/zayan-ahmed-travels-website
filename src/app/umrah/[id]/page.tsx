@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PlaceholderArt } from "@/components/home/PlaceholderArt";
+import { TravelIllustration } from "@/components/home/TravelIllustration";
 import { UmrahInquiry } from "@/components/umrah/UmrahInquiry";
 import { Button } from "@/components/ui/Button";
-import { demoPackages, getDemoPackage, type DemoPackage } from "@/config/umrah";
 import type { PublicUmrahPackage } from "@/lib/public-umrah";
 import { site } from "@/config/site";
 import { getPublicUmrahPackages } from "@/server/crm-umrah";
@@ -12,9 +11,6 @@ type PackagePageProps = {
   params: Promise<{ id: string }>;
 };
 
-export function generateStaticParams() {
-  return demoPackages.map((item) => ({ id: item.id }));
-}
 
 function included(value: boolean | null) {
   if (value === null) return "";
@@ -40,17 +36,6 @@ function publishedRows(item: PublicUmrahPackage) {
   ].filter((row): row is [string, string] => row[1].length > 0);
 }
 
-function demoRows(item: DemoPackage): [string, string][] {
-  return [
-    ["Duration", item.duration],
-    ["Hotel category", item.category],
-    ["Makkah hotel", item.makkahHotel],
-    ["Madinah hotel", item.madinahHotel],
-    ["Transport", item.transport],
-    ["Visa", item.visa],
-  ];
-}
-
 export async function generateMetadata({ params }: PackagePageProps): Promise<Metadata> {
   const { id } = await params;
   const published = await getPublicUmrahPackages();
@@ -60,10 +45,7 @@ export async function generateMetadata({ params }: PackagePageProps): Promise<Me
       ? { title: item.name, description: `Published Umrah package from ${site.shortName}. Nothing is reserved.` }
       : { title: "Umrah package" };
   }
-  const demo = getDemoPackage(id);
-  return demo
-    ? { title: demo.name, description: `Demo Umrah package for ${site.shortName}. This is not a live CRM package.` }
-    : { title: "Umrah package" };
+  return { title: "Umrah package" };
 }
 
 export default async function UmrahPackagePage({ params }: PackagePageProps) {
@@ -80,24 +62,12 @@ export default async function UmrahPackagePage({ params }: PackagePageProps) {
         intro="Published package details. Nothing is reserved from this page."
         rows={publishedRows(item)}
         description={item.description}
-        tone="makkah"
+
       />
     );
   }
 
-  const demo = getDemoPackage(id);
-  if (!demo) notFound();
-
-  return (
-    <PackageDetail
-      eyebrow="Demo package"
-      name={demo.name}
-      intro="This is a sample package. It is not a live CRM package, and nothing is reserved."
-      rows={demoRows(demo)}
-      description="Sample outline only. Departure, arrival, night counts, and room type are not part of this demo package."
-      tone={demo.tone}
-    />
-  );
+  notFound();
 }
 
 function PackageDetail({
@@ -106,14 +76,14 @@ function PackageDetail({
   intro,
   rows,
   description,
-  tone,
+
 }: {
   eyebrow: string;
   name: string;
   intro: string;
   rows: readonly [string, string][];
   description: string;
-  tone: "makkah" | "hotel" | "tour";
+
 }) {
   return (
     <>
@@ -135,7 +105,7 @@ function PackageDetail({
         <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.4fr_0.8fr]">
           <div className="space-y-8">
             <div className="overflow-hidden rounded-3xl">
-              <PlaceholderArt caption={name} tone={tone} />
+              <TravelIllustration />
             </div>
             {description ? (
               <section>

@@ -23,7 +23,7 @@ export default async function AccountPage() {
       intro={
         identity
           ? "You are signed in to this website."
-          : "Sign in to see your account. A sample profile is shown until you do."
+          : "Sign in to view your account and linked bookings."
       }
     >
       <AccountHome customer={identity} />

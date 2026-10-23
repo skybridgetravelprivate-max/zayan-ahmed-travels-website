@@ -11,12 +11,12 @@ export const metadata: Metadata = {
 };
 
 const services = [
-  { title: "Flights", href: "/flights", description: "Sample flight search and demo fare cards." },
-  { title: "Hotels", href: "/hotels", description: "Sample stays with demo nightly prices." },
-  { title: "Umrah", href: "/umrah", description: "Sample Umrah packages for Makkah and Madinah." },
-  { title: "Visas", href: "/visa", description: "Sample visa categories. No application is filed here." },
-  { title: "Tours", href: "/tours", description: "Sample tours for Pakistan and international trips." },
-  { title: "Transport", href: "/transport", description: "Sample airport, private, and Umrah transfers." },
+  { title: "Flights", href: "/flights", description: "Flight planning and quotation enquiries." },
+  { title: "Hotels", href: "/hotels", description: "Hotel quotation and accommodation enquiries." },
+  { title: "Umrah", href: "/umrah", description: "Umrah planning and published packages for Makkah and Madinah." },
+  { title: "Visas", href: "/visa", description: "Visa assistance enquiries. An inquiry does not file an application." },
+  { title: "Tours", href: "/tours", description: "Tailored Pakistan and international tour enquiries." },
+  { title: "Transport", href: "/transport", description: "Airport, private and group transport enquiries." },
 ] as const;
 
 export default function AboutPage() {
@@ -64,7 +64,7 @@ export default function AboutPage() {
         className="bg-surface"
         eyebrow="What we plan"
         title="Services overview"
-        description="These links open the public demo pages already on this site."
+        description="Explore our services and send your requirements to the travel desk."
       >
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {services.map((service) => (
