@@ -1,3 +1,4 @@
+import { ReceiptOperations } from "../finance/receipt-operations";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
@@ -51,8 +52,11 @@ export class UmrahOpsService {
     return { cost, selling, discount, tax, commission, paid, net, profit: net - cost - commission, balance: Math.max(net - paid, 0) };
   }
 
-  async save(user: AuthUser, body: Record<string, unknown>, ip?: string) {
-    return this.prisma.$transaction(tx => this.saveWithDb(user, body, tx, ip), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  async save(user: AuthUser, body: Record<string, unknown>, ip?: string, requestKey?: string) {
+    if (body.id) return this.prisma.$transaction(tx => this.saveWithDb(user, body, tx, ip), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(user, body, requestKey, "bookingId", body.paid,
+      tx => this.saveWithDb(user, { ...body, paid: 0, paymentMethod: undefined }, tx, ip));
+    return this.prisma.umrahBooking.findUniqueOrThrow({ where: { id: result.id }, include: { passengers: true, customer: true } });
   }
 
   private async saveWithDb(user: AuthUser, body: Record<string, unknown>, db: Prisma.TransactionClient, ip?: string) {
@@ -147,7 +151,7 @@ export class UmrahOpsService {
       });
     }
     await this.audit.log({ db, userId: user.id, action: body.id ? "update" : "create", entity: "UmrahBooking", entityId: row.id, after: row, ipAddress: ip });
-    return db.umrahBooking.findUnique({ where: { id: row.id }, include: { passengers: true, customer: true } });
+    return db.umrahBooking.findUniqueOrThrow({ where: { id: row.id }, include: { passengers: true, customer: true } });
   }
 
   async lifecycle(user: AuthUser, id: string, step: string, ip?: string) {

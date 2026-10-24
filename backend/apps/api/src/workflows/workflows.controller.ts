@@ -1,6 +1,7 @@
+import { ReceiptOperations } from "../finance/receipt-operations";
 import { convertLeadToCustomer } from "../crm/convert-lead";
 import { convertQuotationToBooking } from "../crm/convert-quotation";
-import { BadRequestException, ConflictException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, ConflictException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
@@ -94,13 +95,18 @@ export class WorkflowsController {
   async sellTicket(
     @Body() body: Record<string, unknown>,
     @Req() req: Request & { user: AuthUser },
+    @Headers("idempotency-key") requestKey?: string,
   ) {
+    const paymentSubmission = { ...body };
+    const initialPaid = body.paidAmount;
+    body = { ...body, paidAmount: 0 };
+    delete body.paymentMethod;
     const allowed = new Set("ticketNumber customerId passengerId pnrId airlineId flightNumber sector departureAt arrivalAt fare tax commission discount net cost paidAmount cabin baggage currency exchangeRate agentId branchId supplierId groupId".split(" "));
     if (!body || Object.keys(body).some(key => !allowed.has(key) || (body[key] !== null && !["string", "number"].includes(typeof body[key])))) throw new BadRequestException("Unsupported ticket field");
     for (const [key, value] of Object.entries(body)) {
       if (typeof value === "string" && (value.length > 300 || (key.endsWith("Id") && !/^[A-Za-z0-9_-]{1,80}$/.test(value)))) throw new BadRequestException("Invalid ticket field");
     }
-    return this.prisma.$transaction(async tx => {
+    const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(req.user, paymentSubmission, requestKey, "ticketSaleId", initialPaid, async tx => {
       assertBranch(req.user, body.branchId || req.user.defaultBranchId);
       await assertPeopleLinks(tx, req.user, body);
       await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
@@ -158,7 +164,8 @@ export class WorkflowsController {
       }
       await this.audit.log({ db: tx, userId: req.user.id, action: "CREATE", entity: "ticketSale", entityId: ticket.id });
       return ticket;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
+    return result;
   }
 
   @Post("tickets/:id/refund")
@@ -393,6 +400,8 @@ export class WorkflowsController {
   @RequirePermission("star.create")
   async createStar(
     @Body() body: {
+      paid?: number;
+      paymentMethod?: string;
       customerId?: string;
       supplierId?: string;
       groupName?: string;
@@ -405,10 +414,12 @@ export class WorkflowsController {
       }>;
     },
     @Req() req: Request & { user: AuthUser },
+    @Headers("idempotency-key") requestKey?: string,
   ) {
+    const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(req.user, { ...body }, requestKey, "starBookingId", body.paid, async tx => {
     assertBranch(req.user, req.user.defaultBranchId);
-    await assertPeopleLinks(this.prisma, req.user, body);
-    for (const room of body.rooms || []) await assertPeopleLinks(this.prisma, req.user, room);
+    await assertPeopleLinks(tx, req.user, body);
+    for (const room of body.rooms || []) await assertPeopleLinks(tx, req.user, room);
     const rooms = (body.rooms || []).map((rm, i) => ({
       ...rm,
       roomNo: rm.roomNo || (body.autoAllocate === false ? undefined : `${String(rm.hotelId).slice(-4)}-${i + 1}`),
@@ -425,8 +436,8 @@ export class WorkflowsController {
     }
     const cost = rooms.reduce((s, r) => s + Number(r.cost || 0) * Number(r.qty || 1), 0);
     const sellingPrice = rooms.reduce((s, r) => s + Number(r.sale || 0) * Number(r.qty || 1), 0);
-    const bookingNumber = await this.seq.next("str", "STR");
-    const rec = await this.prisma.starBooking.create({
+    const bookingNumber = await this.seq.next("str", "STR", tx);
+    const rec = await tx.starBooking.create({
       data: {
         bookingNumber,
         customerId: body.customerId,
@@ -455,7 +466,7 @@ export class WorkflowsController {
       },
       include: { rooms: { include: { pax: true } } },
     });
-    await this.accounting.postSale({
+    await this.accounting.postSale({ db: tx,
       userId: req.user.id,
       module: "star",
       sourceId: rec.id,
@@ -464,7 +475,7 @@ export class WorkflowsController {
       branchId: rec.branchId,
       memo: `STAR ${rec.bookingNumber}`,
     });
-    await this.accounting.postCost({
+    await this.accounting.postCost({ db: tx,
       userId: req.user.id,
       module: "star",
       sourceId: rec.id,
@@ -473,8 +484,10 @@ export class WorkflowsController {
       branchId: rec.branchId,
       memo: `STAR cost ${rec.bookingNumber}`,
     });
-    await this.audit.log({ userId: req.user.id, action: "CREATE", entity: "starBooking", entityId: rec.id, after: rec });
+    await this.audit.log({ db: tx, userId: req.user.id, action: "CREATE", entity: "starBooking", entityId: rec.id, after: rec });
     return rec;
+    });
+    return this.prisma.starBooking.findUniqueOrThrow({ where: { id: result.id }, include: { rooms: { include: { pax: true } } } });
   }
 
   @Get("star")
@@ -581,8 +594,13 @@ export class WorkflowsController {
   async sellTransport(
     @Body() body: Record<string, unknown>,
     @Req() req: Request & { user: AuthUser },
+    @Headers("idempotency-key") requestKey?: string,
   ) {
-    return this.prisma.$transaction(async tx => {
+    const paymentSubmission = { ...body };
+    const initialPaid = body.paid;
+    body = { ...body, paid: 0 };
+    delete body.paymentMethod;
+    const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(req.user, paymentSubmission, requestKey, "transportBookingId", initialPaid, async tx => {
       assertBranch(req.user, body.branchId || req.user.defaultBranchId);
       await assertPeopleLinks(tx, req.user, body);
       await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
@@ -649,7 +667,8 @@ export class WorkflowsController {
       });
       await this.audit.log({ db: tx, userId: req.user.id, action: "CREATE", entity: "transportBooking", entityId: rec.id, after: rec });
       return rec;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
+    return result;
   }
 
   @Get("transport/intimation")

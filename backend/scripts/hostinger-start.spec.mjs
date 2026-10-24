@@ -49,6 +49,10 @@ test("gateway waits for website readiness before accepting requests", async () =
   assert.equal(headers["retry-after"], "60");
   handleRequest({ method: "GET", url: "/admin" }, response);
   assert.equal(status, 200);
+  context.process.env.BUSINESS_WRITES_DISABLED = "true";
+  handleRequest({ method: "POST", url: "/api/v1/workflows/tickets" }, response);
+  assert.equal(status, 503);
+  assert.equal(headers["cache-control"], "private, no-store");
 });
 
 for (const mode of ["api", "all"]) {

@@ -107,7 +107,7 @@ test("posted Umrah money and payments reject direct edits while notes preserve e
   const existing = { id: "booking", branchId: "a", customerId: "customer", cost: new Prisma.Decimal(50), sellingPrice: new Prisma.Decimal(100), discount: new Prisma.Decimal(0), tax: new Prisma.Decimal(0), commission: new Prisma.Decimal(0), paid: new Prisma.Decimal(20), net: new Prisma.Decimal(99), profit: new Prisma.Decimal(49), balance: new Prisma.Decimal(79), iataLocked: false };
   let writes = 0;
   const tx = {
-    umrahBooking: { findUnique: async () => existing, update: async ({ data }: { data: { paid: Prisma.Decimal; sellingPrice: Prisma.Decimal; net: Prisma.Decimal; balance: Prisma.Decimal; profit: Prisma.Decimal } }) => { assert.equal(data.paid.toNumber(), 20); assert.equal(data.sellingPrice.toNumber(), 100); assert.equal(data.net.toNumber(), 99); assert.equal(data.balance.toNumber(), 79); assert.equal(data.profit.toNumber(), 49); writes++; return existing; } },
+    umrahBooking: { findUniqueOrThrow: async () => existing, findUnique: async () => existing, update: async ({ data }: { data: { paid: Prisma.Decimal; sellingPrice: Prisma.Decimal; net: Prisma.Decimal; balance: Prisma.Decimal; profit: Prisma.Decimal } }) => { assert.equal(data.paid.toNumber(), 20); assert.equal(data.sellingPrice.toNumber(), 100); assert.equal(data.net.toNumber(), 99); assert.equal(data.balance.toNumber(), 79); assert.equal(data.profit.toNumber(), 49); writes++; return existing; } },
     customer: { findUnique: async () => ({ branchId: "a" }) },
     journalEntry: { findFirst: async () => ({ id: "posted" }) },
   };

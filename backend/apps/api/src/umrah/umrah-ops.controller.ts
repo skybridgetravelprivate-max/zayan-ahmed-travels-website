@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Post, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
@@ -18,8 +18,8 @@ export class UmrahOpsController {
 
   @Post()
   @RequirePermission("umrah.create")
-  save(@Body() body: Record<string, unknown>, @Req() req: Request & { user: AuthUser }) {
-    return this.umrah.save(req.user, body, req.ip);
+  save(@Body() body: Record<string, unknown>, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") requestKey?: string) {
+    return this.umrah.save(req.user, body, req.ip, requestKey);
   }
 
   @Post(":id/lifecycle")

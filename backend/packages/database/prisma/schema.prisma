@@ -1324,6 +1324,8 @@ model HotelBooking {
   @@index([cancelledAt])
   @@index([checkIn])
   @@index([status])
+  receipts Receipt[]
+
 }
 
 /// Additive multi-hotel stay (does not replace existing HotelBooking columns).
@@ -1428,6 +1430,8 @@ model StarBooking {
 
   @@index([customerId])
   @@index([status])
+  receipts Receipt[]
+
 }
 
 model StarBookingRoom {
@@ -1576,6 +1580,8 @@ model TicketSale {
   refunds      TicketRefund[]
   reissuesFrom TicketReissue[] @relation("OriginalTicket")
   reissuesTo   TicketReissue[] @relation("NewTicket")
+  receipts Receipt[]
+
 }
 
 model TicketRefund {
@@ -1714,6 +1720,8 @@ model TransportBooking {
   @@index([umrahBookingId])
   @@index([hotelBookingId])
   @@index([tripDate])
+  receipts Receipt[]
+
 }
 
 model TransportVoucher {
@@ -1886,6 +1894,21 @@ model Receipt {
   @@index([customerId])
   @@index([paymentMethodId])
   @@index([date])
+  ticketSaleId          String?
+  ticketSale            TicketSale? @relation(fields: [ticketSaleId], references: [id], onDelete: Restrict)
+  hotelBookingId        String?
+  hotelBooking          HotelBooking? @relation(fields: [hotelBookingId], references: [id], onDelete: Restrict)
+  transportBookingId    String?
+  transportBooking      TransportBooking? @relation(fields: [transportBookingId], references: [id], onDelete: Restrict)
+  starBookingId         String?
+  starBooking           StarBooking? @relation(fields: [starBookingId], references: [id], onDelete: Restrict)
+  submissionFingerprint String? @db.VarChar(64)
+
+  @@index([ticketSaleId])
+  @@index([hotelBookingId])
+  @@index([transportBookingId])
+  @@index([starBookingId])
+
 }
 
 model Expense {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
@@ -33,8 +33,8 @@ export class ReservationController {
 
   @Post()
   @RequirePermission("hotel.booking")
-  save(@Body() body: ReservationInput, @Req() req: Request & { user: AuthUser }) {
-    return this.reservations.save(req.user, body, req.ip);
+  save(@Body() body: ReservationInput, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") requestKey?: string) {
+    return this.reservations.save(req.user, body, req.ip, undefined, requestKey);
   }
 
   @Post(":id/checkin")

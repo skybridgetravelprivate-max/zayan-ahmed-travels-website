@@ -161,7 +161,7 @@ export function ManagementWorkspace({ resource, staffUsername, canAssign, permis
   }
   async function chooseWorkflow(action: StaffWorkflow) {
     setMessage(""); setError("");
-    if (resource === "receipts") {
+    if (isSuperAdmin) {
       try {
         setPendingReceipt(hasPendingReceipt(localStorage, staffUsername));
         setReceiptPreview(null);
@@ -206,13 +206,13 @@ export function ManagementWorkspace({ resource, staffUsername, canAssign, permis
       }
       if (workflow.version && row) data.version = row.version;
       let requestKey: string | undefined;
-      if (resource === "receipts") {
+      if (resource === "receipts" || Number(data.paid ?? data.paidAmount ?? 0) > 0) {
         if (!navigator.locks) throw new Error("This browser cannot safely coordinate receipt retries across tabs.");
-        requestKey = await navigator.locks.request(`zat:receipt-key:${staffUsername}`, () => receiptRetryKey(localStorage, staffUsername, data));
+        requestKey = await navigator.locks.request(`zat:receipt-key:${staffUsername}`, () => receiptRetryKey(localStorage, staffUsername, resource === "receipts" ? data : { ...data, paymentWorkflowPath: workflow.path }));
         setPendingReceipt(true);
       }
       const result = await request(workflow.path.replace(":id", encodeURIComponent(row?.id || "")), "POST", data, requestKey);
-      if (requestKey) setReceiptPreview(result);
+      if (requestKey) setReceiptPreview(resource === "receipts" ? result : await request(`/api/v1/finance/receipts/submission/${encodeURIComponent(requestKey)}`));
       const selectedId = row?.id;
       setWorkflow(null); setRevision(r => r + 1);
       if (selectedId) setRow(await request(`${api}/${resource}/${selectedId}`));
@@ -242,7 +242,7 @@ export function ManagementWorkspace({ resource, staffUsername, canAssign, permis
     {error && <p role="alert" className="mt-4 rounded-xl border border-red-300 p-4">{error} <button className="underline" onClick={() => { if (row) void open(row.id); setRevision(r => r + 1); }} disabled={busy}>Reload</button></p>}
     {row && !editing && (isSuperAdmin || permissions.includes("document.view")) && bookingDocumentUrl(resource, row.id, false) && <div className="mt-4 rounded-xl border border-line bg-surface p-4"><h2 className="font-semibold text-zayan-blue">Agency document</h2><p className="mt-1 text-sm text-muted">Print the saved record. Access is checked again by the document service.</p><div className="mt-3 flex flex-wrap gap-3"><a className={button} href={bookingDocumentUrl(resource, row.id, true)!} target="_blank" rel="noopener noreferrer">{resource === "visa-applications" ? "Application PDF" : "PDF with prices"}</a>{resource !== "visa-applications" && <a className={button} href={bookingDocumentUrl(resource, row.id, false)!} target="_blank" rel="noopener noreferrer">PDF without prices</a>}</div></div>}
     {message && <p role="status" className="mt-4 rounded-xl border border-green-300 p-4">{message}</p>}
-    {resource === "receipts" && pendingReceipt && <div className="mt-4 rounded-xl border border-amber-300 p-4"><p>A prior receipt submission is saved across tabs. Retry the original details safely, or review its saved receipt before starting another payment.</p>{receiptPreview && <><p className="mt-2">Saved receipt: {receiptPreview.receiptNo} · {Number(receiptPreview.amount).toFixed(2)} · {receiptPreview.method}</p><button type="button" className={`${button} mt-3`} disabled={busy} onClick={() => void reviewSavedReceipt(receiptPreview.id)}>I reviewed this saved receipt; allow a new payment</button></>}<Link className="mt-3 block underline" href="/admin/manage/receipts">View receipt history</Link></div>}
+    {pendingReceipt && <div className="mt-4 rounded-xl border border-amber-300 p-4"><p>A prior receipt submission is saved across tabs. Retry the original details safely, or review its saved receipt before starting another payment.</p>{receiptPreview && <><p className="mt-2">Saved receipt: {receiptPreview.receiptNo} · {Number(receiptPreview.amount).toFixed(2)} · {receiptPreview.method}</p><button type="button" className={`${button} mt-3`} disabled={busy} onClick={() => void reviewSavedReceipt(receiptPreview.id)}>I reviewed this saved receipt; allow a new payment</button></>}<Link className="mt-3 block underline" href="/admin/manage/receipts">View receipt history</Link></div>}
     {resource === "receipts" && row && isSuperAdmin && <button type="button" className={`${button} mt-4`} disabled={busy} onClick={() => void reviewSavedReceipt(row.id)}>I reviewed this saved receipt; allow a new payment</button>}
     {resource === "users" && isSuperAdmin && <div className="mt-4 flex flex-wrap gap-2"><button className={button} disabled={busy} onClick={() => { setRow(null); setStaffCreate(true); setAccessOpen(false); }}>New staff account</button>{row && <button className={button} disabled={busy} onClick={() => { setAccessOpen(true); setStaffCreate(false); setWorkflow(null); }}>Manage access</button>}</div>}
     {staffCreate && <NewStaffForm close={() => setStaffCreate(false)} saved={() => { setStaffCreate(false); setRevision(r => r + 1); setMessage("Inactive staff account created. Open its record to assign roles, branches and activate access."); }} />}

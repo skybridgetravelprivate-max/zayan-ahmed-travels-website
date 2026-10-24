@@ -1,0 +1,123 @@
+{
+  "baseline": "dad7fa976640451a79f06f073f4f71e114241a2f",
+  "localOnly": true,
+  "productionApproved": false,
+  "patchSha256": "88affa711008fa9af17758244e66073e56e220a8faa6d07ead15e97c5c80d690",
+  "files": [
+    {
+      "path": "backend/apps/api/src/common/p0-remediation.spec.ts",
+      "sha256": "894380fd8b05596ea75b2ed8b49176beadaba9ad6e7a08c69ffe20c9fbac6a7b",
+      "baselineSha256": "f98f6dc338fdad25823254d53f48f45c45f4aec963059b03c26edb7dc6d4dcb2"
+    },
+    {
+      "path": "backend/apps/api/src/common/security-audit.spec.ts",
+      "sha256": "1b7df41cfeafaa50b0dad73f160194ada7f0dcf88201a7f54a6303a4251bedec",
+      "baselineSha256": "27c1d74aa3cc87f829ca6c0e54e7d8c4bfdfa17dd016e289d01657aa5fc8cd31"
+    },
+    {
+      "path": "backend/apps/api/src/finance/finance.controller.ts",
+      "sha256": "a068011ff0c8627be40b315501566e05b2cb19b5f7a53d315ed237f1c61e3584",
+      "baselineSha256": "a8414df9440efcc87ba5a653a98957b151a26f76e76e19fcef27234a30015922"
+    },
+    {
+      "path": "backend/apps/api/src/finance/payment-integration.pg17.spec.ts",
+      "sha256": "50a9d44b218425eca105acab86ae8a63281ee979e6a1d69c819b5a71abbbfd03",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/apps/api/src/finance/receipt-operations.ts",
+      "sha256": "a8737cdac5d1a8333df45fd3187806dd0f8f3807feb5e80404fa6bbaa076ad7d",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/apps/api/src/management/operations.spec.ts",
+      "sha256": "617ecaac0a993746112a2edbb727cd48524a06c814064f9499b0bf2b8daf0830",
+      "baselineSha256": "1dda4c91271842ab4863a2037e4f93b1ed17c95e0587534ce747d6768272ef6d"
+    },
+    {
+      "path": "backend/apps/api/src/reservation/reservation.controller.ts",
+      "sha256": "12d4e2a4c056f356a9b57bb1f4dae7c89b47ca899ca05047fe569d8251ae3a06",
+      "baselineSha256": "b05f593d74b6883927a97852707c33aaabbcf7861bc22c8c36d26def0db140bb"
+    },
+    {
+      "path": "backend/apps/api/src/reservation/reservation.service.ts",
+      "sha256": "129c99b40844a24731186dbf970c4a90c7414b71006e8f6d01a06ce9b26c6a82",
+      "baselineSha256": "349d1e8e74f8b152ca4f464b00931eff2259ea9909bd7739bf8d4d3952e99213"
+    },
+    {
+      "path": "backend/apps/api/src/umrah/umrah-ops.controller.ts",
+      "sha256": "b94e4f7a4c977eb7b3ad6154f71382b9b597bca9021263c11af4bc8c06780ed0",
+      "baselineSha256": "6e9e47982b040910101c3290d70b0f87ee164cbdb4162da903c71e2e13d71184"
+    },
+    {
+      "path": "backend/apps/api/src/umrah/umrah-ops.service.ts",
+      "sha256": "c93bd32cdbbd4a24d4de60d7dbc5e24a8e1d9ee46a9e9e4dc4e5c6fa8b660a38",
+      "baselineSha256": "f2090aaf3ea0d303615b1ab3e7663c26b559511f1ef4a4bada2f9ffd91de08fc"
+    },
+    {
+      "path": "backend/apps/api/src/workflows/workflows.controller.ts",
+      "sha256": "da962b6fe240d26bad4894b7c4f993ae06af95168210389d7d48c02cc85c6ed1",
+      "baselineSha256": "8b5c9863e62bea04cd00a9990268d0d34e9395a44f3856fdc0e0e6440c3f265c"
+    },
+    {
+      "path": "backend/packages/database/prisma/migrations/20261024120000_receipt_source_allocations/migration.sql",
+      "sha256": "b2a5733fda33d4016bc2a839c676f5ce8d05be4d5a33534f75f03b3353c957c6",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/packages/database/prisma/schema.prisma",
+      "sha256": "ecd270bc648f31b6b2e3f599a45a77922c1da9171614808aba47d929e662583f",
+      "baselineSha256": "9fae24b53c95082176e6ee779848fde4920a0a237a3bdf60fa49fc2ee1741cd3"
+    },
+    {
+      "path": "backend/scripts/hostinger-api-path.cjs",
+      "sha256": "92e3fd7b786eda365d22a848407e543da2870583ca609a87a77368c75e217002",
+      "baselineSha256": "21a3fdeb1e451aaa43013e3ada775510dc10a255fc910218c0475b88b269f517"
+    },
+    {
+      "path": "backend/scripts/hostinger-start.cjs",
+      "sha256": "6af65a1f6b81c7593840775d8b95225fd200312f241358099780736772875f1e",
+      "baselineSha256": "c6a6014660fa784bfedf01e74c2bebae1958d04b57de447a53a2985cafbe2be3"
+    },
+    {
+      "path": "backend/scripts/hostinger-start.spec.mjs",
+      "sha256": "56e5f11a5c2bffa8660e2c12ed264049af56c929b3315bb0d89a8190e5bf7867",
+      "baselineSha256": "e767a77e0023d04233508b856b4479f3db01c5da98c115246b63059a9a1b78ec"
+    },
+    {
+      "path": "backend/scripts/initial-payment-browser-checks.cjs",
+      "sha256": "289cec5c99b595d448cf41bd95a7847553d62c19067b41f9c6bddde2e652a1d7",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/scripts/receipt-browser-checks.cjs",
+      "sha256": "f19b795767994d628111846c96d4164c2473cb00259ddad6c5f0def61914ef04",
+      "baselineSha256": "d2837831b7c94ba6cc31e80b54975cf6cd1944afd69a6ab432351f41b66ae024"
+    },
+    {
+      "path": "backend/scripts/receipt-maintenance.spec.mjs",
+      "sha256": "e20dbed03c573416fcd56ddab400535d97184f7ea85b6dea0b37bd55f9dfd9b2",
+      "baselineSha256": "592a14491e9b81f1627006e31457350ebdb02a2a244a711b77b194606199dbdc"
+    },
+    {
+      "path": "review/receipt-allocation-migration.draft.sql",
+      "sha256": "2f8463fbbf21e099dc04d4a4ba72f77c00df2510ab2bc15c15af3202887f4819",
+      "baselineSha256": null
+    },
+    {
+      "path": "review/receipt-allocation-rollback.draft.sql",
+      "sha256": "c76bcbfd5a7db453665cf1628ebbe5d8fcb7bb7ecde6cc3f9882d279731155ae",
+      "baselineSha256": null
+    },
+    {
+      "path": "src/components/admin/ManagementWorkspace.tsx",
+      "sha256": "2424f5c0d2812b806fde0aaad84df31b46abcbc5f86cb1ea9b1a2cb14112e6e4",
+      "baselineSha256": "5bed9d06c182fd1552e4c34200eef4e95dc5d842c0bfb3c2aab48600fbe21c66"
+    },
+    {
+      "path": "src/lib/staff-workflows.ts",
+      "sha256": "77579749ad93c8b28093fb8e516d94ee095303142d149316b3858e7618f73044",
+      "baselineSha256": "308a20dc80a2de57032b7e0c61889fc0bdb6f11bb6d6e114eb81f43d1317d215"
+    }
+  ]
+}

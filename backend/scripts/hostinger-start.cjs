@@ -94,7 +94,7 @@ function isApiPath(req) {
 
 function listenGateway() {
   const server = http.createServer((req, res) => {
-    if (receiptWriteBlocked(req, process.env.RECEIPT_WRITES_DISABLED)) {
+    if (receiptWriteBlocked(req, process.env.RECEIPT_WRITES_DISABLED, process.env.BUSINESS_WRITES_DISABLED)) {
       res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "private, no-store", "retry-after": "60" });
       res.end(JSON.stringify({ ok: false, message: "Receipt writes are temporarily unavailable. Preserve the original retry key and review saved receipts before retrying." }));
       return;

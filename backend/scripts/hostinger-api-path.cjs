@@ -11,12 +11,15 @@ function isApiPathname(pathOnly) {
 }
 
 // A nonempty value other than "false" fails closed, including configuration typos.
-function receiptWriteBlocked(req, disabled) {
-  if (!disabled || disabled === "false" || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
+function receiptWriteBlocked(req, disabled, businessDisabled) {
+  const receiptsClosed = !!disabled && disabled !== "false";
+  const businessClosed = !!businessDisabled && businessDisabled !== "false";
+  if ((!receiptsClosed && !businessClosed) || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, "http://gateway.local").pathname); }
   catch { return true; }
-  return /^\/api\/v1\/finance\/receipts(?:\/|$)/i.test(pathname);
+  if (businessClosed && /^\/api\/v1(?:\/|$)/i.test(pathname)) return true;
+  return receiptsClosed && /^\/api\/v1\/finance\/receipts(?:\/|$)/i.test(pathname);
 }
 
 module.exports = { isApiPathname, receiptWriteBlocked };

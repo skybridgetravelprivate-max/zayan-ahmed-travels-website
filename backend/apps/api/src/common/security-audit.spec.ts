@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Prisma } from "@prisma/client";
 import type { ExecutionContext } from "@nestjs/common";
 import { ResourcesService } from "../resources/resources.service";
 import { CrmScopeGuard } from "../crm/crm-scope.guard";
@@ -124,10 +125,10 @@ test("receipt locks the booking before posting journal, balance, receipt and aud
   const tx = {
     $queryRaw: async (sql: TemplateStringsArray & { strings?: string[] }) => { const text = (sql.strings ?? sql).join("?"); writes.push(text.includes("FOR UPDATE") ? "lock" : text.includes("advisory") ? "advisory" : "pending"); return []; },
     umrahBooking: {
-      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 5, net: 100, balance: 95, status: "DRAFT", workflowStep: "QUOTATION" }),
+      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: new Prisma.Decimal(5), net: new Prisma.Decimal(100), balance: 95, status: "DRAFT", workflowStep: "QUOTATION" }),
       update: async ({ data }: { data: { paid: { toNumber(): number } } }) => { writes.push("booking"); assert.equal(data.paid.toNumber(), 15); },
     },
-    receipt: { findUnique: async () => null, create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
+    receipt: { aggregate: async () => ({ _sum: { amount: new Prisma.Decimal(5) } }), findUnique: async () => null, create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
   };
   const controller = new FinanceController(
     { $transaction: async (run: (db: typeof tx) => unknown, options: { isolationLevel: string }) => { isolationLevel = options.isolationLevel; return run(tx); } } as never,

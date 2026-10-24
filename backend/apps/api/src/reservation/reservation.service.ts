@@ -1,3 +1,4 @@
+import { ReceiptOperations } from "../finance/receipt-operations";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
@@ -49,6 +50,7 @@ export type ReservationInput = {
   notes?: string;
   specialRequests?: string;
   paid?: number;
+  paymentMethod?: string;
   segments: StaySegmentInput[];
 };
 
@@ -163,7 +165,12 @@ export class ReservationService {
     if (conflicts.length) throw new BadRequestException(conflicts[0]);
   }
 
-  async save(user: AuthUser, input: ReservationInput, ip?: string, transaction?: Prisma.TransactionClient) {
+  async save(user: AuthUser, input: ReservationInput, ip?: string, transaction?: Prisma.TransactionClient, requestKey?: string): Promise<Awaited<ReturnType<ReservationService["get"]>>> {
+    if (!input.id && Number(input.paid ?? 0) !== 0) {
+      const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(user, { ...input }, requestKey, "hotelBookingId", input.paid,
+        tx => this.save(user, { ...input, paid: 0, paymentMethod: undefined }, ip, tx));
+      return this.get(user, result.id);
+    }
     assertCan(user, "hotel.booking");
     this.validateGraph(input);
     const tot = this.totals(input.segments);

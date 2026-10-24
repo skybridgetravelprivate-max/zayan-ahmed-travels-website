@@ -1,5 +1,5 @@
 import { GlobalFinanceGuard } from "../auth/global-finance.guard";
-import { createHash } from "node:crypto";
+import { ReceiptOperations, receiptSubmissionId, type ReceiptInput } from "./receipt-operations";
 import { Prisma } from "@prisma/client";
 import { BadRequestException, ConflictException, NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
@@ -25,15 +25,8 @@ export class FinanceController {
     return this.accounting.accountByCode(code);
   }
 
-  private receiptId(userId: string, key: unknown) {
-    if (typeof key !== "string" || !/^[A-Za-z0-9_-]{8,100}$/.test(key)) throw new BadRequestException("A valid Idempotency-Key is required for receipts");
-    return `request_${createHash("sha256").update(`${userId}:${key}`).digest("hex")}`;
-  }
-
-  private async lockReceiptScope(tx: Prisma.TransactionClient, customerId?: string | null, branchId?: string | null) {
-    const scope = customerId ? `customer:${customerId}` : `unallocated:${branchId || "global"}`;
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 1))::text`;
-  }
+  private receiptId(userId: string, key: unknown) { return receiptSubmissionId(userId, key); }
+  private get receiptOperations() { return new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting); }
 
   @Get("receipts/submission/:key")
   @Header("Cache-Control", "private, no-store")
@@ -47,17 +40,7 @@ export class FinanceController {
   @Post("receipts/:id/review")
   @RequirePermission("account.post")
   async reviewReceipt(@Param("id") id: string, @Body() body: { reviewed?: boolean }, @Req() req: Request & { user: AuthUser }) {
-    if (body.reviewed !== true) throw new BadRequestException("Review the saved receipt before starting another payment");
-    return this.prisma.$transaction(async tx => {
-      const receipt = await tx.receipt.findUnique({ where: { id } });
-      if (!receipt) throw new NotFoundException();
-      if (receipt.bookingId) await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${receipt.bookingId} FOR UPDATE`;
-      await this.lockReceiptScope(tx, receipt.customerId, receipt.branchId);
-      if (!await tx.auditLog.findFirst({ where: { action: "REVIEW_RECEIPT", entity: "Receipt", entityId: id } })) {
-        await this.audit.log({ db: tx, userId: req.user.id, action: "REVIEW_RECEIPT", entity: "Receipt", entityId: id });
-      }
-      return { ok: true };
-    });
+    return this.receiptOperations.review(id, body.reviewed === true, req.user);
   }
 
   @Post("journals")
@@ -97,52 +80,11 @@ export class FinanceController {
   @Post("receipts")
   @RequirePermission("account.post")
   async createReceipt(
-    @Body() body: { customerId?: string; bookingId?: string; amount: number; method: string; branchId?: string; notes?: string },
+    @Body() body: ReceiptInput,
     @Req() req: Request & { user: AuthUser },
     @Headers("idempotency-key") requestKey?: string,
   ) {
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 1e12 || new Prisma.Decimal(amount).decimalPlaces() > 2) throw new BadRequestException("Receipt amount must be positive with at most two decimal places");
-    if (!["CASH", "BANK", "CARD", "ONLINE"].includes(body.method)) throw new BadRequestException("Invalid receipt method");
-    // The existing primary key durably identifies a keyed submission, scoped to its staff user.
-    const receiptId = this.receiptId(req.user.id, requestKey);
-    return this.prisma.$transaction(async tx => {
-      if (receiptId) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${receiptId}, 0))::text`;
-      if (body.bookingId) await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${body.bookingId} FOR UPDATE`;
-      const booking = body.bookingId ? await tx.umrahBooking.findUnique({ where: { id: body.bookingId } }) : null;
-      if (body.bookingId && !booking) throw new BadRequestException("Umrah booking not found");
-      if (booking && body.customerId && booking.customerId !== body.customerId) throw new BadRequestException("Customer does not own booking");
-      const customerId = booking?.customerId || body.customerId;
-      const branchId = booking?.branchId || body.branchId || req.user.defaultBranchId;
-      if (!req.user.isSuperAdmin && (!branchId || ![...req.user.branchIds, req.user.defaultBranchId].includes(branchId))) throw new BadRequestException("Unauthorized branch");
-      await this.lockReceiptScope(tx, customerId, branchId);
-      if (receiptId) {
-        const existing = await tx.receipt.findUnique({ where: { id: receiptId } });
-        if (existing) {
-          if (existing.bookingId !== (body.bookingId || null) || existing.customerId !== (customerId || null) || existing.branchId !== (branchId || null) || !existing.amount.equals(amount) || existing.method !== body.method || existing.notes !== (body.notes ?? null)) throw new ConflictException("Idempotency key was already used for another receipt");
-          return existing;
-        }
-      }
-      // Like verified customer links, a durable audit event proves explicit operator review.
-      // A fresh key or lost browser storage must not bypass an unreviewed payment.
-      const scope = customerId ? Prisma.sql`r."customerId" = ${customerId}` : Prisma.sql`r."customerId" IS NULL AND r."branchId" IS NOT DISTINCT FROM ${branchId || null}`;
-      const pending = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
-        SELECT r.id FROM "Receipt" r WHERE ${scope} AND left(r.id, 8) = 'request_'
-        AND NOT EXISTS (SELECT 1 FROM "AuditLog" a WHERE a.action = 'REVIEW_RECEIPT' AND a.entity = 'Receipt' AND a."entityId" = r.id)
-        LIMIT 1
-      `);
-      if (pending.length) throw new ConflictException(`Review saved receipt ${pending[0].id} before starting another payment`);
-      if (booking && (booking.status === "CANCELLED" || new Prisma.Decimal(booking.balance).lessThan(amount))) throw new BadRequestException("Receipt exceeds outstanding booking balance or booking is cancelled");
-      const journal = await this.accounting.postReceipt({ db: tx, userId: req.user.id, amount, method: body.method, customerId, branchId, sourceId: body.bookingId, module: "umrah" });
-      const receiptNo = await this.seq.next("rec", "ZAT-REC", tx);
-      const receipt = await tx.receipt.create({ data: { id: receiptId, receiptNo, customerId, bookingId: body.bookingId, amount, method: body.method, branchId, notes: body.notes, journalId: journal.id } });
-      if (booking) {
-        const paid = new Prisma.Decimal(booking.paid).plus(amount);
-        await tx.umrahBooking.update({ where: { id: booking.id }, data: { paid, balance: new Prisma.Decimal(booking.net).minus(paid), status: paid.greaterThan(0) && booking.status === "DRAFT" ? "CONFIRMED" : booking.status, workflowStep: ["LEAD", "QUOTATION", "CUSTOMER_CONFIRMATION"].includes(booking.workflowStep) ? "ADVANCE_PAYMENT" : booking.workflowStep } });
-      }
-      await this.audit.log({ userId: req.user.id, action: "CREATE", entity: "Receipt", entityId: receipt.id, db: tx });
-      return receipt;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+    return this.receiptOperations.create(body, req.user, requestKey);
   }
 
   @Post("payments")

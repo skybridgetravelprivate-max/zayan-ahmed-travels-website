@@ -169,6 +169,8 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
     await guest.close();
     results.push("real account identity and support link render at mobile/desktop sizes; signed-out account has no fabricated profile");
     await owner.close(); await other.close(); await staffOther.close();
+    await require("./initial-payment-browser-checks.cjs")({ context, page: pageC, origin, db, admin, outputDir });
+    results.push("initial ticket payment sends explicit method and durable key; lost response and reload replay one ticket/receipt; recovery and review work on the ticket page");
     results.push("two verified customer logins display only their own bookings; forged selectors ignored; owner sees the pending date; customer/foreign staff document requests return 401/404; foreign receipt review denied (403)");
     const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, paid: "350.35", balance: "659.65", syntheticOnly: true };
     fs.writeFileSync(path.join(outputDir, "browser-result.json"), JSON.stringify(result, null, 2));

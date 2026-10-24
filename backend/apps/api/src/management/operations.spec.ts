@@ -70,9 +70,9 @@ function harness(failCost = false) {
     ticketSale: { create: async ({ data }: { data: object }) => { const row = { id: "ticket-a", ...data }; state.records.push(row); return row; } },
     transportBooking: { create: async ({ data }: { data: object }) => { const row = { id: "transport-a", ...data }; state.records.push(row); return row; } },
     transportVoucher: { create: async (data: unknown) => { state.vouchers.push(data); return {}; } },
-    umrahBooking: { create: async ({ data }: { data: object }) => { const row = { id: "umrah-a", ...data }; state.records.push(row); return row; }, findUnique: async () => state.records[0] },
+    umrahBooking: { create: async ({ data }: { data: object }) => { const row = { id: "umrah-a", ...data }; state.records.push(row); return row; }, findUniqueOrThrow: async () => state.records[0], findUnique: async () => state.records[0] },
   };
-  const prisma = { $transaction: async (run: (db: typeof tx) => Promise<unknown>, options: { isolationLevel: string }) => {
+  const prisma = { umrahBooking: tx.umrahBooking, $transaction: async (run: (db: typeof tx) => Promise<unknown>, options: { isolationLevel: string }) => {
     assert.equal(options.isolationLevel, "Serializable");
     const snapshot = structuredClone(state);
     try { return await run(tx); } catch (e) { Object.assign(state, snapshot); throw e; }
@@ -89,11 +89,11 @@ function harness(failCost = false) {
   return { state, controller: new WorkflowsController(prisma as never, seq as never, audit as never, accounting as never, {} as never), umrah: new UmrahOpsService(prisma as never, seq as never, audit as never, accounting as never) };
 }
 
-test("ticket issue posts sale, cost and audit in one transaction and derives payment state", async () => {
+test("unpaid ticket issue posts sale, cost and audit in one transaction", async () => {
   const h = harness();
-  const result = await h.controller.sellTicket({ ticketNumber: "SYNTHETIC-TICKET", customerId: "customer-a", fare: 100, cost: 60, paidAmount: 100 }, req);
+  const result = await h.controller.sellTicket({ ticketNumber: "SYNTHETIC-TICKET", customerId: "customer-a", fare: 100, cost: 60, paidAmount: 0 }, req);
   assert.equal(result.branchId, "a");
-  assert.equal(result.paymentStatus, "PAID");
+  assert.equal(result.paymentStatus, "UNPAID");
   assert.equal(h.state.journals.length, 2);
   assert.equal(h.state.audits.length, 1);
 });
