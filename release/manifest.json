@@ -1,164 +1,32 @@
 {
-  "base": "307d174ce77a8eb7b79bd559ff1bad5ea1210c8d",
-  "generatedAt": "2026-10-24T07:53:36.136979+00:00",
-  "patchSha256": "4b687d4b049c825db28737589422e9be8777ac2570bdda4a87bdeb16112946c8",
+  "base": "85f152c63909a7c4b737a75ef4d3ee3deaa0dffe",
+  "generatedAt": "2026-10-24T08:08:21.639036+00:00",
+  "patchSha256": "941776679c91866bbb81d1be52dfc4d93650081d2ddb442942219a40e654c2c5",
   "reverseCheck": "passed; read-only, no patch applied",
   "files": [
     {
-      "path": "HOSTINGER-RUNTIME.md",
-      "sha256": "2a7428c41e3f5563a6b3042743c301e5f63ede35a88b97ab1acaf767beabf867"
+      "path": "SECURITY-RELEASE-2026-10-24.md",
+      "sha256": "a0e15357e40c7cbd0af43b54e3ad69b47677d2f8d940e4f02070e6074d4ea688"
     },
     {
-      "path": "QUOTATION-VALIDATION.md",
-      "sha256": "7e82a613edf8dfdb34f2f1ed38a50befa0ccc198055f790af2f37ed41ea7e485"
+      "path": "backend/apps/api/package.json",
+      "sha256": "002bac2226075bc502bf9e5e21d66985cb5d0b711a00d0e5e446cf7963ccd3ae"
     },
     {
-      "path": "RELEASE-BLOCKER-RESOLUTION.md",
-      "sha256": "c60b352e3d681aaf01bf949d85b6ab25c91ad053bf2d377b02f5ae0ac236a2d0"
-    },
-    {
-      "path": "RELEASE-READINESS.md",
-      "sha256": "89deb179f5ee2efe40c72ad36c9ba697d616fe3c87d6c7d09bb88e05721cb17b"
-    },
-    {
-      "path": "RELEASE-REVIEW.md",
-      "sha256": "1ff28b1a03b9f494228d5caf11424fcdb4a02c66fa1944e9cea34f725167e65c"
-    },
-    {
-      "path": "backend/apps/api/src/common/security-audit.spec.ts",
-      "sha256": "27c1d74aa3cc87f829ca6c0e54e7d8c4bfdfa17dd016e289d01657aa5fc8cd31"
-    },
-    {
-      "path": "backend/apps/api/src/crm/convert-quotation.ts",
-      "sha256": "d1ff7c60631020f759bb9c5529f2cadef2b11ebe167dbe0f9def2714f3c9e61f"
-    },
-    {
-      "path": "backend/apps/api/src/crm/crm.service.ts",
-      "sha256": "8e449df40b65a429c83746e9da19087b58ea1f54b97635dd4438e3f097409af7"
-    },
-    {
-      "path": "backend/apps/api/src/crm/lead-quotation.pg17.spec.ts",
-      "sha256": "28a6f02ab3ed0bb6ad36383616b8e063e852f7a6bf75e078463df1b658fd960f"
-    },
-    {
-      "path": "backend/apps/api/src/crm/quotation-journey.pg17.spec.ts",
-      "sha256": "48d11b4620c969dfe501a0531adda1d8f3b60e8b931f3812cd1673ad00da4c9c"
-    },
-    {
-      "path": "backend/apps/api/src/documents/documents.controller.ts",
-      "sha256": "718d5b984bd70edc976f2b4accecf7f9f2995ca3b3adc9d043166111f8f7b3fd"
-    },
-    {
-      "path": "backend/apps/api/src/finance/finance.controller.ts",
-      "sha256": "a8414df9440efcc87ba5a653a98957b151a26f76e76e19fcef27234a30015922"
-    },
-    {
-      "path": "backend/apps/api/src/finance/receipt-recovery.pg17.spec.ts",
-      "sha256": "7cd99a7faad423f5ef524bf2c6939960fc8d54c3d86cb01b47fa486e672287a0"
-    },
-    {
-      "path": "backend/apps/api/src/management/operations.spec.ts",
-      "sha256": "1dda4c91271842ab4863a2037e4f93b1ed17c95e0587534ce747d6768272ef6d"
-    },
-    {
-      "path": "backend/apps/api/src/website/website-booking.dto.spec.ts",
-      "sha256": "31636763428e58f393f2c423f6a4bf120bd18f2113acba81ebb21bd88260b0f2"
-    },
-    {
-      "path": "backend/apps/api/src/website/website-booking.dto.ts",
-      "sha256": "ac7fb10229c348695ca51eee7b5747d98c0a94691ce420857405d7dbbece3d6b"
-    },
-    {
-      "path": "backend/apps/api/src/website/website-customer-bookings.service.ts",
-      "sha256": "b8bb741f45821286a60c598c03711f14e8eca2688254a1e6b2834fea2895b178"
+      "path": "backend/package-lock.json",
+      "sha256": "80e486f387d24cf6749a58d1991b856830623b24b0b0a9d7bdb625dd7eb9d27a"
     },
     {
       "path": "backend/package.json",
-      "sha256": "6165d750390771095730b57aba3417d61429c744ca6631039d5e9bf8e5587b8b"
+      "sha256": "5feddfb8fe9b27a1f2e9a5d32cc06e5b52fb58548d8aacd05782529e8aac63d8"
     },
     {
-      "path": "backend/scripts/hostinger-api-path.cjs",
-      "sha256": "21a3fdeb1e451aaa43013e3ada775510dc10a255fc910218c0475b88b269f517"
-    },
-    {
-      "path": "backend/scripts/hostinger-start.cjs",
-      "sha256": "c6a6014660fa784bfedf01e74c2bebae1958d04b57de447a53a2985cafbe2be3"
-    },
-    {
-      "path": "backend/scripts/hostinger-start.spec.mjs",
-      "sha256": "e767a77e0023d04233508b856b4479f3db01c5da98c115246b63059a9a1b78ec"
-    },
-    {
-      "path": "backend/scripts/quotation-http-journey.cjs",
-      "sha256": "1155a349f7ae97dcfa4617cca45bdbcdbb65103a484709a6f8e3a78c54d95ce4"
-    },
-    {
-      "path": "backend/scripts/receipt-browser-checks.cjs",
-      "sha256": "d0ca6c321c2c81358bde6351ad213d8e37ff8e1fa902356ea31fc0d06ba5d092"
-    },
-    {
-      "path": "backend/scripts/receipt-maintenance.spec.mjs",
-      "sha256": "dc3ab8dd832da38ef40dc5a3cfbb02a7f8c423147cf6ee257e428b5313949e39"
-    },
-    {
-      "path": "backend/scripts/receipt-readonly-assessment.sql",
-      "sha256": "4bdaf595a6d083468cf494db523aa2c1a76c4879bbca4a78629400166f353cca"
-    },
-    {
-      "path": "backend/scripts/receipt-rollback-staging.cjs",
-      "sha256": "b76e7a8fe3785e088a998a77b0986ac28aaa8616f7c6287d393da8af08283f2a"
+      "path": "package-lock.json",
+      "sha256": "01fc370cfb69b8686276a60072745a04e961ae393f6b2bd8e909e91425d88143"
     },
     {
       "path": "package.json",
-      "sha256": "f2001d3a36fba7031d2c58ba2be06e71e8f76f8b5c448a4fb4948ac9ae597eff"
-    },
-    {
-      "path": "src/app/admin/(workspace)/manage/[resource]/page.tsx",
-      "sha256": "48314b2a39dd241c202a5d29a8d753e8bfba60e4e58139fe24444894aa4d22c5"
-    },
-    {
-      "path": "src/components/account/BookingList.tsx",
-      "sha256": "c33ef5e76509059ff37aefa860aed764c04b7236dc415f9803ef750d8377d19d"
-    },
-    {
-      "path": "src/components/admin/ManagementWorkspace.tsx",
-      "sha256": "5bed9d06c182fd1552e4c34200eef4e95dc5d842c0bfb3c2aab48600fbe21c66"
-    },
-    {
-      "path": "src/lib/account-bookings.test.ts",
-      "sha256": "edf05d250bb4016630e9d671fa48d11ab4e7cc05c9cecf20f5a969e7f2433ec1"
-    },
-    {
-      "path": "src/lib/account-bookings.ts",
-      "sha256": "6f7257a70257808b30cd1c2d7717688620c0a4b5aaa0fa1d55878cb3c59429dd"
-    },
-    {
-      "path": "src/lib/receipt-retry.test.ts",
-      "sha256": "4a9ef9d1e2942060689e1c0e0cc61cbfd369983e2edb5d16ab2a7b30b2bf867b"
-    },
-    {
-      "path": "src/lib/receipt-retry.ts",
-      "sha256": "fef20c1018d751535e85e443d195a9b8b8d8f454bd3bc63939818f908834127c"
-    },
-    {
-      "path": "src/lib/staff-management.test.ts",
-      "sha256": "00f835a639cb567857ec427e8a564a9e1078d0e4ea8d2581c9e884e0f79fa0d7"
-    },
-    {
-      "path": "src/lib/staff-management.ts",
-      "sha256": "814e97444dec2489dbe280cf4e4d06d605b00d21a754e2f6d8b08c2946467710"
-    },
-    {
-      "path": "src/server/customer-bookings/account-journey.pg17.test.ts",
-      "sha256": "217322a71a4b29200ac98f1e4184d1e497f5350776f6149c7a68ba4e40ee4dd3"
-    },
-    {
-      "path": "src/server/customer-bookings/dto.test.ts",
-      "sha256": "dd97128dbcfc2270a9217ed300f7e5eb9a812b437287ee3c5d7ad9aae85d5ab4"
-    },
-    {
-      "path": "src/server/customer-bookings/dto.ts",
-      "sha256": "a29356e879b116367e65c780becddff7e8bb0d51b4ed8dc548ee9ad02c901d21"
+      "sha256": "37e1aff734a6f492f141f0fe7a003a3754d5447a5c6dfbe1fa526743353671ba"
     }
   ],
   "excludes": [
@@ -170,5 +38,5 @@
     "runtime build output",
     "logs"
   ],
-  "deployment": "NOT DEPLOYED; runtime binding and retained deployed artifact remain unverified"
+  "deployment": "Patch artifact only; consult the separate deployment result for live release status"
 }
