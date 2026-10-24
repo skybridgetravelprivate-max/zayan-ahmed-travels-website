@@ -99,7 +99,6 @@ export class WebsiteCustomerBookingsService {
       if (!status) continue;
       const destination = (row.groupName?.trim() || "Umrah").slice(0, 200);
       const travelDate = travelDateFrom(row.departureDate);
-      if (!travelDate) continue;
       rows.push({
         reference: row.bookingNumber,
         service: "Umrah",
@@ -117,7 +116,6 @@ export class WebsiteCustomerBookingsService {
       if (!status) continue;
       const destination = [row.hotel?.name, row.hotel?.city].filter(Boolean).join(", ") || "Hotel";
       const travelDate = travelDateFrom(row.checkIn);
-      if (!travelDate) continue;
       rows.push({
         reference: row.bookingNumber,
         service: "Hotel",
@@ -135,7 +133,6 @@ export class WebsiteCustomerBookingsService {
       const reference = (row.ticketNumber?.trim() || row.id).slice(0, 80);
       const destination = (row.sector?.trim() || "Flight").slice(0, 200);
       const travelDate = travelDateFrom(row.departureAt);
-      if (!travelDate) continue;
       rows.push({
         reference,
         service: "Flight",
@@ -156,7 +153,6 @@ export class WebsiteCustomerBookingsService {
           .join(" · ")
           .slice(0, 200) || "Transport";
       const travelDate = travelDateFrom(row.tripDate);
-      if (!travelDate) continue;
       rows.push({
         reference: row.bookingNumber,
         service: "Transport",
@@ -175,7 +171,6 @@ export class WebsiteCustomerBookingsService {
       );
       if (!status) continue;
       const travelDate = travelDateFrom(row.submittedAt ?? row.createdAt);
-      if (!travelDate) continue;
       rows.push({
         reference: row.applicationNo,
         service: "Visa",

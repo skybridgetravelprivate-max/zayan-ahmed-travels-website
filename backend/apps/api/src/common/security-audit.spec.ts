@@ -112,21 +112,22 @@ test("global financial dashboard does not expose company data to scoped staff", 
 
 test("receipt rejects a customer mismatch before any financial posting", async () => {
   let posted = false;
-  const tx = { umrahBooking: { findUnique: async () => ({ customerId: "owner", branchId: "branch-a" }) } };
+  const tx = { $queryRaw: async () => [], umrahBooking: { findUnique: async () => ({ customerId: "owner", branchId: "branch-a" }) } };
   const controller = new FinanceController({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, {} as never, { postReceipt: async () => { posted = true; } } as never);
-  await assert.rejects(controller.createReceipt({ bookingId: "booking", customerId: "other", amount: 10, method: "CASH" }, request(admin)), { status: 400 });
+  await assert.rejects(controller.createReceipt({ bookingId: "booking", customerId: "other", amount: 10, method: "CASH" }, request(admin), "unit-receipt-key"), { status: 400 });
   assert.equal(posted, false);
 });
 
-test("receipt journal, balance, receipt and audit share the serializable transaction", async () => {
+test("receipt locks the booking before posting journal, balance, receipt and audit in one transaction", async () => {
   const writes: string[] = [];
   let isolationLevel: string | undefined;
   const tx = {
+    $queryRaw: async (sql: TemplateStringsArray & { strings?: string[] }) => { const text = (sql.strings ?? sql).join("?"); writes.push(text.includes("FOR UPDATE") ? "lock" : text.includes("advisory") ? "advisory" : "pending"); return []; },
     umrahBooking: {
-      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 5, net: 100, status: "DRAFT" }),
+      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 5, net: 100, balance: 95, status: "DRAFT", workflowStep: "QUOTATION" }),
       update: async ({ data }: { data: { paid: { toNumber(): number } } }) => { writes.push("booking"); assert.equal(data.paid.toNumber(), 15); },
     },
-    receipt: { create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
+    receipt: { findUnique: async () => null, create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
   };
   const controller = new FinanceController(
     { $transaction: async (run: (db: typeof tx) => unknown, options: { isolationLevel: string }) => { isolationLevel = options.isolationLevel; return run(tx); } } as never,
@@ -134,13 +135,13 @@ test("receipt journal, balance, receipt and audit share the serializable transac
     { log: async (input: { db: unknown }) => { assert.equal(input.db, tx); writes.push("audit"); } } as never,
     { postReceipt: async (input: { db: unknown }) => { assert.equal(input.db, tx); writes.push("journal"); return { id: "journal" }; } } as never,
   );
-  const result = await controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin));
+  const result = await controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin), "unit-receipt-key");
   assert.deepEqual(result, { id: "receipt" });
-  assert.equal(isolationLevel, "Serializable");
-  assert.deepEqual(writes, ["journal", "sequence", "receipt", "booking", "audit"]);
+  assert.equal(isolationLevel, "ReadCommitted");
+  assert.deepEqual(writes, ["advisory", "lock", "advisory", "pending", "journal", "sequence", "receipt", "booking", "audit"]);
 });
 
-test("receipt posting requests serializable isolation and propagates transaction conflicts", async () => {
+test("receipt posting propagates transaction failures", async () => {
   let isolationLevel: string | undefined;
   const tx = {
     umrahBooking: {
@@ -164,10 +165,10 @@ test("receipt posting requests serializable isolation and propagates transaction
     { postReceipt: async () => { posted = true; return { id: "journal" }; } } as never,
   );
   await assert.rejects(
-    controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin)),
+    controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin), "unit-receipt-key"),
     error => error === conflict,
   );
-  assert.equal(isolationLevel, "Serializable");
+  assert.equal(isolationLevel, "ReadCommitted");
   assert.equal(posted, false);
 });
 

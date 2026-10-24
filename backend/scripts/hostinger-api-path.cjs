@@ -10,4 +10,13 @@ function isApiPathname(pathOnly) {
   return p === "/api" || p.startsWith("/api/") || p === "/v1/customer/bookings" || p === "/v1/customer/upsert-by-email";
 }
 
-module.exports = { isApiPathname };
+// A nonempty value other than "false" fails closed, including configuration typos.
+function receiptWriteBlocked(req, disabled) {
+  if (!disabled || disabled === "false" || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
+  let pathname;
+  try { pathname = decodeURIComponent(new URL(req.url, "http://gateway.local").pathname); }
+  catch { return true; }
+  return /^\/api\/v1\/finance\/receipts(?:\/|$)/i.test(pathname);
+}
+
+module.exports = { isApiPathname, receiptWriteBlocked };

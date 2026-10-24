@@ -1,5 +1,21 @@
 # Combined Hostinger runtime
 
+## Receipt write maintenance (prepared locally; not enabled in production)
+
+Set `RECEIPT_WRITES_DISABLED=true` and restart the **candidate gateway** to return
+503 with `private, no-store` and Retry-After for receipt mutations, including
+explicit review. Receipt history, submission recovery and document GETs remain
+available. Missing/empty/`false` leaves the normal mandatory-key/review contract
+in force; any other nonempty value blocks writes. Existing browser retry keys
+must be retained. This switch does not resolve uncertain payments.
+
+Activation, restart and reopening production writes require separate release
+authorization. Verify a 503 before rolling back. An older gateway does not
+implement this switch: retain the tested gateway around the older application,
+or first verify an independent external proxy write block that survives bundle
+replacement. Do not roll back the gateway and assume this environment variable
+still protects payments. Never restore a database snapshot as code rollback.
+
 Hostinger's Next.js publisher starts `.next/standalone/server.js`. The build now
 packages the compiled Nest API and its dependencies into that artifact and makes
 the entry point run the existing combined gateway. Website account and inquiry

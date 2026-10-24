@@ -1,0 +1,2405 @@
+diff --git a/HOSTINGER-RUNTIME.md b/HOSTINGER-RUNTIME.md
+index 02830121410225b7440d0f98f7a387064759b4c9..0de71f35e8ec8e99e3bd28e6e870b278d6c57ea1 100644
+--- a/HOSTINGER-RUNTIME.md
++++ b/HOSTINGER-RUNTIME.md
+@@ -1,5 +1,21 @@
+ # Combined Hostinger runtime
+ 
++## Receipt write maintenance (prepared locally; not enabled in production)
++
++Set `RECEIPT_WRITES_DISABLED=true` and restart the **candidate gateway** to return
++503 with `private, no-store` and Retry-After for receipt mutations, including
++explicit review. Receipt history, submission recovery and document GETs remain
++available. Missing/empty/`false` leaves the normal mandatory-key/review contract
++in force; any other nonempty value blocks writes. Existing browser retry keys
++must be retained. This switch does not resolve uncertain payments.
++
++Activation, restart and reopening production writes require separate release
++authorization. Verify a 503 before rolling back. An older gateway does not
++implement this switch: retain the tested gateway around the older application,
++or first verify an independent external proxy write block that survives bundle
++replacement. Do not roll back the gateway and assume this environment variable
++still protects payments. Never restore a database snapshot as code rollback.
++
+ Hostinger's Next.js publisher starts `.next/standalone/server.js`. The build now
+ packages the compiled Nest API and its dependencies into that artifact and makes
+ the entry point run the existing combined gateway. Website account and inquiry
+diff --git a/backend/apps/api/src/common/security-audit.spec.ts b/backend/apps/api/src/common/security-audit.spec.ts
+index 29eb850e60642761173f15596fd72eb7af739da0..28839e2719d4b7b687cc65b631a4f872c0e524f9 100644
+--- a/backend/apps/api/src/common/security-audit.spec.ts
++++ b/backend/apps/api/src/common/security-audit.spec.ts
+@@ -112,21 +112,22 @@ test("global financial dashboard does not expose company data to scoped staff",
+ 
+ test("receipt rejects a customer mismatch before any financial posting", async () => {
+   let posted = false;
+-  const tx = { umrahBooking: { findUnique: async () => ({ customerId: "owner", branchId: "branch-a" }) } };
++  const tx = { $queryRaw: async () => [], umrahBooking: { findUnique: async () => ({ customerId: "owner", branchId: "branch-a" }) } };
+   const controller = new FinanceController({ $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, {} as never, { postReceipt: async () => { posted = true; } } as never);
+-  await assert.rejects(controller.createReceipt({ bookingId: "booking", customerId: "other", amount: 10, method: "CASH" }, request(admin)), { status: 400 });
++  await assert.rejects(controller.createReceipt({ bookingId: "booking", customerId: "other", amount: 10, method: "CASH" }, request(admin), "unit-receipt-key"), { status: 400 });
+   assert.equal(posted, false);
+ });
+ 
+-test("receipt journal, balance, receipt and audit share the serializable transaction", async () => {
++test("receipt locks the booking before posting journal, balance, receipt and audit in one transaction", async () => {
+   const writes: string[] = [];
+   let isolationLevel: string | undefined;
+   const tx = {
++    $queryRaw: async (sql: TemplateStringsArray & { strings?: string[] }) => { const text = (sql.strings ?? sql).join("?"); writes.push(text.includes("FOR UPDATE") ? "lock" : text.includes("advisory") ? "advisory" : "pending"); return []; },
+     umrahBooking: {
+-      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 5, net: 100, status: "DRAFT" }),
++      findUnique: async () => ({ id: "booking", customerId: "owner", branchId: "branch-a", paid: 5, net: 100, balance: 95, status: "DRAFT", workflowStep: "QUOTATION" }),
+       update: async ({ data }: { data: { paid: { toNumber(): number } } }) => { writes.push("booking"); assert.equal(data.paid.toNumber(), 15); },
+     },
+-    receipt: { create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
++    receipt: { findUnique: async () => null, create: async ({ data }: { data: { journalId: string } }) => { writes.push("receipt"); assert.equal(data.journalId, "journal"); return { id: "receipt" }; } },
+   };
+   const controller = new FinanceController(
+     { $transaction: async (run: (db: typeof tx) => unknown, options: { isolationLevel: string }) => { isolationLevel = options.isolationLevel; return run(tx); } } as never,
+@@ -134,13 +135,13 @@ test("receipt journal, balance, receipt and audit share the serializable transac
+     { log: async (input: { db: unknown }) => { assert.equal(input.db, tx); writes.push("audit"); } } as never,
+     { postReceipt: async (input: { db: unknown }) => { assert.equal(input.db, tx); writes.push("journal"); return { id: "journal" }; } } as never,
+   );
+-  const result = await controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin));
++  const result = await controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin), "unit-receipt-key");
+   assert.deepEqual(result, { id: "receipt" });
+-  assert.equal(isolationLevel, "Serializable");
+-  assert.deepEqual(writes, ["journal", "sequence", "receipt", "booking", "audit"]);
++  assert.equal(isolationLevel, "ReadCommitted");
++  assert.deepEqual(writes, ["advisory", "lock", "advisory", "pending", "journal", "sequence", "receipt", "booking", "audit"]);
+ });
+ 
+-test("receipt posting requests serializable isolation and propagates transaction conflicts", async () => {
++test("receipt posting propagates transaction failures", async () => {
+   let isolationLevel: string | undefined;
+   const tx = {
+     umrahBooking: {
+@@ -164,10 +165,10 @@ test("receipt posting requests serializable isolation and propagates transaction
+     { postReceipt: async () => { posted = true; return { id: "journal" }; } } as never,
+   );
+   await assert.rejects(
+-    controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin)),
++    controller.createReceipt({ bookingId: "booking", customerId: "owner", amount: 10, method: "CASH" }, request(admin), "unit-receipt-key"),
+     error => error === conflict,
+   );
+-  assert.equal(isolationLevel, "Serializable");
++  assert.equal(isolationLevel, "ReadCommitted");
+   assert.equal(posted, false);
+ });
+ 
+diff --git a/backend/apps/api/src/crm/convert-quotation.ts b/backend/apps/api/src/crm/convert-quotation.ts
+index 7bdf07aec527460359753139db02cf783da68657..d648b79c17d9102d82f230f8c2e8173f841dfa8b 100644
+--- a/backend/apps/api/src/crm/convert-quotation.ts
++++ b/backend/apps/api/src/crm/convert-quotation.ts
+@@ -17,6 +17,7 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
+     const existing = await tx.umrahBooking.findFirst({ where: { quotationId: id } });
+     if (existing) return existing;
+     if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status)) throw new ConflictException("Quotation cannot be converted in its current state");
++    const lead = q.leadId ? await tx.lead.findUnique({ where: { id: q.leadId } }) : null;
+     const bookingNumber = await seq.next("umrah-bk", "ZAT-UM", tx);
+     const booking = await tx.umrahBooking.create({
+       data: {
+@@ -25,6 +26,9 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
+         quotationId: q.id,
+         agentId: q.agentId,
+         branchId: q.branchId,
++        packageId: lead?.packageId,
++        departureDate: lead?.travelDate,
++        returnDate: lead?.returnDate,
+         cost: q.costTotal,
+         sellingPrice: q.sellingTotal,
+         discount: q.discount,
+diff --git a/backend/apps/api/src/crm/crm.service.ts b/backend/apps/api/src/crm/crm.service.ts
+index 902f5893978b378280986c0469bf951966c95965..ab208077c6dee37f61d26c600ec71c10cb3c47b2 100644
+--- a/backend/apps/api/src/crm/crm.service.ts
++++ b/backend/apps/api/src/crm/crm.service.ts
+@@ -2,7 +2,7 @@ import { convertLeadToCustomer } from "./convert-lead";
+ import { convertQuotationToBooking } from "./convert-quotation";
+ import { AccountingService } from "../finance/accounting.service";
+ import { assertBranch } from "../auth/record-scope";
+-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
++import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+ import { PrismaService } from "../common/prisma.service";
+ import { SequenceService } from "../common/sequence.service";
+ import { AuditService } from "../common/audit.service";
+@@ -10,7 +10,7 @@ import { NotifyService } from "../common/notify.service";
+ import { MailService } from "../common/mail.service";
+ import { WhatsAppService } from "../common/whatsapp.service";
+ import { AuthUser } from "../auth/auth.types";
+-import { LeadStatus } from "@prisma/client";
++import { LeadStatus, Prisma } from "@prisma/client";
+ 
+ const STATUSES: LeadStatus[] = [
+   "NEW",
+@@ -362,32 +362,33 @@ export class CrmService {
+   }
+ 
+   async quoteFromLead(id: string, user: AuthUser) {
+-    const lead = await this.prisma.lead.findUnique({ where: { id } });
+-    if (!lead) throw new NotFoundException();
+-    let customerId = (await this.prisma.customer.findFirst({ where: { leadId: id } }))?.id;
+-    if (!customerId) {
+-      const created = await this.convertLead(id, user);
+-      customerId = created.id;
+-    }
+-    const quotationNumber = await this.seq.next("quotation", "ZAT-QT");
+-    const selling = Number(lead.budget ?? 0);
+-    const q = await this.prisma.quotation.create({
+-      data: {
+-        quotationNumber,
+-        customerId,
+-        leadId: id,
+-        agentId: lead.assignedAgentId,
+-        branchId: lead.branchId,
+-        sellingTotal: selling,
+-        net: selling,
+-        status: "DRAFT",
+-        items: {
+-          create: [{ description: `Umrah package for ${lead.fullName}`, quantity: lead.adults || 1, sellingPrice: selling }],
++    return this.prisma.$transaction(async tx => {
++      const lead = await tx.lead.findUnique({ where: { id } });
++      if (!lead) throw new NotFoundException();
++      assertBranch(user, lead.branchId);
++      const selling = Number(lead.budget ?? 0);
++      if (!Number.isFinite(selling) || selling < 0) throw new BadRequestException("Invalid lead budget");
++      const customer = await convertLeadToCustomer(this.prisma, this.seq, this.audit, id, user, tx);
++      const quotationNumber = await this.seq.next("quotation", "ZAT-QT", tx);
++      const q = await tx.quotation.create({
++        data: {
++          quotationNumber,
++          customerId: customer.id,
++          leadId: id,
++          agentId: lead.assignedAgentId,
++          branchId: lead.branchId,
++          sellingTotal: selling,
++          net: selling,
++          status: "DRAFT",
++          items: {
++            // The lead budget is the whole package total, not a per-passenger price.
++            create: [{ description: `Umrah package for ${lead.fullName}`, quantity: 1, sellingPrice: selling }],
++          },
+         },
+-      },
++      });
++      await tx.lead.update({ where: { id }, data: { status: "QUOTED" } });
++      return q;
+     });
+-    await this.prisma.lead.update({ where: { id }, data: { status: "QUOTED" } });
+-    return q;
+   }
+ 
+   async bookingFromLead(id: string, user: AuthUser) {
+@@ -403,6 +404,7 @@ export class CrmService {
+           quotationNumber: await this.seq.next("quotation", "ZAT-QT", tx),
+           customerId: customer.id, leadId: id, agentId: lead.assignedAgentId,
+           branchId: lead.branchId, sellingTotal: amount, net: amount, status: "DRAFT",
++          items: { create: [{ description: `Umrah package for ${lead.fullName}`, quantity: 1, sellingPrice: amount }] },
+         } });
+       }
+       let booking = await convertQuotationToBooking(tx, this.seq, this.accounting, quote.id, user);
+@@ -648,31 +650,42 @@ export class CrmService {
+   async setQuotationStatus(id: string, status: string, user: AuthUser) {
+     const allowed = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"];
+     if (!allowed.includes(status)) throw new BadRequestException("Invalid quotation status");
+-    const quotation = await this.prisma.quotation.update({ where: { id }, data: { status: status as never } });
+-    await this.audit.log({ userId: user.id, action: "STATUS", entity: "quotation", entityId: id, after: { status } });
+-    return quotation;
++    return this.prisma.$transaction(async tx => {
++      await tx.$queryRaw`SELECT id FROM "Quotation" WHERE id = ${id} FOR UPDATE`;
++      const q = await tx.quotation.findUnique({ where: { id } });
++      if (!q) throw new NotFoundException();
++      assertBranch(user, q.branchId);
++      if (q.status === "CONVERTED" || await tx.umrahBooking.findFirst({ where: { quotationId: id } })) throw new ConflictException("Converted quotation cannot change status");
++      const quotation = await tx.quotation.update({ where: { id }, data: { status: status as never } });
++      await this.audit.log({ userId: user.id, action: "STATUS", entity: "quotation", entityId: id, after: { status }, db: tx });
++      return quotation;
++    });
+   }
+ 
+   async bookingFromCustomer(id: string, user: AuthUser) {
+     const customer = await this.prisma.customer.findUnique({ where: { id } });
+     if (!customer) throw new NotFoundException();
++    assertBranch(user, customer.branchId);
+     if (customer.leadId) return this.bookingFromLead(customer.leadId, user);
+     const quote = await this.prisma.quotation.findFirst({
+       where: { customerId: id },
+       orderBy: { createdAt: "desc" },
+     });
++    if (quote) return this.prisma.$transaction(async tx => {
++      const booking = await convertQuotationToBooking(tx, this.seq, this.accounting, quote.id, user);
++      if (booking.status !== "QUOTED" || booking.workflowStep !== "QUOTATION") return booking;
++      return tx.umrahBooking.update({ where: { id: booking.id }, data: { status: "CONFIRMED", workflowStep: "CUSTOMER_CONFIRMATION" } });
++    });
+     const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM");
+-    const net = Number(quote?.net ?? 0);
+     return this.prisma.umrahBooking.create({
+       data: {
+         bookingNumber,
+         customerId: id,
+-        quotationId: quote?.id,
+         agentId: customer.agentId,
+         branchId: customer.branchId,
+-        net,
+-        sellingPrice: net,
+-        balance: net,
++        net: 0,
++        sellingPrice: 0,
++        balance: 0,
+         status: "CONFIRMED",
+         workflowStep: "CUSTOMER_CONFIRMATION",
+       },
+@@ -734,26 +747,29 @@ export class CrmService {
+     const cost = body.cost ?? 0;
+     if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647) throw new BadRequestException("Quantity must be a positive whole number");
+     if ([sellingPrice, cost].some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1e12)) throw new BadRequestException("Enter valid non-negative quotation amounts");
+-    const q = await this.prisma.quotation.findUnique({ where: { id } });
+-    if (!q) throw new NotFoundException();
+-    if (!body.description?.trim()) throw new BadRequestException("Description required");
+-    await this.prisma.quotationItem.create({
+-      data: {
+-        quotationId: id,
+-        description: body.description.trim(),
+-        quantity,
+-        sellingPrice,
+-        cost,
+-      },
++    return this.prisma.$transaction(async tx => {
++      await this.editableQuotation(tx, id);
++      await tx.quotationItem.create({
++        data: {
++          quotationId: id,
++          description: body.description.trim(),
++          quantity,
++          sellingPrice,
++          cost,
++        },
++      });
++      return this.recalcQuote(id, tx);
+     });
+-    return this.recalcQuote(id);
+   }
+ 
+   async removeQuoteItem(id: string, itemId: string) {
+-    const item = await this.prisma.quotationItem.findFirst({ where: { id: itemId, quotationId: id } });
+-    if (!item) throw new NotFoundException("Line item not found");
+-    await this.prisma.quotationItem.delete({ where: { id: itemId } });
+-    return this.recalcQuote(id);
++    return this.prisma.$transaction(async tx => {
++      await this.editableQuotation(tx, id);
++      const item = await tx.quotationItem.findFirst({ where: { id: itemId, quotationId: id } });
++      if (!item) throw new NotFoundException("Line item not found");
++      await tx.quotationItem.delete({ where: { id: itemId } });
++      return this.recalcQuote(id, tx);
++    });
+   }
+ 
+   async updateQuotation(
+@@ -761,21 +777,27 @@ export class CrmService {
+     user: AuthUser,
+     body: { discount?: number; tax?: number; terms?: string; notes?: string; expiresAt?: string; currency?: string },
+   ) {
+-    const q = await this.prisma.quotation.findUnique({ where: { id } });
+-    if (!q) throw new NotFoundException();
+-    await this.prisma.quotation.update({
+-      where: { id },
+-      data: {
+-        discount: body.discount === undefined ? undefined : Number(body.discount),
+-        tax: body.tax === undefined ? undefined : Number(body.tax),
+-        terms: body.terms,
+-        notes: body.notes,
+-        currency: body.currency,
+-        expiresAt: body.expiresAt ? new Date(body.expiresAt) : body.expiresAt === "" ? null : undefined,
+-      },
++    for (const amount of [body.discount, body.tax]) {
++      if (amount !== undefined && (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 || amount > 1e12)) throw new BadRequestException("Invalid quotation amount");
++    }
++    if (body.expiresAt && !Number.isFinite(new Date(body.expiresAt).getTime())) throw new BadRequestException("Invalid expiry date");
++    return this.prisma.$transaction(async tx => {
++      const q = await this.editableQuotation(tx, id);
++      assertBranch(user, q.branchId);
++      await tx.quotation.update({
++        where: { id },
++        data: {
++          discount: body.discount === undefined ? undefined : Number(body.discount),
++          tax: body.tax === undefined ? undefined : Number(body.tax),
++          terms: body.terms,
++          notes: body.notes,
++          currency: body.currency,
++          expiresAt: body.expiresAt ? new Date(body.expiresAt) : body.expiresAt === "" ? null : undefined,
++        },
++      });
++      await this.audit.log({ userId: user.id, action: "UPDATE", entity: "quotation", entityId: id, after: body, db: tx });
++      return this.recalcQuote(id, tx);
+     });
+-    await this.audit.log({ userId: user.id, action: "UPDATE", entity: "quotation", entityId: id, after: body });
+-    return this.recalcQuote(id);
+   }
+ 
+   async listQuotations(user: AuthUser, q?: string, status?: string) {
+@@ -830,13 +852,22 @@ export class CrmService {
+     });
+   }
+ 
+-  private async recalcQuote(id: string) {
+-    const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true } });
++  private async editableQuotation(tx: Prisma.TransactionClient, id: string) {
++    await tx.$queryRaw`SELECT id FROM "Quotation" WHERE id = ${id} FOR UPDATE`;
++    const q = await tx.quotation.findUnique({ where: { id } });
++    if (!q) throw new NotFoundException();
++    if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status) || await tx.umrahBooking.findFirst({ where: { quotationId: id } })) throw new ConflictException("Quotation is no longer editable");
++    return q;
++  }
++
++  private async recalcQuote(id: string, tx: Prisma.TransactionClient) {
++    const q = await tx.quotation.findUnique({ where: { id }, include: { items: true } });
+     if (!q) throw new NotFoundException();
+-    const sellingTotal = q.items.reduce((s, i) => s + Number(i.sellingPrice) * i.quantity, 0);
+-    const costTotal = q.items.reduce((s, i) => s + Number(i.cost) * i.quantity, 0);
+-    const net = sellingTotal - Number(q.discount) + Number(q.tax);
+-    return this.prisma.quotation.update({
++    const sellingTotal = q.items.reduce((s, i) => s.plus(i.sellingPrice.mul(i.quantity)), new Prisma.Decimal(0));
++    const costTotal = q.items.reduce((s, i) => s.plus(i.cost.mul(i.quantity)), new Prisma.Decimal(0));
++    const net = sellingTotal.minus(q.discount).plus(q.tax);
++    if (net.isNegative()) throw new BadRequestException("Quotation net cannot be negative");
++    return tx.quotation.update({
+       where: { id },
+       data: { sellingTotal, costTotal, net },
+       include: { items: true, customer: true, lead: true, umrahBookings: true },
+diff --git a/backend/apps/api/src/documents/documents.controller.ts b/backend/apps/api/src/documents/documents.controller.ts
+index 081c8641986164e821feaba60a0b98f79920ae98..7a8f0c5a88293d712b81688e2a9651f76195dd5a 100644
+--- a/backend/apps/api/src/documents/documents.controller.ts
++++ b/backend/apps/api/src/documents/documents.controller.ts
+@@ -200,10 +200,15 @@ export class PdfController {
+       ]);
+       doc.moveDown();
+       q.items.forEach((i) => {
+-        const price = m === "EXCLUDED" ? "" : `  ${i.sellingPrice}`;
++        const price = m === "EXCLUDED" ? "" : `  ${i.sellingPrice.toFixed(2)}`;
+         doc.text(`${i.description}  x${i.quantity}${price}`);
+       });
+-      this.pdf.customerLines(m, [{ label: "Net", value: String(q.net) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
++      this.pdf.customerLines(m, [
++        { label: "Subtotal", value: q.sellingTotal.toFixed(2) },
++        { label: "Discount", value: q.discount.toFixed(2) },
++        { label: "Tax", value: q.tax.toFixed(2) },
++        { label: "Net", value: q.net.toFixed(2) },
++      ]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
+     });
+   }
+ 
+@@ -227,9 +232,12 @@ export class PdfController {
+       ]);
+       (b.passengers || []).forEach((p) => doc.text(`PAX: ${p.passenger?.fullName || p.passengerId}`));
+       this.pdf.customerLines(m, [
+-        { label: "Selling", value: String(b.sellingPrice) },
+-        { label: "Paid", value: String(b.paid) },
+-        { label: "Balance", value: String(b.balance) },
++        { label: "Selling", value: b.sellingPrice.toFixed(2) },
++        { label: "Discount", value: b.discount.toFixed(2) },
++        { label: "Tax", value: b.tax.toFixed(2) },
++        { label: "Net", value: b.net.toFixed(2) },
++        { label: "Paid", value: b.paid.toFixed(2) },
++        { label: "Balance", value: b.balance.toFixed(2) },
+       ]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
+     });
+   }
+@@ -387,7 +395,7 @@ export class PdfController {
+         ["Customer", r.customer?.fullName ?? "-"],
+         ["Method", r.method],
+       ]);
+-      this.pdf.customerLines(m, [{ label: "Amount", value: String(r.amount) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
++      this.pdf.customerLines(m, [{ label: "Amount", value: r.amount.toFixed(2) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
+     });
+   }
+ 
+diff --git a/backend/apps/api/src/finance/finance.controller.ts b/backend/apps/api/src/finance/finance.controller.ts
+index 0a088608dcde0dceead9c8f8b36185d234b6d972..5a477cb8ab5a9e33778ff8150794ce6d502a601e 100644
+--- a/backend/apps/api/src/finance/finance.controller.ts
++++ b/backend/apps/api/src/finance/finance.controller.ts
+@@ -1,6 +1,7 @@
+ import { GlobalFinanceGuard } from "../auth/global-finance.guard";
++import { createHash } from "node:crypto";
+ import { Prisma } from "@prisma/client";
+-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
++import { BadRequestException, ConflictException, NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+ import type { Request } from "express";
+ import { PrismaService } from "../common/prisma.service";
+ import { SequenceService } from "../common/sequence.service";
+@@ -24,6 +25,41 @@ export class FinanceController {
+     return this.accounting.accountByCode(code);
+   }
+ 
++  private receiptId(userId: string, key: unknown) {
++    if (typeof key !== "string" || !/^[A-Za-z0-9_-]{8,100}$/.test(key)) throw new BadRequestException("A valid Idempotency-Key is required for receipts");
++    return `request_${createHash("sha256").update(`${userId}:${key}`).digest("hex")}`;
++  }
++
++  private async lockReceiptScope(tx: Prisma.TransactionClient, customerId?: string | null, branchId?: string | null) {
++    const scope = customerId ? `customer:${customerId}` : `unallocated:${branchId || "global"}`;
++    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 1))::text`;
++  }
++
++  @Get("receipts/submission/:key")
++  @Header("Cache-Control", "private, no-store")
++  @RequirePermission("account.post")
++  async receiptSubmission(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
++    const receipt = await this.prisma.receipt.findUnique({ where: { id: this.receiptId(req.user.id, key) } });
++    if (!receipt) throw new NotFoundException("Receipt is not confirmed. Retry the original submission.");
++    return { id: receipt.id, receiptNo: receipt.receiptNo, amount: receipt.amount, method: receipt.method };
++  }
++
++  @Post("receipts/:id/review")
++  @RequirePermission("account.post")
++  async reviewReceipt(@Param("id") id: string, @Body() body: { reviewed?: boolean }, @Req() req: Request & { user: AuthUser }) {
++    if (body.reviewed !== true) throw new BadRequestException("Review the saved receipt before starting another payment");
++    return this.prisma.$transaction(async tx => {
++      const receipt = await tx.receipt.findUnique({ where: { id } });
++      if (!receipt) throw new NotFoundException();
++      if (receipt.bookingId) await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${receipt.bookingId} FOR UPDATE`;
++      await this.lockReceiptScope(tx, receipt.customerId, receipt.branchId);
++      if (!await tx.auditLog.findFirst({ where: { action: "REVIEW_RECEIPT", entity: "Receipt", entityId: id } })) {
++        await this.audit.log({ db: tx, userId: req.user.id, action: "REVIEW_RECEIPT", entity: "Receipt", entityId: id });
++      }
++      return { ok: true };
++    });
++  }
++
+   @Post("journals")
+   @RequirePermission("account.post")
+   async createJournal(
+@@ -63,26 +99,50 @@ export class FinanceController {
+   async createReceipt(
+     @Body() body: { customerId?: string; bookingId?: string; amount: number; method: string; branchId?: string; notes?: string },
+     @Req() req: Request & { user: AuthUser },
++    @Headers("idempotency-key") requestKey?: string,
+   ) {
+     const amount = Number(body.amount);
+-    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Receipt amount must be positive");
++    if (!Number.isFinite(amount) || amount <= 0 || amount > 1e12 || new Prisma.Decimal(amount).decimalPlaces() > 2) throw new BadRequestException("Receipt amount must be positive with at most two decimal places");
++    if (!["CASH", "BANK", "CARD", "ONLINE"].includes(body.method)) throw new BadRequestException("Invalid receipt method");
++    // The existing primary key durably identifies a keyed submission, scoped to its staff user.
++    const receiptId = this.receiptId(req.user.id, requestKey);
+     return this.prisma.$transaction(async tx => {
++      if (receiptId) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${receiptId}, 0))::text`;
++      if (body.bookingId) await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${body.bookingId} FOR UPDATE`;
+       const booking = body.bookingId ? await tx.umrahBooking.findUnique({ where: { id: body.bookingId } }) : null;
+       if (body.bookingId && !booking) throw new BadRequestException("Umrah booking not found");
+       if (booking && body.customerId && booking.customerId !== body.customerId) throw new BadRequestException("Customer does not own booking");
+       const customerId = booking?.customerId || body.customerId;
+       const branchId = booking?.branchId || body.branchId || req.user.defaultBranchId;
+       if (!req.user.isSuperAdmin && (!branchId || ![...req.user.branchIds, req.user.defaultBranchId].includes(branchId))) throw new BadRequestException("Unauthorized branch");
++      await this.lockReceiptScope(tx, customerId, branchId);
++      if (receiptId) {
++        const existing = await tx.receipt.findUnique({ where: { id: receiptId } });
++        if (existing) {
++          if (existing.bookingId !== (body.bookingId || null) || existing.customerId !== (customerId || null) || existing.branchId !== (branchId || null) || !existing.amount.equals(amount) || existing.method !== body.method || existing.notes !== (body.notes ?? null)) throw new ConflictException("Idempotency key was already used for another receipt");
++          return existing;
++        }
++      }
++      // Like verified customer links, a durable audit event proves explicit operator review.
++      // A fresh key or lost browser storage must not bypass an unreviewed payment.
++      const scope = customerId ? Prisma.sql`r."customerId" = ${customerId}` : Prisma.sql`r."customerId" IS NULL AND r."branchId" IS NOT DISTINCT FROM ${branchId || null}`;
++      const pending = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
++        SELECT r.id FROM "Receipt" r WHERE ${scope} AND left(r.id, 8) = 'request_'
++        AND NOT EXISTS (SELECT 1 FROM "AuditLog" a WHERE a.action = 'REVIEW_RECEIPT' AND a.entity = 'Receipt' AND a."entityId" = r.id)
++        LIMIT 1
++      `);
++      if (pending.length) throw new ConflictException(`Review saved receipt ${pending[0].id} before starting another payment`);
++      if (booking && (booking.status === "CANCELLED" || new Prisma.Decimal(booking.balance).lessThan(amount))) throw new BadRequestException("Receipt exceeds outstanding booking balance or booking is cancelled");
+       const journal = await this.accounting.postReceipt({ db: tx, userId: req.user.id, amount, method: body.method, customerId, branchId, sourceId: body.bookingId, module: "umrah" });
+       const receiptNo = await this.seq.next("rec", "ZAT-REC", tx);
+-      const receipt = await tx.receipt.create({ data: { receiptNo, customerId, bookingId: body.bookingId, amount, method: body.method, branchId, notes: body.notes, journalId: journal.id } });
++      const receipt = await tx.receipt.create({ data: { id: receiptId, receiptNo, customerId, bookingId: body.bookingId, amount, method: body.method, branchId, notes: body.notes, journalId: journal.id } });
+       if (booking) {
+         const paid = new Prisma.Decimal(booking.paid).plus(amount);
+-        await tx.umrahBooking.update({ where: { id: booking.id }, data: { paid, balance: new Prisma.Decimal(booking.net).minus(paid), status: paid.greaterThan(0) && booking.status === "DRAFT" ? "CONFIRMED" : booking.status, workflowStep: "ADVANCE_PAYMENT" } });
++        await tx.umrahBooking.update({ where: { id: booking.id }, data: { paid, balance: new Prisma.Decimal(booking.net).minus(paid), status: paid.greaterThan(0) && booking.status === "DRAFT" ? "CONFIRMED" : booking.status, workflowStep: ["LEAD", "QUOTATION", "CUSTOMER_CONFIRMATION"].includes(booking.workflowStep) ? "ADVANCE_PAYMENT" : booking.workflowStep } });
+       }
+       await this.audit.log({ userId: req.user.id, action: "CREATE", entity: "Receipt", entityId: receipt.id, db: tx });
+       return receipt;
+-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
++    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+   }
+ 
+   @Post("payments")
+diff --git a/backend/apps/api/src/management/operations.spec.ts b/backend/apps/api/src/management/operations.spec.ts
+index e2fffef0e4da1cf3649f26c950424e3cae287f5f..c612d5beddcdeb76ae43ebc36cd4a789006c845d 100644
+--- a/backend/apps/api/src/management/operations.spec.ts
++++ b/backend/apps/api/src/management/operations.spec.ts
+@@ -1,6 +1,7 @@
+ import "reflect-metadata";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
++import { Prisma } from "@prisma/client";
+ import { WorkflowsController } from "../workflows/workflows.controller";
+ import { UmrahOpsService } from "../umrah/umrah-ops.service";
+ import { CrmService } from "../crm/crm.service";
+@@ -144,11 +145,11 @@ test("quotation items reject invalid quantities and amounts before database acce
+ 
+ test("quotation item quantities and amounts reach the existing recalculation", async () => {
+   let created: unknown;
+-  const db = { quotation: { findUnique: async () => ({ id: "quote", items: [{ quantity: 2, sellingPrice: 10, cost: 5 }], discount: 0, tax: 0 }), update: async ({ data }: { data: unknown }) => data }, quotationItem: { create: async ({ data }: { data: unknown }) => { created = data; } } };
++  const db = { $transaction: async (run: (tx: unknown) => unknown) => run(db), $queryRaw: async () => [], umrahBooking: { findFirst: async () => null }, quotation: { findUnique: async () => ({ id: "quote", status: "DRAFT", items: [{ quantity: 2, sellingPrice: new Prisma.Decimal(10), cost: new Prisma.Decimal(5) }], discount: 0, tax: 0 }), update: async ({ data }: { data: unknown }) => data }, quotationItem: { create: async ({ data }: { data: unknown }) => { created = data; } } };
+   const svc = new CrmService(db as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+   const result = await svc.addQuoteItem("quote", { description: " Synthetic ", quantity: 2, sellingPrice: 10, cost: 5 });
+   assert.deepEqual(created, { quotationId: "quote", description: "Synthetic", quantity: 2, sellingPrice: 10, cost: 5 });
+-  assert.deepEqual(result, { sellingTotal: 20, costTotal: 10, net: 20 });
++  assert.deepEqual(result, { sellingTotal: new Prisma.Decimal(20), costTotal: new Prisma.Decimal(10), net: new Prisma.Decimal(20) });
+ });
+ 
+ test("hotel references reject foreign, missing, deleted and mismatched physical rooms", async () => {
+diff --git a/backend/apps/api/src/website/website-booking.dto.spec.ts b/backend/apps/api/src/website/website-booking.dto.spec.ts
+index 662123a71d901bc43a1f2446924860f21cded08e..80c75c08a2686095af29900d05c90bdba2504e33 100644
+--- a/backend/apps/api/src/website/website-booking.dto.spec.ts
++++ b/backend/apps/api/src/website/website-booking.dto.spec.ts
+@@ -26,6 +26,8 @@ const sample: WebsiteCustomerBookingDto = {
+   updatedAt: new Date().toISOString(),
+ };
+ assert("valid row", isWebsiteBookingRow(sample));
++assert("undated row stays visible", isWebsiteBookingRow({ ...sample, travelDate: null }));
++assert("missing travel date is explicit null", travelDateFrom(null) === null);
+ assert("invalid service", !isWebsiteBookingRow({ ...sample, service: "Ticket" as WebsiteCustomerBookingDto["service"] }));
+ 
+ console.log("website booking dto OK");
+diff --git a/backend/apps/api/src/website/website-booking.dto.ts b/backend/apps/api/src/website/website-booking.dto.ts
+index 214c46be026a748c58007b4263ddc3fc781bfd03..eeca1624dcddb66e7ff657392a4fda677ddec14c 100644
+--- a/backend/apps/api/src/website/website-booking.dto.ts
++++ b/backend/apps/api/src/website/website-booking.dto.ts
+@@ -10,7 +10,7 @@ export type WebsiteCustomerBookingDto = {
+   reference: string;
+   service: WebsiteBookingService;
+   destination: string;
+-  travelDate: string;
++  travelDate: string | null;
+   status: WebsiteBookingStatus;
+   createdAt: string;
+   updatedAt: string;
+@@ -21,8 +21,8 @@ export function isoDate(value: Date | null | undefined): string {
+   return value.toISOString();
+ }
+ 
+-export function travelDateFrom(value: Date | null | undefined): string {
+-  if (!value) return "";
++export function travelDateFrom(value: Date | null | undefined): string | null {
++  if (!value) return null;
+   return value.toISOString().slice(0, 10);
+ }
+ 
+@@ -36,7 +36,8 @@ export function mapWebsiteStatus(raw: string, cancelled: boolean): WebsiteBookin
+ 
+ export function isWebsiteBookingRow(row: WebsiteCustomerBookingDto): boolean {
+   return (
+-    Boolean(row.reference && row.destination && row.travelDate && row.createdAt && row.updatedAt) &&
++    Boolean(row.reference && row.destination && row.createdAt && row.updatedAt) &&
++    (row.travelDate === null || (typeof row.travelDate === "string" && row.travelDate.length > 0)) &&
+     (WEBSITE_BOOKING_SERVICES as readonly string[]).includes(row.service) &&
+     (WEBSITE_BOOKING_STATUSES as readonly string[]).includes(row.status)
+   );
+diff --git a/backend/apps/api/src/website/website-customer-bookings.service.ts b/backend/apps/api/src/website/website-customer-bookings.service.ts
+index 39983789bd92bde6062a5dc679e096c5dd4f237a..91ab938431c75cd85d7c768a53431525fee01fe2 100644
+--- a/backend/apps/api/src/website/website-customer-bookings.service.ts
++++ b/backend/apps/api/src/website/website-customer-bookings.service.ts
+@@ -99,7 +99,6 @@ export class WebsiteCustomerBookingsService {
+       if (!status) continue;
+       const destination = (row.groupName?.trim() || "Umrah").slice(0, 200);
+       const travelDate = travelDateFrom(row.departureDate);
+-      if (!travelDate) continue;
+       rows.push({
+         reference: row.bookingNumber,
+         service: "Umrah",
+@@ -117,7 +116,6 @@ export class WebsiteCustomerBookingsService {
+       if (!status) continue;
+       const destination = [row.hotel?.name, row.hotel?.city].filter(Boolean).join(", ") || "Hotel";
+       const travelDate = travelDateFrom(row.checkIn);
+-      if (!travelDate) continue;
+       rows.push({
+         reference: row.bookingNumber,
+         service: "Hotel",
+@@ -135,7 +133,6 @@ export class WebsiteCustomerBookingsService {
+       const reference = (row.ticketNumber?.trim() || row.id).slice(0, 80);
+       const destination = (row.sector?.trim() || "Flight").slice(0, 200);
+       const travelDate = travelDateFrom(row.departureAt);
+-      if (!travelDate) continue;
+       rows.push({
+         reference,
+         service: "Flight",
+@@ -156,7 +153,6 @@ export class WebsiteCustomerBookingsService {
+           .join(" · ")
+           .slice(0, 200) || "Transport";
+       const travelDate = travelDateFrom(row.tripDate);
+-      if (!travelDate) continue;
+       rows.push({
+         reference: row.bookingNumber,
+         service: "Transport",
+@@ -175,7 +171,6 @@ export class WebsiteCustomerBookingsService {
+       );
+       if (!status) continue;
+       const travelDate = travelDateFrom(row.submittedAt ?? row.createdAt);
+-      if (!travelDate) continue;
+       rows.push({
+         reference: row.applicationNo,
+         service: "Visa",
+diff --git a/backend/package.json b/backend/package.json
+index 9ee7316d0561280f0367a485a77efc7299fcd5b1..63ff5909400fbc44278221bb114982c3815dd7cd 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -26,6 +26,7 @@
+     "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit",
+     "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/jwt.guard.spec.ts apps/api/src/common/storage.service.spec.ts apps/api/src/documents/documents.controller.spec.ts apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts apps/api/src/website/website-inquiries.controller.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs apps/api/src/common/security-audit.spec.ts apps/api/src/common/final-audit.spec.ts apps/api/src/common/pr16-review.spec.ts apps/api/src/resources/lead-access.spec.ts apps/api/src/management/management.spec.ts apps/api/src/management/operations.spec.ts scripts/prepare-umrah-reference.spec.mjs apps/api/src/documents/document-brand.spec.ts apps/api/src/common/p0-remediation.spec.ts apps/api/src/common/communications.spec.ts",
+     "test:e2e": "npx tsx scripts/e2e-api.mjs",
++    "test:quotation:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/crm/lead-quotation.pg17.spec.ts apps/api/src/crm/quotation-journey.pg17.spec.ts",
+     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs",
+     "test:document-backup": "node --test scripts/document-backup.spec.mjs"
+   },
+diff --git a/backend/scripts/hostinger-api-path.cjs b/backend/scripts/hostinger-api-path.cjs
+index 101f27f1bfa10f29241aef83d1e1b8b50749440a..6cdcd272d5bec645a94bebbb86f2d45b3bfd533f 100644
+--- a/backend/scripts/hostinger-api-path.cjs
++++ b/backend/scripts/hostinger-api-path.cjs
+@@ -10,4 +10,13 @@ function isApiPathname(pathOnly) {
+   return p === "/api" || p.startsWith("/api/") || p === "/v1/customer/bookings" || p === "/v1/customer/upsert-by-email";
+ }
+ 
+-module.exports = { isApiPathname };
++// A nonempty value other than "false" fails closed, including configuration typos.
++function receiptWriteBlocked(req, disabled) {
++  if (!disabled || disabled === "false" || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
++  let pathname;
++  try { pathname = decodeURIComponent(new URL(req.url, "http://gateway.local").pathname); }
++  catch { return true; }
++  return /^\/api\/v1\/finance\/receipts(?:\/|$)/i.test(pathname);
++}
++
++module.exports = { isApiPathname, receiptWriteBlocked };
+diff --git a/backend/scripts/hostinger-start.cjs b/backend/scripts/hostinger-start.cjs
+index 010a1e75c7b6457beef4baf8dfb12d1c035130d2..3452239892d54fd7f4e12c99badea1cc27cd1ace 100644
+--- a/backend/scripts/hostinger-start.cjs
++++ b/backend/scripts/hostinger-start.cjs
+@@ -78,7 +78,7 @@ function requestPathname(req) {
+   return String(raw).split("?")[0];
+ }
+ 
+-const { isApiPathname } = require("./hostinger-api-path.cjs");
++const { isApiPathname, receiptWriteBlocked } = require("./hostinger-api-path.cjs");
+ 
+ class MissingApiArtifactError extends Error {
+   constructor(relativePath) {
+@@ -94,6 +94,11 @@ function isApiPath(req) {
+ 
+ function listenGateway() {
+   const server = http.createServer((req, res) => {
++    if (receiptWriteBlocked(req, process.env.RECEIPT_WRITES_DISABLED)) {
++      res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "private, no-store", "retry-after": "60" });
++      res.end(JSON.stringify({ ok: false, message: "Receipt writes are temporarily unavailable. Preserve the original retry key and review saved receipts before retrying." }));
++      return;
++    }
+     if (isApiPath(req)) {
+       if (apiExpress) {
+         apiExpress(req, res);
+diff --git a/backend/scripts/hostinger-start.spec.mjs b/backend/scripts/hostinger-start.spec.mjs
+index e8004e013898bbafebd1b2fdd27b33ec18c8c3a8..2237dca04ee68d097c7066ed0985a236a7335a99 100644
+--- a/backend/scripts/hostinger-start.spec.mjs
++++ b/backend/scripts/hostinger-start.spec.mjs
+@@ -21,7 +21,7 @@ test("gateway waits for website readiness before accepting requests", async () =
+     fs: { existsSync: () => false },
+     path,
+     url: { parse: () => ({}) },
+-    "./hostinger-api-path.cjs": { isApiPathname: p => p.startsWith("/api/") },
++    "./hostinger-api-path.cjs": (await import("./hostinger-api-path.cjs")).default,
+     next: () => ({ prepare: () => prepared, getRequestHandler: () => (_req, res) => { res.writeHead(200, {}); res.end("ready"); } }),
+   };
+   const context = { require(name) { assert.ok(name in dependencies); return dependencies[name]; }, __dirname: scriptsDir, process: { env: { START_MODE: "web" } }, console: { log() {}, error() {} }, URL };
+@@ -39,6 +39,16 @@ test("gateway waits for website readiness before accepting requests", async () =
+   assert.equal(status, 503);
+   assert.equal(headers["cache-control"], "no-store");
+   assert.equal(headers["retry-after"], "3");
++  context.process.env.RECEIPT_WRITES_DISABLED = "true";
++  handleRequest({ method: "POST", url: "/api/v1/finance/receipts?retry=1" }, response);
++  assert.equal(status, 503);
++  assert.equal(headers["cache-control"], "private, no-store");
++  assert.equal(headers["retry-after"], "60");
++  assert.match(body, /Preserve the original retry key/);
++  handleRequest({ method: "POST", url: "/api/v1/finance/receipts/request_test/review" }, response);
++  assert.equal(headers["retry-after"], "60");
++  handleRequest({ method: "GET", url: "/admin" }, response);
++  assert.equal(status, 200);
+ });
+ 
+ for (const mode of ["api", "all"]) {
+diff --git a/package.json b/package.json
+index 89f884167e493bb999bd891d1337c091aa6fc72f..5bf1c4ade829f7eb90d97a7413f6605ca2b5f4c7 100644
+--- a/package.json
++++ b/package.json
+@@ -12,6 +12,8 @@
+     "lint": "eslint src",
+     "test:customer-bookings": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-bookings/dto.test.ts src/server/customer-bookings/fetch.test.ts src/lib/account-bookings.test.ts",
+     "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts src/server/customer-auth/crm-link.test.ts src/server/customer-auth/rate-limit.test.ts",
++    "test:account:pg17": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-bookings/account-journey.pg17.test.ts",
++    "test:receipt-retry": "node --import ./backend/node_modules/tsx/dist/loader.mjs --test src/lib/receipt-retry.test.ts",
+     "test:staff": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/staff-api.test.ts src/lib/staff-leads.test.ts src/lib/staff-management.test.ts"
+   },
+   "dependencies": {
+diff --git a/src/app/admin/(workspace)/manage/[resource]/page.tsx b/src/app/admin/(workspace)/manage/[resource]/page.tsx
+index c1c46e3df7c56b70225ee2fbc3e5b33a03ed6631..03b98f769a0c1d5215175b0aac2815b34691509b 100644
+--- a/src/app/admin/(workspace)/manage/[resource]/page.tsx
++++ b/src/app/admin/(workspace)/manage/[resource]/page.tsx
+@@ -11,5 +11,5 @@ export default async function ResourcePage({ params, searchParams }: { params: P
+   if (!/^[a-z-]{1,40}$/.test(resource)) return <p role="alert">Module unavailable.</p>;
+   const selected = (await searchParams).record;
+   const initialId = typeof selected === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(selected) ? selected : undefined;
+-  return <ManagementWorkspace key={`${resource}-${initialId || ""}`} resource={resource} initialId={initialId} canAssign={identity.user.isSuperAdmin || identity.user.permissions.includes("lead.assign")} permissions={identity.user.permissions} isSuperAdmin={identity.user.isSuperAdmin} />;
++  return <ManagementWorkspace key={`${resource}-${initialId || ""}`} resource={resource} staffUsername={identity.user.username} initialId={initialId} canAssign={identity.user.isSuperAdmin || identity.user.permissions.includes("lead.assign")} permissions={identity.user.permissions} isSuperAdmin={identity.user.isSuperAdmin} />;
+ }
+diff --git a/src/components/account/BookingList.tsx b/src/components/account/BookingList.tsx
+index c6b99164bc2fa315d5e55d762b3e64490981c26f..964093a9011c63ab29005e59eaa8f73e432c5d55 100644
+--- a/src/components/account/BookingList.tsx
++++ b/src/components/account/BookingList.tsx
+@@ -147,7 +147,7 @@ export function BookingList({
+                     <Detail label="Booking reference" value={booking.reference} />
+                     <Detail label="Service type" value={booking.service} />
+                     <Detail label="Destination" value={booking.destination} />
+-                    <Detail label="Travel date" value={booking.travelDate} />
++                    <Detail label="Travel date" value={booking.travelDate ?? "Date to be confirmed"} />
+                   </dl>
+                   <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                     <BookingStatusBadge status={booking.status} />
+diff --git a/src/components/admin/ManagementWorkspace.tsx b/src/components/admin/ManagementWorkspace.tsx
+index 679a70a692bd04c203290ff6f7aeb2b534609aed..d73eaf350462e792a144b9122cf3fd216f442275 100644
+--- a/src/components/admin/ManagementWorkspace.tsx
++++ b/src/components/admin/ManagementWorkspace.tsx
+@@ -4,15 +4,16 @@ import Link from "next/link";
+ import { AgencyMasthead } from "@/components/admin/AgencyMasthead";
+ import { bookingDocumentUrl, bookingFieldSection } from "@/lib/booking-presentation";
+ import { workflowsFor, type StaffWorkflow } from "@/lib/staff-workflows";
+-import { useEffect, useState } from "react";
++import { clearReceiptRetry, hasPendingReceipt, receiptRetryKey, savedReceiptRetryKey } from "@/lib/receipt-retry";
++import { useEffect, useRef, useState } from "react";
+ import { displayValue, formPayload, rowLabel, type ManagementField, type ManagementModule, type ManagementRow } from "@/lib/staff-management";
+ 
+ const control = "mt-1 w-full min-w-0 rounded-lg border border-line bg-white px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue";
+ const button = "rounded-xl border border-line px-4 py-2 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue disabled:cursor-not-allowed disabled:opacity-50";
+ const api = "/api/v1/management";
+ 
+-async function request(path: string, method = "GET", body?: unknown) {
+-  const response = await fetch(path, { method, credentials: "same-origin", cache: "no-store", redirect: "error", headers: body ? { "Content-Type": "application/json" } : {}, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20000) });
++async function request(path: string, method = "GET", body?: unknown, requestKey?: string) {
++  const response = await fetch(path, { method, credentials: "same-origin", cache: "no-store", redirect: "error", headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(requestKey ? { "Idempotency-Key": requestKey } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20000) });
+   if (response.status === 401) throw new Error("Your staff session expired. Sign in again.");
+   if (response.status === 403) throw new Error("You do not have permission for this operation.");
+   if (response.status === 404) throw new Error("This record is unavailable or outside your authorized scope.");
+@@ -105,7 +106,7 @@ function NewStaffForm({ close, saved }: { close: () => void; saved: () => void }
+   return <form action={save} className="mt-5 rounded-xl border border-line bg-surface p-5"><h2 className="text-xl font-semibold">Create staff account</h2><p className="mt-2 text-sm">The new account starts inactive with no roles. Configure its access and activate it separately.</p>{error && <p role="alert" className="mt-3">{error}</p>}<div className="mt-4 grid gap-4 sm:grid-cols-2">{[{ name: "fullName", label: "Full name", type: "text" }, { name: "username", label: "Username", type: "text" }, { name: "email", label: "Email", type: "email" }, { name: "password", label: "Initial password", type: "password" }].map(f => <label key={f.name} className="font-semibold">{f.label}<input className={control} name={f.name} type={f.type} required disabled={busy} autoComplete={f.name === "password" ? "new-password" : "off"} minLength={f.name === "password" ? 10 : undefined} maxLength={f.name === "password" ? 72 : 254} pattern={f.name === "username" ? "[a-z0-9._-]{3,32}" : undefined} /></label>)}</div><p className="mt-2 text-sm text-muted">Username: 3–32 lowercase letters, numbers, dots, underscores or hyphens. Password: at least 10 characters and at most 72 UTF-8 bytes.</p><div className="mt-4 flex gap-3"><button className={button} disabled={busy}>Create inactive account</button><button type="button" className={button} disabled={busy} onClick={close}>Cancel</button></div></form>;
+ }
+ 
+-export function ManagementWorkspace({ resource, canAssign, permissions, isSuperAdmin, initialId }: { resource: string; canAssign: boolean; permissions: string[]; isSuperAdmin: boolean; initialId?: string }) {
++export function ManagementWorkspace({ resource, staffUsername, canAssign, permissions, isSuperAdmin, initialId }: { resource: string; staffUsername: string; canAssign: boolean; permissions: string[]; isSuperAdmin: boolean; initialId?: string }) {
+   const { modules, error: catalogError } = useCatalog();
+   const contract = modules?.find(m => m.key === resource);
+   const [query, setQuery] = useState("");
+@@ -122,6 +123,9 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
+   const [assignees, setAssignees] = useState<{ id: string; fullName: string }[]>([]);
+   const [assigning, setAssigning] = useState(false);
+   const [workflow, setWorkflow] = useState<StaffWorkflow | null>(null);
++  const [pendingReceipt, setPendingReceipt] = useState(false);
++  const [receiptPreview, setReceiptPreview] = useState<{ id: string; receiptNo: string; amount: string; method: string } | null>(null);
++  const workflowPending = useRef(false);
+   const [accessOpen, setAccessOpen] = useState(false);
+   const [staffCreate, setStaffCreate] = useState(false);
+   useEffect(() => {
+@@ -157,6 +161,18 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
+   }
+   async function chooseWorkflow(action: StaffWorkflow) {
+     setMessage(""); setError("");
++    if (resource === "receipts") {
++      try {
++        setPendingReceipt(hasPendingReceipt(localStorage, staffUsername));
++        setReceiptPreview(null);
++        const key = savedReceiptRetryKey(localStorage, staffUsername);
++        if (key) {
++          try { setReceiptPreview(await request(`/api/v1/finance/receipts/submission/${encodeURIComponent(key)}`)); }
++          catch { /* Keep the original key: a missing response is not proof of no payment. */ }
++        }
++      }
++      catch { setError("Browser storage is unavailable. Receipt submissions need reload-safe retry storage."); return; }
++    }
+     if (["checkin", "checkout"].includes(action.key) && row) {
+       setBusy(true);
+       try {
+@@ -167,7 +183,8 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
+     } else setWorkflow(action);
+   }
+   async function runWorkflow(form: FormData) {
+-    if (!workflow || busy || form.get("confirm") !== "yes") return;
++    if (!workflow || busy || workflowPending.current || form.get("confirm") !== "yes") return;
++    workflowPending.current = true;
+     setBusy(true); setError(""); setMessage("");
+     try {
+       const data = formPayload(workflow.fields, form, true);
+@@ -188,14 +205,36 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
+         for (const key of ["roomCount", "occupancy", "sellingPrice", "supplierCost", "roomTypeId"]) delete data[key];
+       }
+       if (workflow.version && row) data.version = row.version;
+-      await request(workflow.path.replace(":id", encodeURIComponent(row?.id || "")), "POST", data);
++      let requestKey: string | undefined;
++      if (resource === "receipts") {
++        if (!navigator.locks) throw new Error("This browser cannot safely coordinate receipt retries across tabs.");
++        requestKey = await navigator.locks.request(`zat:receipt-key:${staffUsername}`, () => receiptRetryKey(localStorage, staffUsername, data));
++        setPendingReceipt(true);
++      }
++      const result = await request(workflow.path.replace(":id", encodeURIComponent(row?.id || "")), "POST", data, requestKey);
++      if (requestKey) setReceiptPreview(result);
+       const selectedId = row?.id;
+       setWorkflow(null); setRevision(r => r + 1);
+       if (selectedId) setRow(await request(`${api}/${resource}/${selectedId}`));
+       setMessage("Operation completed. Review the refreshed record.");
+     } catch (e) {
+       setError(e instanceof Error && !["TypeError", "TimeoutError"].includes(e.name) ? e.message : "Operation outcome is uncertain. Review the record and accounting history before retrying.");
+-    } finally { setBusy(false); }
++    } finally { workflowPending.current = false; setBusy(false); }
++  }
++  async function reviewSavedReceipt(id: string) {
++    if (busy) return;
++    setBusy(true); setError("");
++    try {
++      await request(`/api/v1/finance/receipts/${encodeURIComponent(id)}/review`, "POST", { reviewed: true });
++      const key = savedReceiptRetryKey(localStorage, staffUsername);
++      if (key) {
++        const saved = await request(`/api/v1/finance/receipts/submission/${encodeURIComponent(key)}`);
++        if (saved.id === id) clearReceiptRetry(localStorage, staffUsername);
++      }
++      setPendingReceipt(hasPendingReceipt(localStorage, staffUsername)); setReceiptPreview(null); setWorkflow(null);
++      setMessage("Saved receipt reviewed. You may explicitly start a new payment.");
++    } catch (e) { setError(e instanceof Error ? e.message : "Receipt review was not confirmed. Retry the original submission."); }
++    finally { setBusy(false); }
+   }
+   if (catalogError || (modules && !contract)) return <section role="alert"><h1 className="text-2xl font-bold">Module unavailable</h1><p>{catalogError || "Your account does not have access to this module."}</p><Link href="/admin/manage" className="underline">Back to management</Link></section>;
+   if (!contract) return <p role="status">Loading workspace…</p>;
+@@ -203,6 +242,8 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
+     {error && <p role="alert" className="mt-4 rounded-xl border border-red-300 p-4">{error} <button className="underline" onClick={() => { if (row) void open(row.id); setRevision(r => r + 1); }} disabled={busy}>Reload</button></p>}
+     {row && !editing && (isSuperAdmin || permissions.includes("document.view")) && bookingDocumentUrl(resource, row.id, false) && <div className="mt-4 rounded-xl border border-line bg-surface p-4"><h2 className="font-semibold text-zayan-blue">Agency document</h2><p className="mt-1 text-sm text-muted">Print the saved record. Access is checked again by the document service.</p><div className="mt-3 flex flex-wrap gap-3"><a className={button} href={bookingDocumentUrl(resource, row.id, true)!} target="_blank" rel="noopener noreferrer">{resource === "visa-applications" ? "Application PDF" : "PDF with prices"}</a>{resource !== "visa-applications" && <a className={button} href={bookingDocumentUrl(resource, row.id, false)!} target="_blank" rel="noopener noreferrer">PDF without prices</a>}</div></div>}
+     {message && <p role="status" className="mt-4 rounded-xl border border-green-300 p-4">{message}</p>}
++    {resource === "receipts" && pendingReceipt && <div className="mt-4 rounded-xl border border-amber-300 p-4"><p>A prior receipt submission is saved across tabs. Retry the original details safely, or review its saved receipt before starting another payment.</p>{receiptPreview && <><p className="mt-2">Saved receipt: {receiptPreview.receiptNo} · {Number(receiptPreview.amount).toFixed(2)} · {receiptPreview.method}</p><button type="button" className={`${button} mt-3`} disabled={busy} onClick={() => void reviewSavedReceipt(receiptPreview.id)}>I reviewed this saved receipt; allow a new payment</button></>}<Link className="mt-3 block underline" href="/admin/manage/receipts">View receipt history</Link></div>}
++    {resource === "receipts" && row && isSuperAdmin && <button type="button" className={`${button} mt-4`} disabled={busy} onClick={() => void reviewSavedReceipt(row.id)}>I reviewed this saved receipt; allow a new payment</button>}
+     {resource === "users" && isSuperAdmin && <div className="mt-4 flex flex-wrap gap-2"><button className={button} disabled={busy} onClick={() => { setRow(null); setStaffCreate(true); setAccessOpen(false); }}>New staff account</button>{row && <button className={button} disabled={busy} onClick={() => { setAccessOpen(true); setStaffCreate(false); setWorkflow(null); }}>Manage access</button>}</div>}
+     {staffCreate && <NewStaffForm close={() => setStaffCreate(false)} saved={() => { setStaffCreate(false); setRevision(r => r + 1); setMessage("Inactive staff account created. Open its record to assign roles, branches and activate access."); }} />}
+     {accessOpen && row && <StaffAccessEditor key={row.id} id={row.id} close={() => setAccessOpen(false)} saved={() => { setAccessOpen(false); void open(row.id); setMessage("Access saved. Existing sessions for this account were revoked."); }} />}
+diff --git a/src/lib/account-bookings.test.ts b/src/lib/account-bookings.test.ts
+index 284a89ded1a1736cbe34fb09e026859b19f1eb45..4c6ba53e64ca6326e0d7663680ed6f9f7c51f3ae 100644
+--- a/src/lib/account-bookings.test.ts
++++ b/src/lib/account-bookings.test.ts
+@@ -1,5 +1,11 @@
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
++
++test("account list preserves an explicit pending date without inventing a travel date", () => {
++  const row = { reference: "UNDATED", service: "Umrah", destination: "Umrah", travelDate: null, status: "Upcoming", createdAt: "2030-01-01", updatedAt: "2030-01-01" };
++  assert.equal(parseAccountBooking(row)?.travelDate, null);
++  assert.equal(parseAccountBooking({ ...row, travelDate: undefined }), null);
++});
+ import {
+   parseAccountBooking,
+   parseAccountBookingsResponse,
+diff --git a/src/lib/account-bookings.ts b/src/lib/account-bookings.ts
+index 78bda0caba1cb53b8ca8572e2b68d5999a5c7514..8263f001fc9630de97e1b5a75f3485c7c50284fe 100644
+--- a/src/lib/account-bookings.ts
++++ b/src/lib/account-bookings.ts
+@@ -12,7 +12,7 @@ export type AccountBooking = {
+   reference: string;
+   service: string;
+   destination: string;
+-  travelDate: string;
++  travelDate: string | null;
+   status: AccountBookingStatus;
+   createdAt: string;
+   updatedAt: string;
+@@ -34,11 +34,11 @@ export function parseAccountBooking(row: unknown): AccountBooking | null {
+   const reference = asNonEmptyString(record.reference);
+   const service = asNonEmptyString(record.service);
+   const destination = asNonEmptyString(record.destination);
+-  const travelDate = asNonEmptyString(record.travelDate);
++  const travelDate = record.travelDate === null ? null : asNonEmptyString(record.travelDate);
+   const status = asNonEmptyString(record.status);
+   const createdAt = asNonEmptyString(record.createdAt);
+   const updatedAt = asNonEmptyString(record.updatedAt);
+-  if (!reference || !service || !destination || !travelDate || !createdAt || !updatedAt) return null;
++  if (!reference || !service || !destination || travelDate === "" || !createdAt || !updatedAt) return null;
+   if (!isStatus(status)) return null;
+   return { reference, service, destination, travelDate, status, createdAt, updatedAt };
+ }
+diff --git a/src/lib/staff-management.test.ts b/src/lib/staff-management.test.ts
+index 8b524f8a327de1e70ada71a1bfe2992780a9725a..a3ec4ebff3616950ec63d444172c8116c09bb5fb 100644
+--- a/src/lib/staff-management.test.ts
++++ b/src/lib/staff-management.test.ts
+@@ -13,6 +13,7 @@ test("form serialization sends only declared fields and preserves explicit clear
+ test("display excludes nested secrets and workflow availability follows permissions", () => {
+   assert.equal(displayValue({ passwordHash: "secret" }), "—");
+   assert.equal(rowLabel({ id: "one", version: null, fullName: "Synthetic" }), "Synthetic");
++  assert.equal(rowLabel({ id: "request_internal", version: null, receiptNo: "ZAT-REC-1" }), "ZAT-REC-1");
+   assert.equal(workflowsFor("tickets", true, ["ticket.view"], false).length, 0);
+   assert.equal(workflowsFor("tickets", true, ["ticket.refund"], false)[0].key, "refund");
+   assert.equal(workflowsFor("payments", false, ["account.post"], false).length, 0);
+diff --git a/src/lib/staff-management.ts b/src/lib/staff-management.ts
+index 568a8386044a44e72e6cf2955abe4cdc8202e325..c75de69ade00cecffe054e46bb5581881244c17d 100644
+--- a/src/lib/staff-management.ts
++++ b/src/lib/staff-management.ts
+@@ -7,7 +7,7 @@ export function displayValue(value: unknown): string {
+   return typeof value === "string" || typeof value === "number" ? String(value) : "—";
+ }
+ export function rowLabel(row: ManagementRow) {
+-  return ["fullName", "name", "subject", "title", "bookingNumber", "leadNumber", "customerNumber", "ticketNumber", "entryNumber", "code", "id"].map(k => row[k]).find(v => typeof v === "string" && v) as string || row.id;
++  return ["fullName", "name", "subject", "title", "receiptNo", "bookingNumber", "leadNumber", "customerNumber", "ticketNumber", "entryNumber", "code", "id"].map(k => row[k]).find(v => typeof v === "string" && v) as string || row.id;
+ }
+ export function formPayload(fields: ManagementField[], form: FormData, create: boolean) {
+   const data: Record<string, unknown> = {};
+diff --git a/src/server/customer-bookings/dto.test.ts b/src/server/customer-bookings/dto.test.ts
+index f81919f7729c8698fbc574d5debb8e2b683dab4a..3265d8c85b70f5ba9aa49c794c47f27731b5fe57 100644
+--- a/src/server/customer-bookings/dto.test.ts
++++ b/src/server/customer-bookings/dto.test.ts
+@@ -15,6 +15,13 @@ const APPROVED_KEYS = [
+   "updatedAt",
+ ];
+ 
++test("explicitly undated bookings remain allowlisted; missing dates remain invalid", () => {
++  const row = { reference: "UNDATED", service: "Umrah", destination: "Umrah", travelDate: null, status: "Upcoming", createdAt: "2030-01-01", updatedAt: "2030-01-01" };
++  assert.equal(sanitizeCustomerBooking(row)?.travelDate, null);
++  assert.equal(sanitizeCustomerBookingsResponse({ bookings: [row] })?.length, 1);
++  assert.equal(sanitizeCustomerBooking({ ...row, travelDate: undefined }), null);
++});
++
+ test("sanitizeCustomerBooking allowlists approved fields only", () => {
+   const dto = sanitizeCustomerBooking({
+     reference: "ZAT-BK-0001",
+diff --git a/src/server/customer-bookings/dto.ts b/src/server/customer-bookings/dto.ts
+index 72243ba14593bd31fc1b36a2c1c43da9f1273e42..1585fd3a817494f6b512f851019654c1be10ce90 100644
+--- a/src/server/customer-bookings/dto.ts
++++ b/src/server/customer-bookings/dto.ts
+@@ -21,7 +21,7 @@ export type CustomerBookingDto = {
+   reference: string;
+   service: CustomerBookingService;
+   destination: string;
+-  travelDate: string;
++  travelDate: string | null;
+   status: CustomerBookingStatus;
+   createdAt: string;
+   updatedAt: string;
+@@ -47,12 +47,12 @@ export function sanitizeCustomerBooking(row: unknown): CustomerBookingDto | null
+   const reference = asNonEmptyString(record.reference);
+   const service = asNonEmptyString(record.service);
+   const destination = asNonEmptyString(record.destination);
+-  const travelDate = asNonEmptyString(record.travelDate);
++  const travelDate = record.travelDate === null ? null : asNonEmptyString(record.travelDate);
+   const status = asNonEmptyString(record.status);
+   const createdAt = asNonEmptyString(record.createdAt);
+   const updatedAt = asNonEmptyString(record.updatedAt);
+ 
+-  if (!reference || !destination || !travelDate || !createdAt || !updatedAt) return null;
++  if (!reference || !destination || travelDate === "" || !createdAt || !updatedAt) return null;
+   if (!isService(service) || !isStatus(status)) return null;
+ 
+   return {
+diff --git a/QUOTATION-VALIDATION.md b/QUOTATION-VALIDATION.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b49f3a93449b7bf3154f42cd154771aa4238ed4
+--- /dev/null
++++ b/QUOTATION-VALIDATION.md
+@@ -0,0 +1,105 @@
++# Quotation journey validation — 2026-10-23
++
++## Checkout review follow-up — 2026-10-24
++
++Confirmed a remaining direct-booking fallback gap: `bookingFromLead` created a
++quotation with the lead budget as its total but no quotation items. Added the
++same single package line used by `quoteFromLead`, quantity 1 at the whole-package
++budget, within the existing transaction. Existing quotations are not rewritten.
++
++A new isolated PG17 regression failed before the fix (`0` items instead of `1`)
++and passed afterward. The focused lead-quotation file reports **2 passed, 0
++failed, 0 skipped**, covering both quotation entry paths, three adults with a
++120000.03 package total, consistent item totals, repeat conversion without extra
++booking/lines, and balanced posting. API `tsc --noEmit` and CRLF-aware diff checks
++passed. Prior browser, receipt, document and full-build results were reused.
++
++## Package-budget meaning
++
++`quoteFromLead` and the direct `bookingFromLead` fallback both assign the lead budget once to the quotation total. It represents the whole package. The initial package line must therefore use quantity 1; adult count is not a multiplier for this total. The existing fix and its regression test were preserved.
++
++The synthetic example starts with three adults and a package budget of 120000.03. Two extras add 0.30. Discount 100.03 and tax 50.00 produce net 119950.30. Receipts totaling 10003.10 leave booking balance and ledger receivables both at 109947.20.
++
++## Changes
++
++- Customer conversion, quotation creation, numbering and lead status now commit or roll back together.
++- Quotation line changes, totals and audited edits use one transaction and a quotation row lock. Decimal arithmetic preserves monetary totals. Invalid amounts and negative net totals are rejected.
++- Converted quotations cannot be financially edited, have lines added/removed, or be reopened through the quotation status endpoint. Conversion uses the same row lock.
++- Conversion carries the lead's package and travel dates into the booking, allowing dated bookings to appear in the customer account list.
++- The booking action for customers without a lead reuses quotation conversion, preventing duplicate bookings and missing sale/cost journals.
++- Receipts lock the booking before updating its balance, reject overpayment/cancelled bookings, and retain later workflow steps. Optional `Idempotency-Key` values identify a submission through the existing receipt primary key, scoped to the staff user. Transaction-scoped advisory locks serialize keyed retries; matching retries return the existing receipt and conflicting payloads return 409. No schema migration is required.
++- The staff receipt form supplies a retry key and prevents overlapping submissions. The key is reused for the same payload while that form remains open.
++- Quotation and booking/voucher PDFs show subtotal/selling amount, discount, tax and net. Financial values use two decimal places. Price-excluded documents omit these amounts.
++
++## Exact final results
++
++| Check | Result |
++| --- | --- |
++| `npm run test:quotation:pg17 --prefix backend` | 14 passed, 0 failed, 0 skipped (includes the journey parent test) |
++| `npm run test:account:pg17` | 1 passed, 0 failed, 0 skipped |
++| `npm test --prefix backend` | 136 passed, 0 failed, 0 skipped |
++| `npm run test:customer-auth` | 9 passed |
++| `npm run test:customer-bookings` | 13 passed |
++| `npm run test:staff` | 7 passed |
++| API workspace build (`npm run build --prefix backend -w @zat/api`) | Passed |
++| Website build (`next build --webpack`) | Passed, Next.js 16.3.8 |
++| Website lint (`npm run lint`) | Passed; 0 errors, 2 existing navigation warnings in `StaffSessionForm.tsx` |
++| `git diff --check` | Passed |
++| PDF generation, PDF.js rendering and visual inspection | Six single-page PDFs passed: quotation, receipt and voucher, each with prices included/excluded |
++
++PG17 cases cover concurrent/repeated customer and booking conversion, simultaneous quotation edits, decimal totals, failed audit/sequence/accounting rollback, immutable converted quotations, keyed duplicate/conflicting receipts, simultaneous distinct payments, overpayment, customer mismatch and foreign branch denial. Every journal in the completed payment journey balances, and the receivables ledger equals the booking balance.
++
++The account test uses actual PostgreSQL website customer/session rows and verification audits. Unverified or altered CRM links are denied; the verified account sees only its own allowlisted booking; revoked sessions return no identity and receive 401. No financial fields are returned in booking-list DTOs.
++
++The earlier behavior failed synthetic checks for invalid edits, creation rollback, converted edits, receipt concurrency and missing travel dates/account visibility. Some downstream baseline failures were consequences of earlier failures, not independent defects.
++
++## Isolation and reproduction
++
++All database work used a temporary PostgreSQL 17 cluster bound to loopback, port 55463, and database `zat_synthetic_quote`. Only synthetic fixtures were created. The cluster was stopped after validation. Builds ran in a temporary source copy using installed local dependencies; no application environment files were copied. Free PDF.js/canvas tools were installed only under Temp.
++
++For the opt-in PG17 scripts, set `ZAT_SYNTHETIC_DATABASE_URL` to a fresh disposable PostgreSQL 17 database on loopback whose name begins `zat_synthetic_`. Initialize it with the repository Prisma schema. The scripts reject other host/database naming and server major versions. The fixtures remain in that disposable database. `ZAT_SYNTHETIC_PDF_DIR` optionally captures test PDFs.
++
++## Remaining limits
++
++- Integration tests invoke real services, controllers and selected guards, plus the website session/account resolver. A complete browser/HTTP journey, actual login cookies and delivery through the production reverse proxy were not exercised.
++- SMTP/WhatsApp delivery, multipage document layouts and non-PKR conversion were not validated.
++- Receipt retries without an idempotency key are separate payments. The form's retry key does not survive a page reload. Explicitly creating another quotation still creates another draft; customer and quotation-to-booking conversions are idempotent.
++- Bookings without a departure date remain excluded by the existing account DTO contract until staff supplies a date. Staff ownership verification remains required before linking a website account to a CRM customer.
++- Existing production quotations and historical discrepancies were not rewritten. No production data, production migration, push, deployment or additional agent was involved.
++
++## Follow-up: reload retries, undated bookings and real HTTP journey
++
++This follow-up supersedes the reload-key and undated-booking limitations above. Earlier completed accounting, rollback and document-layout validation was reused; the full audit was not repeated.
++
++Receipt submissions now save only a SHA-256 payload fingerprint and the idempotency key in staff-scoped session storage **before** sending the payment. Reloading or reopening the receipt form preserves an uncertain submission's key. Different details are blocked until the operator retries the original details or explicitly acknowledges reviewing receipt history before starting another payment. Storage failures block submission. The key is cleared only after a confirmed response or that explicit review action. Receipt fields and authentication credentials are not stored there.
++
++The booking DTO now represents an unknown travel date as explicit `null`. Undated bookings are retained by the CRM projection, BFF sanitizer and account parser, and the list displays **Date to be confirmed**. Missing/malformed date fields remain invalid, and the field allowlist and session/verified-link authorization are unchanged.
++
++Targeted results:
++
++| Check | Result |
++| --- | --- |
++| `npm run test:receipt-retry` | 3 passed: reload persistence, changed-payload/staff isolation, storage corruption/failure |
++| `npm run test:customer-bookings` | 15 passed, including explicit null versus missing dates |
++| Backend website booking DTO test | 1 passed |
++| API build | Passed |
++| Website build (`next build --webpack`) | Passed against final source |
++| ESLint on changed retry/account files | 0 errors, 0 warnings |
++| `git diff --check` | Passed |
++| `backend/scripts/quotation-http-journey.cjs` | Passed against real Next/Nest handlers, real login cookies, guards and gateway route classification on loopback with synthetic PG17 data |
++
++The HTTP journey created and edited a quotation, converted it twice to one undated booking, posted a receipt, simulated losing its response, recreated the client with persisted storage, and replayed the same key. Exactly one receipt remained. Net **1010.00**, paid **250.25**, balance and ledger receivables **759.75**; all journals balanced. A changed replay returned 409, unauthorized finance returned 403, and foreign-branch quotation/document requests returned 404. Both voucher price modes returned PDF bytes with private/no-store headers.
++
++Actual customer registration/login cookies and staff ownership verification were exercised over HTTP. Before verification the customer received 403; after verification the owner received its undated booking with a null date. A forged customer query selector was ignored. Other/unverified accounts, anonymous requests, missing internal-token requests and customer-cookie access to staff vouchers were denied with the expected 401/403 responses. The harness uses the existing gateway path classifier and real application handlers; it does not mock authentication or accounting.
++
++Run the opt-in HTTP harness in a **built temporary project copy** with `ZAT_SYNTHETIC_DATABASE_URL` pointing at the disposable PG17 database. This run used Node 24.19.0, existing local dependencies, and the prior synthetic cluster. `ZAT_SYNTHETIC_HTTP_OUTPUT` optionally selects a temporary log/result/PDF directory. No credentials are printed in the result. Test HTTP servers and the PG17 cluster were stopped afterward.
++
++Remaining release checks: the reload was simulated by reconstructing the client from persisted session storage, not by driving a browser tab. A deployed proxy/browser smoke test remains unperformed. Session storage survives reloads in the same tab, not tab closure or separate tabs; external receipt callers must supply and reuse an idempotency key. Existing SMTP/WhatsApp, multipage and non-PKR limits remain. No production writes, production migrations, additional agents, push or deployment occurred.
++
++## Release follow-up — 2026-10-24
++
++`RELEASE-REVIEW.md` records the final receipt protocol, targeted results, release diff and rollback steps. It supersedes the prior same-tab/session-storage and simulated-browser limitations above.
++
++Receipt keys are now mandatory. A server-side customer/branch lock plus durable explicit receipt-review audit prevents a fresh key or another staff user from bypassing an unreviewed keyed payment. Browser keys use shared local storage and Web Locks, survive tab/browser closure, and are retained until explicit saved-receipt review. No schema migration or historical financial rewrite is involved.
++
++Actual Chrome tests against isolated PG17 and a real loopback reverse proxy passed: two tabs, a deliberately lost committed response, page reload, full browser closure/reopen, receipt review, undated booking display, staff PDF links, customer/foreign-staff document denial, real login cookies and customer isolation. Production proxy/TLS/cookie deployment checks remain pending. Earlier completed broad validation was reused; only targeted tests/builds were run for this follow-up.
+diff --git a/RELEASE-BLOCKER-RESOLUTION.md b/RELEASE-BLOCKER-RESOLUTION.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..071e6e392f040b9c23d19bdff2153dd80f610cbe
+--- /dev/null
++++ b/RELEASE-BLOCKER-RESOLUTION.md
+@@ -0,0 +1,148 @@
++# Release blocker follow-up — 2026-10-24
++
++## Current checkout review — 2026-10-24
++
++**NO-GO unchanged.** Reviewed the accumulated tracked diff and untracked receipt
++helpers/harnesses after reading AGENTS.md and the validation/release notes. All
++earlier uncommitted fixes and unrelated changes were preserved.
++
++Confirmed and fixed one package-budget defect: the direct lead-to-booking
++fallback created a quotation with a positive package total but no line items.
++It now creates one package line with quantity 1 in the existing transaction,
++matching the regular quotation path. No historical quotation or payment was
++rewritten; receipt protection is unchanged.
++
++The new synthetic PG17 regression reproduced the defect before the fix. After
++the fix, the focused lead-quotation tests report **2 passed, 0 failed, 0 skipped**.
++API typecheck (`tsc --noEmit`) and CRLF-aware diff check passed. Earlier browser,
++cache, receipt, rollback-compatibility and build results were reused; no broad
++audit or build rerun was needed for this single nested-create change.
++
++Fresh read-only deployment investigation returned:
++
++- GitHub repository deployment collection: **empty**.
++- GitHub Actions artifacts: **total_count 0**.
++- GitHub releases: **empty**.
++- Production public `/api/health`: **200**, no valid commit/revision hash in
++  inspected provenance fields; connection details and response body suppressed.
++- Available browser surfaces: **none**; no existing hosting UI session to inspect.
++
++The GitHub connector rejected the artifact endpoint, so the supported read-only
++GitHub CLI was used. No workflow or deployment was triggered. Empty repository
++metadata does not prove that the hosting provider has no retained bundle; its
++runtime/deployment storage remains inaccessible through the available sources.
++Historical local archives and prior database configuration are not accepted as
++current deployment evidence. No production database query was repeated.
++
++The smallest remaining blockers are still **verified live database binding**,
++the **current deployed commit**, and a **recoverable application bundle tied to
++that deployment**. These need current read-only hosting/runtime evidence; no
++production change or broader payment reconciliation was added as a requirement.
++The original release patch/manifest was preserved and predates the follow-ups.
++The temporary PG17 cluster was stopped after targeted validation. No production
++writes, additional agents, credential changes, commit, push or deployment occurred.
++
++## Execution follow-up — latest evidence
++
++**NO-GO remains for the production release.** Local browser/cache execution and recorded-base API compatibility are now verified. The two remaining evidence blockers are (1) the live application-to-database binding and (2) the currently deployed commit plus its retained application rollback artifact. Earlier preparation-only statements below are historical and superseded by this section.
++
++### Checks executed
++
++- Actual Chrome **155.0.8059.84**, real Next/Nest handlers, login cookies, loopback HTTP proxy and synthetic PostgreSQL **17**: **passed**, with 12 reported journey checks, including 7 browser check groups. Owner/other/owner at the identical bookings URL returned only each account's booking with private/no-store and no positive Age. Undated booking display, forged-selector isolation, staff PDF access, customer/foreign-staff denial, untrusted Origin, required keys and explicit review passed.
++- The browser run again proved two-tab same-key submission, a deliberately lost committed response, reload and complete browser closure/reopen. Exactly 2 receipts remain for the synthetic booking: the earlier HTTP payment plus one browser payment. Net **1010.00**, paid **350.35**, balance **659.65**. The outer HTTP result's 250.25/759.75 describes its earlier checkpoint; `browser-result.json` contains the final browser totals.
++- Initial attempts timed out after reopening Chrome redirected to staff login. The harness now performs real staff reauthentication when that redirect occurs, then asserts recovery of the existing local-storage retry key. No key is replaced, no cookie is injected and no payment guard was changed. The final run passed with reauthentication explicitly recorded.
++- Extracted exact backend source from recorded Git base `307d174ce77a8eb7b79bd559ff1bad5ea1210c8d` into Temp and compiled with installed TypeScript/dependencies: **passed**. No package download or migration. Generated source archive SHA256: `e4319c86c340a729681b167428fc7c7f8b3fd44cd59876eedcec4110df6c7edf`.
++- Executed **5 compatibility check groups** against that rebuilt old API with the candidate gateway retained: real staff HTTP login and candidate `request_` receipt read; receipt PDF in both price modes with private/no-store; anonymous PDF denied **401**; receipt creation/review/case-variant writes blocked **503**; receipt, booking, journal, journal-line and audit snapshots unchanged. Paid/balance remain **350.35/659.65**. Gateway listener was restricted to loopback in the isolated copy. This proves a compatible **recorded-base API + retained guarded gateway** arrangement; it does not certify an unidentified deployed artifact or old frontend.
++- Gateway/path/maintenance regression tests: **7 passed, 0 failed, 0 skipped**. Both changed harnesses pass syntax checks; CRLF-aware diff check passes. Earlier 42 targeted tests and application builds reused.
++
++Evidence (synthetic only): `%TEMP%/zat-quote-pg17-validation/browser-cache-reauth/{result.json,browser-result.json}` and `%TEMP%/zat-rollback-base-307d174/{source.tar,rollback-result.json}`. Browser/HTTP services exited and the temporary PG17 cluster was stopped after testing. The compatibility harness is `backend/scripts/receipt-rollback-staging.cjs`; it refuses non-loopback/non-synthetic databases and accepts only the designated Temp baseline directory.
++
++### Live mapping and exact deployed artifact: unverified
++
++Read-only inspection found an existing Hostinger SSH identity and known-host endpoint records, but no SSH config/login mapping; no hosting connector or active browser surface was available. Prior project work, deployment staging directories, backup locations and matching application archive metadata did not establish the live runtime environment or deployed commit. No SSH username was guessed, no production login performed, and no secrets displayed.
++
++A further anonymous production `/api/health` GET returned **200**, with no valid commit/revision hash in the inspected provenance fields. Public health cannot establish DATABASE_URL or associate a local artifact with a running release. The previously queried backup target remains linked to the configured production project, **not independently to the live process**. Its earlier aggregate result (0 receipts/mismatches) was reused without another production query.
++
++Older downloaded source ZIPs and prior local build directories exist, but none was tied to the currently deployed commit. They are not accepted as rollback artifacts. The newly generated recorded-base source archive is available and checksummed for reproducible staging; it is **not a retained deployed application bundle**. Availability and compatibility of the **exact current deployed bundle** therefore remain unverified.
++
++### Smallest remaining blockers / access needed
++
++1. Existing read-only Hostinger deployment/runtime access, or a redacted operator attestation comparing normalized live database host/database/project identity against the backup service target. Passwords and full connection strings must remain private. This closes the database-binding gap; the current zero-count result cannot close it alone.
++2. The current deployed commit and a readable retained application bundle with checksum/provenance. With those available, repeat the already-prepared synthetic receipt read/PDF/write-block compatibility check against that exact artifact. The recorded-base rebuild is useful evidence but cannot substitute for it.
++
++No new production action is requested. Actual CDN/secure-cookie behavior remains a deployment acceptance check already documented, not a newly added local blocker. External-client/uncertain-submission checks below remain applicable where such callers or pending submissions exist; this run found no new evidence requiring additional payment reconciliation. Future production changes still require explicit authorization and remain prohibited in this task.
++
++Only test harness/review evidence changed in this execution. Mandatory receipt keys, scope locks and review enforcement are unchanged. The original release patch remains unchanged and predates these local follow-ups; its final packaging/manifest refresh is still pending acceptance. No production writes, maintenance activation, restart, credential changes, paid service, additional agents, commit, push or deployment occurred.
++
++**NO-GO for production release / receipt writes.** Local maintenance preparation is complete; rollback provenance, live database binding and candidate edge acceptance remain unverified.
++
++## Minimal production evidence
++
++Using the existing backup service configuration and credential files, an aggregate-only query completed with `sslmode=verify-full`, a 10-second statement timeout, 1-second lock timeout, session read-only default and an explicit repeatable-read READ ONLY transaction, followed by ROLLBACK. The service file contains the configured production project reference. No credentials, hostnames, customer identifiers, payment amounts or individual records were output. No export, payment reconciliation or production writes occurred.
++
++| Aggregate | Result |
++| --- | --- |
++| transaction_read_only | on |
++| Receipt rows | 0 |
++| Historical non-keyed receipt rows | 0 |
++| Unreviewed keyed receipts | 0 |
++| Receipts missing journals | 0 |
++| Unbalanced/empty posted or reversed journals | 0 |
++| Booking paid/receipt-sum mismatches | 0 |
++| Repeated same-scope/amount/method/day groups in last 30 days | 0 |
++
++This is a snapshot of the **configured production backup target**. The running website's effective DATABASE_URL was not accessible for comparison, so its binding to this target remains **unverified**. Zero persisted receipts cannot prove that no cash/bank payment or failed browser submission occurred outside this database. Pending operator/browser/bank evidence was not available. Do not interpret these counts as authorization to retry an uncertain legacy payment. The query is retained in `backend/scripts/receipt-readonly-assessment.sql`; it returns counts only and performs no financial writes.
++
++## Rollback evidence
++
++Read-only metadata inspection found an encrypted `.pgdump.age` database backup (283776 bytes, dated 2026-10-22), its manifest and recovery status files under `C:/ProgramData/ZAT-Backup`. No application bundle was found in the inspected archive/download/recovery directories. Database backup contents were not decrypted or read. This database backup is **not** an application rollback artifact and must not be restored to undo a code release.
++
++The retained Git base `307d174ce77a8eb7b79bd559ff1bad5ea1210c8d` provides source-level evidence only: Receipt IDs are unrestricted strings and the old receipt PDF uses findUnique by ID, so candidate `request_` IDs fit that schema/read path. The candidate adds no schema migration. The older finance implementation does not provide candidate mandatory-key/review protection. No actual deployed-bundle checksum, deployed-source correspondence, dependency inventory or old-bundle execution against candidate-created synthetic receipts was verified. **Rollback artifact availability and operational compatibility remain unverified.**
++
++## Maintenance control prepared locally
++
++No receipt-specific switch was found in the existing gateway. Added `RECEIPT_WRITES_DISABLED` at its dispatch boundary, using the existing path helper module. Enabled maintenance blocks receipt mutations, including review, with 503/private-no-store/Retry-After; reads and unrelated operations continue. Encoded/case/trailing-slash variants are covered. Invalid nonempty settings fail closed. Disabling maintenance does not change controller duplicate protection.
++
++This is a startup environment control, not an administrative endpoint. Production activation requires an authorized restart. It protects only gateways containing this code; replacing it with an older gateway removes the control. Before rollback, prove an independent proxy block or retain this tested gateway across replacement. Neither production action was performed.
++
++## Authenticated staging preparation and exact proof
++
++Extended `backend/scripts/receipt-browser-checks.cjs` within the existing isolated loopback PG17/Next/Nest/proxy harness. Owner/other/owner requests now hit the **identical** customer-bookings URL with separate authenticated cookie jars, asserting private/no-store, no positive Age, and each expected booking body. Existing recovery, lost-response, review, PDF and unauthorized-document checks are reused. No production login is involved.
++
++New cache assertions: **prepared and syntax-checked; not browser-executed in this follow-up**. To execute, copy the changed harness into the existing built temporary project and use the documented opt-in loopback synthetic PG17 runner with Playwright. The harness refuses non-loopback/non-synthetic database URLs. HTTP staging cannot certify secure-cookie behavior under production TLS termination or CDN cache configuration.
++
++Targeted validation performed:
++
++- `node --test backend/scripts/receipt-maintenance.spec.mjs backend/scripts/hostinger-start.spec.mjs backend/scripts/hostinger-api-path.spec.mjs`: **7 passed, 0 failed, 0 skipped**.
++- Syntax checks for gateway and browser harness: passed.
++- `git -c core.whitespace=cr-at-eol diff --check`: passed; original tracked gateway files retain CRLF.
++- Completed 42 targeted tests, builds and Chrome/PG17 journey reused; not rerun.
++
++The original `release/zat-release.patch` is unchanged (SHA256 `b8b3f437797bef67adf58b07e65acff0159bf510d7908b8ab2ed5177fc3fdfbb`). It **does not include this follow-up**; its source manifest no longer describes the current browser harness. Regenerate/review a final patch and manifest after acceptance of this local control. No commit, push or deployment occurred.
++
++## Exact remaining evidence and approvals
++
++1. **Read-only evidence/access:** confirm the live website database matches the assessed production target; obtain minimal redacted operator/request/bank evidence for any uncertain legacy submissions and inventory external receipt clients. No automatic reconciliation is authorized.
++2. **Read-only artifact access:** identify the retained deployed application bundle/config manifest and checksum. Run its read/document compatibility against candidate-created receipts in disposable staging; verify no schema assumptions or startup writes. An older writer must stay blocked.
++3. **Local staging work:** execute the newly prepared authenticated cache assertions and a rollback/maintenance drill with the retained artifact. Already authorized by this task; no additional approval needed for isolated synthetic tests.
++4. **Explicit future production approval:** authorize retention of the deployed bundle/config, activation/restart of a persistent receipt-write block, and then deployment of the reviewed compatible bundle. This task grants none of those production changes. Prove the block survives rollback before replacement.
++5. **Separate acceptance before reopening writes:** confirm external-client key/review compatibility and authenticated CDN/proxy/cookie/cache isolation using approved staging identities and the actual topology. Any production login or synthetic financial write needs explicit authorization; no production payment may be used for testing by default.
++
++Missing evidence remains unverified. No credential changes, additional agents, paid service, production writes, commit, push or deployment were performed; unrelated working changes were preserved.
++
++
++## Release evidence closure — 24 October 2026
++
++This section supersedes the earlier inaccessible-evidence NO-GO statements for this candidate. The owner authorized fixing, pushing and deploying in this chat.
++
++- Hostinger current deployment is 01a1679f-2c7d-706a-aaf8-1c5a25a09f4f, commit 307d174ce77a8eb7b79bd559ff1bad5ea1210c8d. The runtime current symlink and deployed .metadata.json agree with hPanel.
++- Read-only /proc inspection found the running application processes in that version directory, with DATABASE_URL pointing to db.wxevvsnguskhvtnyyggi.supabase.co / postgres. No credentials were output or retained in this report.
++- A fresh verified-TLS, repeatable-read READ ONLY query returned zero receipts, legacy receipts, unreviewed receipts, missing journals, unbalanced journals, booking-paid mismatches and repeated-payment candidate groups. This does not certify off-system cash/bank submissions.
++- The exact deployed application was downloaded via the existing SSH identity to restricted local recovery storage; no production file was modified. Deployment metadata and archive integrity were checked. Archive SHA256: 247eafb6183f04b5e539ac994036be266642e321127030e80dc55abfc40fe80b (183604599 bytes). Environment files, logs, tmp, uploads and storage are excluded. Existing server configuration and customer storage must be preserved during code recovery.
++- All 67 retained compiled API JavaScript files match the previously tested baseline after CRLF normalization; only accounting.service.js differs in line endings. The retained API files were then executed in the existing isolated rollback harness: authenticated receipt reads, both PDF modes, anonymous denial, guarded write/review denial and unchanged financial snapshots all passed. Installed Windows dependencies were reused; the complete Linux bundle was not executed on Windows.
++- A guarded recovery archive is prepared separately from the immutable original. It contains the candidate gateway/path helper and forces receipt writes disabled. Recovery must use the guarded archive, retain server configuration, switch only the application artifact and restart through Hostinger, then verify receipt writes remain blocked. Do not restore the database to undo this code release. Do not use a plain old-gateway rollback that reopens receipt writes.
++- Fresh checks: 7 gateway/maintenance tests, 20 account/retry/helper tests, 15 PG17 quotation tests and 5 PG17 receipt recovery tests passed. Both final application builds and Hostinger packaging passed. The synthetic cluster was stopped. Existing Chrome/browser-cache proof is reused.
++- No application dependencies were installed. The Orca checkout lacks local dependencies; checks used existing installed tooling and the isolated build tree. Initial missing-tool/dependency launch errors were resolved for these checks without changing application code.
++- The cumulative release patch and manifest are refreshed after this evidence update. The patch is verified read-only against the current working tree. Old patch hashes in historical sections are superseded.
++
++Release recommendation: proceed with the owner-authorized code release, subject to successful Hostinger build and public/runtime smoke checks. No production migrations, seeds, financial test writes, permission changes or credential changes are included. Authenticated production browser acceptance, external providers, multipage/non-PKR documents and broader platform completion remain outside this release proof.
+diff --git a/RELEASE-READINESS.md b/RELEASE-READINESS.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..6861f875d86214ff645d796d3612249d757abe76
+--- /dev/null
++++ b/RELEASE-READINESS.md
+@@ -0,0 +1,65 @@
++# Read-only release readiness — 2026-10-24
++
++Recommendation: **HOLD receipt-write release** until legacy uncertainty, external-client compatibility and rollback controls are verified. No new candidate code defect was confirmed in this review. Do not remove the mandatory key or pending-review guard to make older clients work.
++
++## Artifact and reused proof
++
++Reviewed `RELEASE-REVIEW.md`, `QUOTATION-VALIDATION.md`, the actual receipt/server/UI patch hunks and caller implementations. All 30 manifest file hashes match. Patch size is 141854 bytes; SHA256 is `b8b3f437797bef67adf58b07e65acff0159bf510d7908b8ab2ed5177fc3fdfbb`. `git apply --reverse --check release/zat-release.patch` passes without applying anything.
++
++Reused completed evidence: 42 reported targeted tests, API and website builds passed, changed-file lint clean, actual Chrome/PG17/local-proxy journey passed. This review did not rerun those tests or builds. Those results include lost-response recovery, simultaneous tabs, reload, complete browser closure/reopen, review, totals, authorization, undated bookings, PDFs and customer isolation. Local totals remain net 1010.00, paid 350.35, balance 659.65. No production write or authenticated production journey was performed.
++
++## Receipt callers and compatibility
++
++| Caller / entry | Assessment |
++| --- | --- |
++| `src/lib/staff-workflows.ts:46` → `src/components/admin/ManagementWorkspace.tsx:209` | Only active application receipt-create UI found. Request wrapper sends `Idempotency-Key`; local storage persists it by staff identity; Web Locks coordinate tabs; changed details/storage failures fail closed. |
++| `ManagementWorkspace.tsx:170,228,231` | Recovery GET and explicit review POST are implemented. Key is retained after success and cleared only after server review and matching receipt lookup. History offers review after local storage loss. |
++| `backend/packages/config/src/entities.ts:702` | Legacy descriptive path `/finance/receipts`; no runtime consumer of ENTITIES/entityByKey/entityByPath found beyond their definitions/re-export. It is not an additional active HTTP caller in this tree. Any external consumer remains unverified. |
++| Generic `/api/v1/resources/receipts` | Read/history path. `resources.service.ts:59` rejects create/edit/delete, including for super administrators; it cannot bypass the transactional endpoint. |
++| `backend/scripts/quotation-http-journey.cjs:119–127` | Synthetic create/replay/conflict requests supply keys. Unkeyed outsider request is an intentional denial assertion. |
++| `backend/scripts/receipt-browser-checks.cjs:44–134` | Drives the real UI; direct fresh/missing-key, untrusted-origin and foreign-review calls intentionally assert rejection. Recovery GET also tested. |
++| `backend/apps/api/src/finance/receipt-recovery.pg17.spec.ts` | Direct controller tests supply keys, with deliberate missing-key/new-key failures; review/restart/concurrency included. |
++| `backend/apps/api/src/crm/quotation-journey.pg17.spec.ts:127–154` | Direct controller keyed replay, payload conflict, denial and rollback tests; intentional subsequent payments explicitly review first. |
++| `backend/apps/api/src/common/security-audit.spec.ts:117,138,168` | Direct controller unit callers pass keys. |
++| `finance.controller.ts:136,138` → `AccountingService.postReceipt` | Only production receipt insert and accounting-post caller found. Both occur within the same locked transaction. No other receipt create/createMany writer or import/seed receipt caller found in repository search. |
++| Deployed older frontend, integrations, scripts outside this repository | Not certified. Missing keys now return 400; new keys cannot bypass unreviewed keyed payments (409). Must adopt stable keys, uncertain-outcome recovery and explicit review before enabling writes. |
++
++Finance creation, recovery and review remain restricted by JWT, permission and super-admin finance guards. Same staff/key with changed payload conflicts; same payload replays. Customer/unallocated-branch scope locking prevents another staff identity or newly generated key bypassing an unreviewed keyed payment. Review records an audit event; it does not alter financial rows.
++
++## Legacy uncertainty — assessment boundary
++
++Confirmed code limitation: pending protection selects IDs beginning `request_` only. Historical unkeyed receipts are not covered. A lost response from the old application retried under a new key after cutover can therefore become another payment if no keyed pending receipt blocks that scope. This is a cutover blocker where legacy outcomes are uncertain, not evidence that any particular payment is duplicated.
++
++No authorized production read-only database connection or aggregate report was established in this review. Production counts, duplicate candidates and journal/balance consistency are **unknown**. A local backup directory listing was denied by filesystem permissions; no backup contents or credentials were read. Connected unrelated database services were not assumed to belong to this application.
++
++Before enabling writes, an authorized operator must assess uncertain submissions against receipt/journal/bank evidence using a read-only transaction and aggregate-only reporting. Needed checks: legacy versus keyed receipt counts, unreviewed keyed counts, missing receipt journals, unbalanced posted journals, booking paid versus linked-receipt totals, and repeated same-scope/amount/method/date candidates. Candidate similarity alone must never trigger reconciliation, deletion, review or financial rewriting. No such operations were performed.
++
++## Production observations possible now
++
++Anonymous GET probes on 2026-10-24, with normal certificate verification enabled, returned:
++
++| Request | Result |
++| --- | --- |
++| HTTP apex and www `/` | 301 to the corresponding HTTPS hostname |
++| HTTPS apex and www `/` | 200; TLS 1.3; certificate authorized for both names, issuer YE2, expires 2027-01-16 09:47:14 GMT |
++| HTTPS www `/account` | 200; private, no-cache, no-store, max-age=0, must-revalidate |
++| `/api/account/bookings` | 401; same private/no-store policy |
++| `/api/v1/resources/receipts` | 401; no Cache-Control observed |
++| `/api/v1/finance/receipts/submission/release_readonly_probe` | 404; no Cache-Control observed; does not prove candidate recovery handler is deployed |
++| `/api/health` | 200; response body not inspected |
++
++Responses identify server `hcdn`. No Age, Via, X-Cache, CF-Cache-Status or HSTS header was observed on these requests. These observations demonstrate public TLS/redirect behavior and route-dependent anonymous responses; they do not certify origin topology, absence of CDN caching or authenticated data safety. Missing no-store on current staff denial responses warrants configuration review but is not proof of cached private data. No cookies, secrets or customer response bodies were printed.
++
++## Checks after authorized deployment
++
++Verify actual key forwarding/replay and explicit review through hcdn/Apache/Passenger, authenticated recovery/PDF private-no-store headers and absence of shared-cache reuse across two accounts, secure cookie attributes and domain behavior on both origins, trusted forwarding/Origin handling, and deployed customer isolation/undated booking display. The candidate POST/review checks require controlled synthetic staging or separately authorized writes; anonymous production GETs cannot establish them. Current production read-only TLS checks are complete; candidate deployed behavior remains pending.
++
++## Rollback readiness and release gates
++
++Rollback is **documented, not operationally verified**. No retained deployed bundle/config snapshot was verified. The checked-in gateway's 503 responses cover application startup/unavailability; no receipt-specific write-maintenance switch was found there. An existing external proxy control may provide one, but its existence and operation remain unverified.
++
++Before release, retain the current compatible bundle/config through the established release mechanism and prove a receipt-POST-only 503 maintenance control in staging. During rollback, block receipt writes before loading an older binary; keep the guarded API if rolling back only the frontend. Reopen writes only with compatible clients and resolved uncertain submissions. No schema rollback is required. Never restore a database snapshot, delete receipts/review events, reset sequences or reverse journals as part of this code rollback.
++
++Blocking readiness gaps: legacy uncertainty has not been assessed; external/deployed callers are not inventoried and certified; rollback artifact/maintenance control is not verified. Authenticated candidate behavior through the production edge remains a deployment acceptance gate. Earlier non-PKR, multipage document and messaging-delivery limits remain outside the reused targeted proof.
++
++Only this report was added. Original patch/manifest and accumulated source changes were preserved. No production writes, additional agents, commit, push or deployment occurred.
+diff --git a/RELEASE-REVIEW.md b/RELEASE-REVIEW.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..90fbfaee9fa1205bc5e70aa2c6e8c6c43c737681
+--- /dev/null
++++ b/RELEASE-REVIEW.md
+@@ -0,0 +1,54 @@
++# Zayan Ahmed Travels release review — 2026-10-24
++
++This is a cumulative, uncommitted release candidate against Git base `307d174ce77a8eb7b79bd559ff1bad5ea1210c8d`. Earlier quotation/accounting/document validation in `QUOTATION-VALIDATION.md` was reused. No full audit, production access, additional agent, commit, push or deployment was performed.
++
++## Receipt recovery contract
++
++- Every new receipt requires a valid `Idempotency-Key`. Replaying the same key and payload returns the same persisted receipt; a conflicting payload returns 409. Keys remain scoped to the submitting staff user.
++- Receipt creation also locks the customer payment scope (or branch scope for unallocated receipts). A fresh key, another tab, deleted browser storage, or another staff user cannot bypass an existing unreviewed keyed receipt in that scope. The response is 409 and no financial writes occur.
++- An authorized finance administrator must explicitly review the saved receipt before starting a different payment. The review is recorded as the immutable `REVIEW_RECEIPT` audit event, using the same durable-audit proof pattern as verified customer links. Review is idempotent and its failure rolls back. Replaying the original key still returns the original receipt after review.
++- `GET /api/v1/finance/receipts/submission/:key` recovers the submitting user's saved receipt and uses `Cache-Control: private, no-store`. `POST /api/v1/finance/receipts/:id/review` requires `{ "reviewed": true }`. Both retain the existing super-admin finance authorization boundary.
++- Browser recovery uses staff-scoped **local storage**, not session storage. It retains only a SHA-256 payload fingerprint and retry key. Web Locks serialize key allocation across tabs. Receipt fields/passwords are not stored there. The key remains after a successful response until the saved receipt is explicitly reviewed. Browser storage/coordination failures block submission; there is no unsafe fresh-key fallback.
++- Receipt history now displays receipt numbers, and the review summary formats amounts to two decimal places.
++
++There is no schema migration. Existing receipts, quotations, journals and balances are not rewritten. Historical receipts without the `request_` submission identity are not retroactively assigned idempotency keys or review state; unresolved legacy submissions must be reconciled at cutover.
++
++## Final targeted proof
++
++| Check | Result |
++| --- | --- |
++| New PG17 receipt recovery file | 5 passed, including its parent test |
++| Affected quotation journey | 13 passed, including its parent test |
++| Existing security-audit file | 19 passed |
++| Receipt retry helper | 3 passed |
++| Staff-management helper | 2 passed |
++| Changed-file ESLint | 0 errors, 0 warnings |
++| API build | Passed |
++| Website build | Passed, Next.js 16.3.8 |
++| Actual browser | Chrome 155.0.8059.84, isolated temporary profile, passed |
++| Local reverse proxy | Real loopback HTTP forwarding ahead of real Next/Nest handlers; cookies, retry headers, private PDF/recovery headers and origin enforcement checked |
++
++The browser tests use two tabs to submit the same payment simultaneously. One committed response is deliberately dropped. The test then reloads the page, closes the entire browser, reopens its isolated profile, and retries. Exactly **one** browser payment of **100.10** is added to the earlier HTTP receipt of **250.25**. Final paid is **350.35**, booking net **1010.00**, and balance **659.65**. Fresh/missing-key bypass attempts are rejected, while an explicit saved-receipt review allows an intentional new payment.
++
++Real customer form logins exercise undated booking rendering and account isolation. The owner sees **Date to be confirmed**. Staff document links return private PDFs; customer and foreign staff voucher requests return 401/404. No authentication or accounting service is mocked. The final browser harness also checks two independently verified customer accounts and forged identity selectors.
++
++The test runner creates only synthetic PG17 fixtures and binds all application/proxy listeners to loopback. It uses installed Chrome and a free Playwright package under Temp; no runtime dependency was added to the application. Browser profiles contain synthetic test credentials only and are excluded from the release diff. The harness shuts down its browsers and HTTP services. PG17 is stopped after validation.
++
++## Release artifacts
++
++`release/zat-release.patch` contains the cumulative tracked/untracked source, tests and review documentation changes against the base above, preserving earlier work. `release/manifest.json` lists those files with hashes and the patch hash. Generated profiles, environment files, database data, runtime build output, logs and credentials are excluded. Do not apply or reverse this patch over the active working tree; review/apply it only in a clean isolated checkout of the recorded base.
++
++## Rollback procedure — preparation only
++
++1. Before an authorized release, retain the currently deployed application bundle and configuration through the existing release mechanism. No production backup or release action was performed here.
++2. If rollback is needed, first put receipt **POST** operations into write maintenance at the existing gateway/proxy and verify that the receipt-create endpoint returns 503. Preserve read-only history and PDFs where possible. This avoids reopening the old duplicate-payment path during rollback.
++3. Revert the application bundle through that mechanism. Prefer retaining the tested guarded receipt API if only the website is rolled back. An older website/client may not understand the review checkpoint, so leave receipt writes blocked until compatible clients are restored.
++4. Do **not** restore old database snapshots, remove receipt rows, reset sequences, delete `REVIEW_RECEIPT` events, or reverse financial journals as part of code rollback. No database migration needs reversing.
++5. Reconcile every uncertain submission against its saved receipt/journal. Restore the tested compatible client/API combination and validate key replay, review, permissions and balances in synthetic staging before reopening receipt writes.
++
++## Remaining release blockers / production-only checks
++
++- Confirm external receipt clients send and reuse keys, and understand the explicit review checkpoint. Unkeyed clients now fail closed with 400. Resolve any uncertain legacy/unkeyed payments before cutover; no production financial reconciliation was attempted.
++- Production Apache/Passenger/CDN behavior, TLS termination, secure-cookie/domain settings, trusted forwarding headers and live cache configuration remain pending. The local HTTP reverse proxy is evidence for forwarding behavior, not certification of the production topology.
++- Only current Chrome was driven. Other supported browser engines/client policies must provide local storage and Web Locks; unsupported storage/coordination fails closed.
++- Earlier SMTP/WhatsApp delivery, multipage document-layout and non-PKR validation limits remain outside this targeted release proof.
+diff --git a/backend/apps/api/src/crm/lead-quotation.pg17.spec.ts b/backend/apps/api/src/crm/lead-quotation.pg17.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2c66d8e6d07d47e4a437c8316bd519ce1d5e56de
+--- /dev/null
++++ b/backend/apps/api/src/crm/lead-quotation.pg17.spec.ts
+@@ -0,0 +1,86 @@
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { test } from "node:test";
++import { PrismaClient } from "@prisma/client";
++import { CrmService } from "./crm.service";
++import { SequenceService } from "../common/sequence.service";
++import { AuditService } from "../common/audit.service";
++import { AccountingService } from "../finance/accounting.service";
++import type { AuthUser } from "../auth/auth.types";
++
++// Opt in only against a disposable local database; never load an application .env.
++const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++
++test("PG17: direct booking fallback preserves the package budget in quotation lines", { skip: !url }, async () => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    for (const [code, type] of [["1300", "ASSET"], ["4100", "REVENUE"]] as const) {
++      await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: "Synthetic fallback account", type } });
++    }
++    const branch = await db.branch.create({ data: { code: randomUUID(), name: "Synthetic fallback branch" } });
++    const staff = await db.user.create({ data: { email: `${randomUUID()}@example.test`, username: randomUUID(), fullName: "Synthetic fallback staff", passwordHash: "invalid", defaultBranchId: branch.id } });
++    const actor = { id: staff.id, branchIds: [branch.id], defaultBranchId: branch.id, isSuperAdmin: false } as AuthUser;
++    const seq = new SequenceService(db as never), audit = new AuditService(db as never);
++    const accounting = new AccountingService(db as never, seq, audit);
++    const crm = new CrmService(db as never, seq, audit, {} as never, {} as never, {} as never, accounting);
++    const lead = await db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic package traveler", mobile: "+923000000000", branchId: branch.id, adults: 3, budget: 120000.03 } });
++    const booking = await crm.bookingFromLead(lead.id, actor);
++    const quote = await db.quotation.findUniqueOrThrow({ where: { id: booking.quotationId! }, include: { items: true } });
++    assert.equal(quote.items.length, 1);
++    assert.equal(quote.items[0].quantity, 1);
++    assert.equal(quote.items[0].sellingPrice.toFixed(2), "120000.03");
++    assert.equal(quote.items[0].sellingPrice.mul(quote.items[0].quantity).toFixed(2), quote.sellingTotal.toFixed(2));
++    assert.equal(booking.net.toFixed(2), "120000.03");
++    assert.equal((await crm.bookingFromLead(lead.id, actor)).id, booking.id);
++    assert.equal(await db.quotationItem.count({ where: { quotationId: quote.id } }), 1);
++    assert.equal(await db.umrahBooking.count({ where: { quotationId: quote.id } }), 1);
++    const journals = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: true } });
++    assert.equal(journals.length, 1);
++    for (const journal of journals) assert.equal(journal.lines.reduce((sum, line) => sum + Number(line.debit) - Number(line.credit), 0), 0);
++  } finally { await db.$disconnect(); }
++});
++test("PG17: lead package budget agrees with quotation lines and survives recalculation", { skip: !url }, async () => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000, "PostgreSQL 17 required");
++    const tag = randomUUID();
++    const branch = await db.branch.create({ data: { code: tag, name: "Synthetic branch" } });
++    const staff = await db.user.create({ data: {
++      email: `${tag}@example.test`, username: tag, fullName: "Synthetic staff",
++      passwordHash: "synthetic-invalid", defaultBranchId: branch.id,
++    } });
++    const actor = { id: staff.id, branchIds: [branch.id], defaultBranchId: branch.id, isSuperAdmin: false } as AuthUser;
++    const seq = new SequenceService(db as never);
++    const audit = new AuditService(db as never);
++    const crm = new CrmService(db as never, seq, audit, {} as never, {} as never, {} as never, {} as never);
++    for (const [adults, budget] of [[1, 120000], [3, 120000.03], [4, 0]]) {
++      const lead = await db.lead.create({ data: {
++        leadNumber: randomUUID(), fullName: "Synthetic traveler", mobile: "+923000000000",
++        branchId: branch.id, adults, budget,
++      } });
++      const quote = await crm.quoteFromLead(lead.id, actor);
++      const items = await db.quotationItem.findMany({ where: { quotationId: quote.id } });
++      assert.equal(items.reduce((sum, item) => sum + Number(item.sellingPrice) * item.quantity, 0), Number(quote.net));
++      assert.equal(Number(quote.net), budget);
++      assert.equal((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).status, "QUOTED");
++      assert.equal((await db.customer.findUniqueOrThrow({ where: { id: quote.customerId! } })).leadId, lead.id);
++      const edited = await crm.updateQuotation(quote.id, actor, { terms: "Synthetic terms" });
++      assert.equal(Number(edited.net), budget);
++      const added = await crm.addQuoteItem(quote.id, { description: "Synthetic extra", quantity: 2, sellingPrice: 50 });
++      assert.equal(Number(added.net), budget + 100);
++      const extra = added.items.find(item => item.description === "Synthetic extra")!;
++      assert.equal(Number((await crm.removeQuoteItem(quote.id, extra.id)).net), budget);
++    }
++  } finally {
++    await db.$disconnect();
++  }
++});
+diff --git a/backend/apps/api/src/crm/quotation-journey.pg17.spec.ts b/backend/apps/api/src/crm/quotation-journey.pg17.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7b0ddec2120a554efb0299051f6242f7e485bc7e
+--- /dev/null
++++ b/backend/apps/api/src/crm/quotation-journey.pg17.spec.ts
+@@ -0,0 +1,206 @@
++import "reflect-metadata";
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { mkdir, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import { Writable } from "node:stream";
++import { finished } from "node:stream/promises";
++import { test } from "node:test";
++import { Prisma, PrismaClient } from "@prisma/client";
++import { CrmService } from "./crm.service";
++import { CrmScopeGuard } from "./crm-scope.guard";
++import { SequenceService } from "../common/sequence.service";
++import { AuditService } from "../common/audit.service";
++import { AccountingService } from "../finance/accounting.service";
++import { FinanceController } from "../finance/finance.controller";
++import { GlobalFinanceGuard } from "../auth/global-finance.guard";
++import { WorkflowsController } from "../workflows/workflows.controller";
++import { PdfController } from "../documents/documents.controller";
++import { DocumentPdfService } from "../documents/document-pdf.service";
++import { WebsiteCustomerBookingsService } from "../website/website-customer-bookings.service";
++import { WebsiteCustomerBookingsController } from "../website/website-customer-bookings.controller";
++import type { AuthUser } from "../auth/auth.types";
++
++const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++test("PG17 quotation journey", { skip: !url }, async t => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["5100", "EXPENSE"]] as const) {
++      await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
++    }
++    const branch = await db.branch.create({ data: { code: randomUUID(), name: "Synthetic branch" } });
++    const foreign = await db.branch.create({ data: { code: randomUUID(), name: "Other synthetic branch" } });
++    const user = await db.user.create({ data: { email: `${randomUUID()}@example.test`, username: randomUUID(), fullName: "Synthetic staff", passwordHash: "invalid" } });
++    const actor: AuthUser = { id: user.id, email: user.email, username: user.username, fullName: user.fullName, permissions: ["quotation.view", "booking.view", "account.view"], roleNames: [], branchIds: [branch.id], defaultBranchId: branch.id, isSuperAdmin: false };
++    const outsider = { ...actor, branchIds: [foreign.id], defaultBranchId: foreign.id };
++    const req = { user: actor } as never;
++    const seq = new SequenceService(db as never), audit = new AuditService(db as never);
++    const accounting = new AccountingService(db as never, seq, audit);
++    const crm = new CrmService(db as never, seq, audit, {} as never, {} as never, {} as never, accounting);
++    const workflow = new WorkflowsController(db as never, seq, audit, accounting, {} as never);
++    const finance = new FinanceController(db as never, seq, audit, accounting);
++    const visible = new WebsiteCustomerBookingsService(db as never);
++    const pdf = new PdfController(db as never, new DocumentPdfService(db as never));
++    const lead = async () => db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic traveler", mobile: "+923000000000", email: `${randomUUID()}@example.test`, adults: 3, budget: 120000.03, branchId: branch.id, travelDate: new Date("2030-01-10T00:00:00Z"), returnDate: new Date("2030-01-20T00:00:00Z") } });
++    const counts = async () => Promise.all([db.customer.count(), db.quotation.count(), db.quotationItem.count(), db.umrahBooking.count(), db.receipt.count(), db.journalEntry.count(), db.auditLog.count(), db.numberSequence.findMany({ orderBy: { key: "asc" } })]);
++    const original = await lead();
++    const quote = await crm.quoteFromLead(original.id, actor);
++    let booking: Awaited<ReturnType<typeof workflow.convertQuote>>;
++    let receipt: Awaited<ReturnType<typeof finance.createReceipt>>;
++
++    await t.test("package budget, concurrent customer conversion and quotation edits", async () => {
++      const customers = await Promise.all([crm.convertLead(original.id, actor), crm.convertLead(original.id, actor)]);
++      assert.equal(customers[0].id, customers[1].id);
++      assert.equal(customers[0].id, quote.customerId);
++      assert.equal(await db.customer.count({ where: { leadId: original.id } }), 1);
++      const edited = await crm.updateQuotation(quote.id, actor, { discount: 100.03, tax: 50, terms: "Synthetic terms" });
++      assert.equal(edited.net.toFixed(2), "119950.00");
++      await Promise.all([crm.addQuoteItem(quote.id, { description: "Extra A", sellingPrice: 0.1, cost: 10 }), crm.addQuoteItem(quote.id, { description: "Extra B", sellingPrice: 0.2, cost: 20 })]);
++      const q = await db.quotation.findUniqueOrThrow({ where: { id: quote.id }, include: { items: true } });
++      assert.equal(q.net.toFixed(2), "119950.30");
++      assert.equal(q.costTotal.toFixed(2), "30.00");
++    });
++    await t.test("invalid edits and failed audits leave totals, items, audit and sequences unchanged", async () => {
++      const before = await counts();
++      const q = await db.quotation.findUniqueOrThrow({ where: { id: quote.id } });
++      for (const discount of [-1, Number.NaN, 999999]) await assert.rejects(crm.updateQuotation(quote.id, actor, { discount }));
++      const broken = new CrmService(db as never, seq, { log: async () => { throw Error("synthetic audit failure"); } } as never, {} as never, {} as never, {} as never, accounting);
++      await assert.rejects(broken.updateQuotation(quote.id, actor, { tax: 99 }), /synthetic audit failure/);
++      assert.deepEqual(await db.quotation.findUniqueOrThrow({ where: { id: quote.id } }), q);
++      assert.deepEqual(await counts(), before);
++    });
++    await t.test("branch guard denies foreign quotation edits and conversion", async () => {
++      const context = { switchToHttp: () => ({ getRequest: () => ({ user: outsider, route: { path: "/v1/crm/quotations/:id" }, params: { id: quote.id }, method: "PATCH" }) }) } as never;
++      await assert.rejects(new CrmScopeGuard(db as never).canActivate(context), { status: 404 });
++      await assert.rejects(workflow.convertQuote(quote.id, { user: outsider } as never), { status: 404 });
++      await assert.rejects(crm.quoteFromLead(original.id, outsider), { status: 404 });
++      assert.throws(() => new GlobalFinanceGuard().canActivate({ switchToHttp: () => ({ getRequest: () => ({ user: actor }) }) } as never), { status: 403 });
++    });
++    await t.test("concurrent and repeat conversion create one booking and balanced sale/cost journals", async () => {
++      const rows = await Promise.all([workflow.convertQuote(quote.id, req), workflow.convertQuote(quote.id, req)]);
++      booking = rows[0]; assert.equal(rows[0].id, rows[1].id);
++      assert.equal((await workflow.convertQuote(quote.id, req)).id, booking.id);
++      assert.equal(await db.umrahBooking.count({ where: { quotationId: quote.id } }), 1);
++      assert.equal(booking.net.toFixed(2), "119950.30");
++      assert.equal(booking.balance.toFixed(2), "119950.30");
++      assert.equal(booking.cost.toFixed(2), "30.00");
++      assert.equal(booking.departureDate?.toISOString(), original.travelDate?.toISOString());
++      assert.equal(booking.returnDate?.toISOString(), original.returnDate?.toISOString());
++      const journals = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: true } });
++      assert.equal(journals.length, 2);
++      for (const journal of journals) assert.equal(journal.lines.reduce((s, l) => s.plus(l.debit).minus(l.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
++    });
++    await t.test("converted quotations cannot be edited, have lines removed/added, or reopened", async () => {
++      const before = await counts();
++      const item = await db.quotationItem.findFirstOrThrow({ where: { quotationId: quote.id } });
++      await assert.rejects(crm.updateQuotation(quote.id, actor, { tax: 1 }), { status: 409 });
++      await assert.rejects(crm.addQuoteItem(quote.id, { description: "late" }), { status: 409 });
++      await assert.rejects(crm.removeQuoteItem(quote.id, item.id), { status: 409 });
++      await assert.rejects(crm.setQuotationStatus(quote.id, "DRAFT", actor), { status: 409 });
++      assert.deepEqual(await counts(), before);
++    });
++    await t.test("conversion and initial quotation creation roll back on injected failure", async () => {
++      const l = await lead();
++      const q = await crm.quoteFromLead(l.id, actor);
++      const before = await counts();
++      const brokenAccounting = new Proxy(accounting, { get(target, key) { if (key === "postCost") return async () => { throw Error("synthetic cost failure"); }; const value = Reflect.get(target, key); return typeof value === "function" ? value.bind(target) : value; } });
++      const broken = new WorkflowsController(db as never, seq, audit, brokenAccounting, {} as never);
++      await assert.rejects(broken.convertQuote(q.id, req), /synthetic cost failure/);
++      assert.deepEqual(await counts(), before);
++      assert.equal((await db.quotation.findUniqueOrThrow({ where: { id: q.id } })).status, "DRAFT");
++      const newLead = await lead();
++      const failedSeq = { next: async (key: string, prefix: string, tx: never) => { if (key === "quotation") throw Error("synthetic sequence failure"); return seq.next(key, prefix, tx); } };
++      const failedCrm = new CrmService(db as never, failedSeq as never, audit, {} as never, {} as never, {} as never, accounting);
++      const snapshot = await counts();
++      await assert.rejects(failedCrm.quoteFromLead(newLead.id, actor), /synthetic sequence failure/);
++      assert.deepEqual(await counts(), snapshot);
++      assert.equal((await db.lead.findUniqueOrThrow({ where: { id: newLead.id } })).status, "NEW");
++    });
++    await t.test("keyed duplicate receipts post once; conflicting replay and overpayment are rejected", async () => {
++      const body = { bookingId: booking.id, amount: 10000.1, method: "CASH" };
++      const key = randomUUID();
++      const results = await Promise.all([finance.createReceipt(body, req, key), finance.createReceipt(body, req, key)]);
++      receipt = results[0]; assert.equal(results[0].id, results[1].id);
++      assert.equal((await finance.createReceipt(body, req, key)).id, receipt.id);
++      await assert.rejects(finance.createReceipt({ ...body, amount: 1 }, req, key), { status: 409 });
++      const current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
++      assert.equal(current.paid.toFixed(2), "10000.10"); assert.equal(current.balance.toFixed(2), "109950.20");
++      assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 1);
++      const j = await db.journalEntry.findUniqueOrThrow({ where: { id: receipt.journalId! }, include: { lines: true } });
++      assert.equal(j.lines.reduce((sum, l) => sum.plus(l.debit).minus(l.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
++      const before = await counts();
++      await assert.rejects(finance.createReceipt({ ...body, amount: 200000 }, req, randomUUID()));
++      await assert.rejects(finance.createReceipt({ ...body, customerId: "other-customer" }, req, randomUUID()));
++      await assert.rejects(finance.createReceipt(body, { user: outsider } as never, randomUUID()));
++      assert.deepEqual(await counts(), before);
++    });
++    await t.test("receipt failure rolls back journals, paid/balance, sequences and audit", async () => {
++      await finance.reviewReceipt(receipt.id, { reviewed: true }, req);
++      const broken = new FinanceController(db as never, seq, { log: async () => { throw Error("synthetic receipt audit failure"); } } as never, accounting);
++      const before = await counts(), current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
++      await assert.rejects(broken.createReceipt({ bookingId: booking.id, amount: 1, method: "CASH" }, req, randomUUID()), /synthetic receipt audit failure/);
++      assert.deepEqual(await counts(), before);
++      assert.deepEqual(await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } }), current);
++    });
++    await t.test("reviewed payments retain both amounts without regressing voucher workflow", async () => {
++      await db.umrahBooking.update({ where: { id: booking.id }, data: { workflowStep: "VOUCHERS", status: "READY" } });
++      const first = await finance.createReceipt({ bookingId: booking.id, amount: 1, method: "CASH" }, req, randomUUID());
++      await finance.reviewReceipt(first.id, { reviewed: true }, req);
++      await finance.createReceipt({ bookingId: booking.id, amount: 2, method: "CASH" }, req, randomUUID());
++      const current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
++      assert.equal(current.paid.toFixed(2), "10003.10");
++      assert.equal(current.balance.toFixed(2), "109947.20");
++      assert.equal(current.workflowStep, "VOUCHERS");
++      assert.equal(current.status, "READY");
++      const journals = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: { include: { account: true } } } });
++      for (const journal of journals) assert.equal(journal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
++      const receivable = journals.flatMap(journal => journal.lines).filter(line => line.account.code === "1300").reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0));
++      assert.equal(receivable.toFixed(2), current.balance.toFixed(2));
++    });
++    await t.test("customer without a lead uses the shared quotation conversion and accounting exactly once", async () => {
++      const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic direct customer", branchId: branch.id } });
++      const q = await crm.quoteFromCustomer(customer.id, actor);
++      await crm.addQuoteItem(q.id, { description: "Synthetic package", sellingPrice: 100, cost: 40 });
++      const rows = await Promise.all([crm.bookingFromCustomer(customer.id, actor), crm.bookingFromCustomer(customer.id, actor)]);
++      assert.equal(rows[0].id, rows[1].id);
++      assert.equal(rows[0].cost.toFixed(2), "40.00");
++      assert.equal(rows[0].net.toFixed(2), "100.00");
++      assert.equal(rows[0].status, "CONFIRMED");
++      assert.equal(await db.journalEntry.count({ where: { sourceId: rows[0].id } }), 2);
++      assert.equal((await db.quotation.findUniqueOrThrow({ where: { id: q.id } })).status, "CONVERTED");
++      await assert.rejects(crm.bookingFromCustomer(customer.id, outsider), { status: 404 });
++    });
++    await t.test("customer account list includes converted travel dates and isolates other customers", async () => {
++      const rows = await visible.listForWebsiteCustomer(quote.customerId!);
++      assert.equal(rows.bookings.length, 1); assert.equal(rows.bookings[0].reference, booking.bookingNumber);
++      assert.equal(rows.bookings[0].travelDate, "2030-01-10");
++      assert.deepEqual(Object.keys(rows.bookings[0]).sort(), ["reference", "service", "destination", "travelDate", "status", "createdAt", "updatedAt"].sort());
++      const other = await crm.convertLead((await lead()).id, actor);
++      assert.deepEqual(await visible.listForWebsiteCustomer(other.id), { bookings: [] });
++      const prior = process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN;
++      process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN = "synthetic-internal-token-with-at-least-32-characters";
++      try { assert.throws(() => new WebsiteCustomerBookingsController(visible).list(quote.customerId!, "invalid")); }
++      finally { if (prior === undefined) delete process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN; else process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN = prior; }
++    });
++    await t.test("quotation, receipt and voucher render PDFs in both price modes; foreign branch denied", async () => {
++      for (const [name, id] of [["quotation", quote.id], ["receipt", receipt.id], ["umrahVoucher", booking.id]] as const) {
++        for (const mode of ["INCLUDED", "EXCLUDED"]) {
++          const chunks: Buffer[] = [], headers = new Map<string, string>();
++          const output = new Writable({ write(chunk, _encoding, done) { chunks.push(Buffer.from(chunk)); done(); } });
++          const response = Object.assign(output, { setHeader: (key: string, value: string) => headers.set(key, value) });
++          await pdf[name](id, mode, response as never, req); await finished(output);
++          const bytes = Buffer.concat(chunks);
++          assert.ok(bytes.subarray(0, 5).equals(Buffer.from("%PDF-")));
++          assert.equal(headers.get("Cache-Control"), "private, no-store");
++          if (process.env.ZAT_SYNTHETIC_PDF_DIR) { await mkdir(process.env.ZAT_SYNTHETIC_PDF_DIR, { recursive: true }); await writeFile(join(process.env.ZAT_SYNTHETIC_PDF_DIR, `${name}-${mode}.pdf`), bytes); }
++        }
++        await assert.rejects(pdf[name](id, "INCLUDED", {} as never, { user: outsider } as never), { status: 404 });
++      }
++    });
++  } finally { await db.$disconnect(); }
++});
+diff --git a/backend/apps/api/src/finance/receipt-recovery.pg17.spec.ts b/backend/apps/api/src/finance/receipt-recovery.pg17.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae6e5d4fd8efdb5d209a0476dde6a5fc7653c0f3
+--- /dev/null
++++ b/backend/apps/api/src/finance/receipt-recovery.pg17.spec.ts
+@@ -0,0 +1,65 @@
++import "reflect-metadata";
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { test } from "node:test";
++import { PrismaClient } from "@prisma/client";
++import { FinanceController } from "./finance.controller";
++import { AccountingService } from "./accounting.service";
++import { AuditService } from "../common/audit.service";
++import { SequenceService } from "../common/sequence.service";
++
++const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++test("PG17 receipt recovery cannot be bypassed by another tab, key or staff user", { skip: !url }, async t => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    for (const code of ["1100", "1300", "4100"]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: "Synthetic account", type: code === "4100" ? "REVENUE" : "ASSET" } });
++    const branch = await db.branch.create({ data: { code: randomUUID(), name: "Synthetic recovery branch" } });
++    const staff = await db.user.create({ data: { email: `${randomUUID()}@example.test`, username: randomUUID(), fullName: "Synthetic recovery staff", passwordHash: "invalid" } });
++    const second = await db.user.create({ data: { email: `${randomUUID()}@example.test`, username: randomUUID(), fullName: "Other synthetic staff", passwordHash: "invalid" } });
++    const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic recovery customer", branchId: branch.id } });
++    const booking = await db.umrahBooking.create({ data: { bookingNumber: randomUUID(), customerId: customer.id, branchId: branch.id, net: 1000, sellingPrice: 1000, balance: 1000 } });
++    const req = { user: { id: staff.id, isSuperAdmin: true, branchIds: [branch.id], defaultBranchId: branch.id } } as never;
++    const otherReq = { user: { id: second.id, isSuperAdmin: true, branchIds: [branch.id], defaultBranchId: branch.id } } as never;
++    const seq = new SequenceService(db as never), audit = new AuditService(db as never);
++    const accounting = new AccountingService(db as never, seq, audit);
++    const finance = new FinanceController(db as never, seq, audit, accounting);
++    await accounting.postSale({ userId: staff.id, module: "umrah", sourceId: booking.id, amount: 1000, customerId: customer.id, branchId: branch.id });
++    const body = { bookingId: booking.id, amount: 100, method: "CASH" }, key = randomUUID();
++    const receipt = await finance.createReceipt(body, req, key);
++    await t.test("same key replays across controller restart, while new keys/users and missing keys cannot duplicate", async () => {
++      const restarted = new FinanceController(db as never, seq, audit, accounting);
++      assert.equal((await restarted.createReceipt(body, req, key)).id, receipt.id);
++      await assert.rejects(restarted.createReceipt(body, req, randomUUID()), { status: 409 });
++      await assert.rejects(restarted.createReceipt(body, otherReq, randomUUID()), { status: 409 });
++      await assert.rejects(restarted.createReceipt(body, req), { status: 400 });
++      await assert.rejects(restarted.createReceipt({ ...body, amount: 101 }, req, key), { status: 409 });
++      assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 1);
++    });
++    await t.test("recovery lookup is scoped to the submitting staff user", async () => {
++      assert.equal((await finance.receiptSubmission(key, req)).id, receipt.id);
++      await assert.rejects(finance.receiptSubmission(key, otherReq), { status: 404 });
++    });
++    await t.test("review requires acknowledgement and rolls back on audit failure", async () => {
++      await assert.rejects(finance.reviewReceipt(receipt.id, {}, req), { status: 400 });
++      const broken = new FinanceController(db as never, seq, { log: async () => { throw Error("synthetic review failure"); } } as never, accounting);
++      await assert.rejects(broken.reviewReceipt(receipt.id, { reviewed: true }, req), /synthetic review failure/);
++      await assert.rejects(finance.createReceipt(body, req, randomUUID()), { status: 409 });
++      assert.equal(await db.auditLog.count({ where: { entityId: receipt.id, action: "REVIEW_RECEIPT" } }), 0);
++    });
++    await t.test("explicit review is idempotent and permits one new intentional payment", async () => {
++      await Promise.all([finance.reviewReceipt(receipt.id, { reviewed: true }, req), finance.reviewReceipt(receipt.id, { reviewed: true }, req)]);
++      assert.equal(await db.auditLog.count({ where: { entityId: receipt.id, action: "REVIEW_RECEIPT" } }), 1);
++      const outcomes = await Promise.allSettled([finance.createReceipt(body, req, randomUUID()), finance.createReceipt(body, req, randomUUID())]);
++      assert.equal(outcomes.filter(result => result.status === "fulfilled").length, 1);
++      assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 2);
++      assert.equal((await finance.createReceipt(body, req, key)).id, receipt.id);
++      const current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
++      assert.equal(current.paid.toFixed(2), "200.00"); assert.equal(current.balance.toFixed(2), "800.00");
++    });
++  } finally { await db.$disconnect(); }
++});
+diff --git a/backend/scripts/quotation-http-journey.cjs b/backend/scripts/quotation-http-journey.cjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..832c5d5269c36041c35215af9e7b87378f1b863c
+--- /dev/null
++++ b/backend/scripts/quotation-http-journey.cjs
+@@ -0,0 +1,180 @@
++"use strict";
++
++// Opt-in integration proof. Requires a built temporary project and disposable PG17.
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const path = require("node:path");
++const http = require("node:http");
++const { pathToFileURL } = require("node:url");
++const { randomUUID, randomBytes } = require("node:crypto");
++const { spawn } = require("node:child_process");
++const root = path.resolve(__dirname, "../..");
++const databaseUrl = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++if (!databaseUrl) throw Error("Set ZAT_SYNTHETIC_DATABASE_URL to a disposable local PG17 database");
++const target = new URL(databaseUrl);
++assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(target.hostname));
++assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++
++async function serve() {
++  assert.equal(process.env.DATABASE_URL, databaseUrl);
++  const port = Number(process.env.ZAT_SYNTHETIC_HTTP_PORT);
++  const { createNestApp } = require("../apps/api/dist/create-app.js");
++  const { isApiPathname } = require("./hostinger-api-path.cjs");
++  const app = await createNestApp();
++  const api = app.getHttpAdapter().getInstance();
++  const next = require(path.join(root, "node_modules/next"))({ dev: false, dir: root, hostname: "127.0.0.1", port });
++  await next.prepare();
++  const handle = next.getRequestHandler();
++  const server = http.createServer((request, response) => isApiPathname(request.url.split("?")[0]) ? api(request, response) : handle(request, response));
++  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
++  const upstreamPort = server.address().port;
++  // Exercise real header/cookie/PDF forwarding, not only gateway path classification.
++  const proxy = http.createServer((request, response) => {
++    const upstream = http.request({ hostname: "127.0.0.1", port: upstreamPort, path: request.url, method: request.method, headers: { ...request.headers, "x-forwarded-host": request.headers.host, "x-forwarded-proto": "http", "x-forwarded-for": "127.0.0.1" } }, incoming => {
++      response.writeHead(incoming.statusCode, incoming.headers); incoming.pipe(response);
++    });
++    upstream.on("error", () => { if (!response.headersSent) response.writeHead(502); response.end(); });
++    request.pipe(upstream);
++  });
++  await new Promise(resolve => proxy.listen(port, "127.0.0.1", resolve));
++  process.send?.({ ready: true });
++  process.on("message", async message => {
++    if (message !== "stop") return;
++    proxy.closeAllConnections(); proxy.close(); server.closeAllConnections(); server.close(); await app.close(); await next.close(); process.disconnect?.();
++  });
++}
++
++async function journey() {
++  const { PrismaClient, Prisma } = require("@prisma/client");
++  const bcrypt = require("bcryptjs");
++  const { receiptRetryKey, clearReceiptRetry } = await import(pathToFileURL(path.join(root, "src/lib/receipt-retry.ts")).href);
++  const db = new PrismaClient({ datasourceUrl: databaseUrl });
++  let child;
++  const checks = [];
++  const outputDir = process.env.ZAT_SYNTHETIC_HTTP_OUTPUT || path.join(require("node:os").tmpdir(), "zat-http-journey");
++  fs.mkdirSync(outputDir, { recursive: true });
++  const log = fs.openSync(path.join(outputDir, "server.log"), "w");
++  const portServer = http.createServer();
++  await new Promise(resolve => portServer.listen(0, "127.0.0.1", resolve));
++  const port = portServer.address().port;
++  await new Promise(resolve => portServer.close(resolve));
++  const origin = `http://127.0.0.1:${port}`;
++  const cookieJars = new Map();
++  async function request(route, { actor = "anonymous", method = "GET", body, headers = {} } = {}) {
++    const response = await fetch(origin + route, { method, redirect: "manual", headers: { ...(cookieJars.get(actor) ? { Cookie: cookieJars.get(actor) } : {}), ...(body ? { "Content-Type": "application/json", Origin: origin } : {}), ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) });
++    const cookies = response.headers.getSetCookie();
++    if (cookies.length) cookieJars.set(actor, cookies.map(cookie => cookie.split(";")[0]).join("; "));
++    return response;
++  }
++  async function json(route, options, status = 200) {
++    const response = await request(route, options);
++    assert.equal(response.status, status, `${options?.method || "GET"} ${route}`);
++    return response.json();
++  }
++  try {
++    const [server] = await db.$queryRaw`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    const tag = randomUUID().replaceAll("-", "");
++    const password = `Synthetic-${randomBytes(12).toString("hex")}!`;
++    const hash = await bcrypt.hash(password, 10);
++    const branch = await db.branch.create({ data: { code: tag, name: "Synthetic HTTP branch" } });
++    const otherBranch = await db.branch.create({ data: { code: randomUUID(), name: "Other synthetic HTTP branch" } });
++    const adminRole = await db.role.upsert({ where: { name: "SUPER_ADMIN" }, update: {}, create: { name: "SUPER_ADMIN" } });
++    const scopedRole = await db.role.create({ data: { name: `Synthetic-${tag}` } });
++    for (const code of ["quotation.create", "quotation.edit", "quotation.convert", "booking.view", "document.view", "account.post"]) {
++      const permission = await db.permission.upsert({ where: { code }, update: {}, create: { code } });
++      await db.rolePermission.create({ data: { roleId: scopedRole.id, permissionId: permission.id } });
++    }
++    const admin = await db.user.create({ data: { email: `${tag}@example.test`, username: tag, fullName: "Synthetic HTTP administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: adminRole.id } } } });
++    const outsider = await db.user.create({ data: { email: `${tag}-staff@example.test`, username: `${tag}-staff`, fullName: "Synthetic foreign staff", passwordHash: hash, defaultBranchId: otherBranch.id, roles: { create: { roleId: scopedRole.id } } } });
++    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
++    const lead = await db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic HTTP traveler", mobile: "+923000000000", email: `${tag}-customer@example.test`, adults: 3, budget: 1000.03, branchId: branch.id } });
++    const environment = {};
++    for (const key of ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "USERPROFILE", "LOCALAPPDATA"]) if (process.env[key]) environment[key] = process.env[key];
++    Object.assign(environment, { NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_HTTP_PORT: String(port), JWT_SECRET: randomBytes(32).toString("hex"), JWT_REFRESH_SECRET: randomBytes(32).toString("hex"), CUSTOMER_BOOKINGS_INTERNAL_TOKEN: randomBytes(32).toString("hex"), APP_URL: origin, API_URL: origin, CRM_API_URL: origin, COOKIE_SECURE: "false" });
++    child = spawn(process.execPath, [__filename, "--serve"], { cwd: root, env: environment, stdio: ["ignore", log, log, "ipc"], windowsHide: true });
++    await new Promise((resolve, reject) => {
++      const timer = setTimeout(() => reject(Error("Synthetic gateway startup timed out")), 45000);
++      child.once("message", message => { clearTimeout(timer); assert.equal(message.ready, true); resolve(); });
++      child.once("exit", () => { clearTimeout(timer); reject(Error("Synthetic gateway failed to start; inspect local server.log")); });
++    });
++    await json("/api/auth/login", { actor: "staff", method: "POST", body: { identifier: admin.username, password } }, 201);
++    await json("/api/auth/login", { actor: "outsider", method: "POST", body: { identifier: outsider.username, password } }, 201);
++    assert.equal((await request("/api/v1/crm/quotations")).status, 401);
++    checks.push("real staff login cookies; anonymous staff access denied (401)");
++    const quote = await json(`/api/v1/crm/leads/${lead.id}/quotation`, { actor: "staff", method: "POST", body: {} }, 201);
++    await json(`/api/v1/crm/quotations/${quote.id}/items`, { actor: "staff", method: "POST", body: { description: "Synthetic extra", quantity: 2, sellingPrice: 10, cost: 20 } }, 201);
++    const edited = await json(`/api/v1/crm/quotations/${quote.id}`, { actor: "staff", method: "PATCH", body: { discount: 20.03, tax: 10 } });
++    assert.equal(Number(edited.net), 1010);
++    assert.equal((await request(`/api/v1/crm/quotations/${quote.id}`, { actor: "outsider", method: "PATCH", body: { tax: 1 } })).status, 404);
++    const booking = await json(`/api/v1/workflows/quotations/${quote.id}/convert-booking`, { actor: "staff", method: "POST", body: {} }, 201);
++    const repeat = await json(`/api/v1/workflows/quotations/${quote.id}/convert-booking`, { actor: "staff", method: "POST", body: {} }, 201);
++    assert.equal(booking.id, repeat.id); assert.equal(Number(booking.net), 1010); assert.equal(booking.departureDate, null);
++    checks.push("quotation edits reconcile to 1010.00; foreign branch denied (404); repeated conversion returns one undated booking");
++    const pendingRows = new Map();
++    const storage = rows => ({ getItem: key => rows.get(key) ?? null, setItem: (key, value) => rows.set(key, value), removeItem: key => rows.delete(key) });
++    const payment = { bookingId: booking.id, amount: 250.25, method: "CASH" };
++    const key = await receiptRetryKey(storage(pendingRows), admin.username, payment);
++    // Server commits, but the client never handles/acknowledges the response.
++    const lost = await request("/api/v1/finance/receipts", { actor: "staff", method: "POST", body: payment, headers: { "Idempotency-Key": key } });
++    assert.equal(lost.status, 201); await lost.arrayBuffer();
++    const reloadedRows = new Map(JSON.parse(JSON.stringify([...pendingRows])));
++    const reloadedKey = await receiptRetryKey(storage(reloadedRows), admin.username, payment);
++    assert.equal(reloadedKey, key);
++    const receipt = await json("/api/v1/finance/receipts", { actor: "staff", method: "POST", body: payment, headers: { "Idempotency-Key": reloadedKey } }, 201);
++    await assert.rejects(receiptRetryKey(storage(reloadedRows), admin.username, { ...payment, amount: 251 }), /unconfirmed/);
++    assert.equal((await request("/api/v1/finance/receipts", { actor: "staff", method: "POST", body: { ...payment, amount: 251 }, headers: { "Idempotency-Key": key } })).status, 409);
++    assert.equal((await request("/api/v1/finance/receipts", { actor: "outsider", method: "POST", body: payment })).status, 403);
++    clearReceiptRetry(storage(reloadedRows), admin.username);
++    const paid = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
++    assert.equal(paid.paid.toFixed(2), "250.25"); assert.equal(paid.balance.toFixed(2), "759.75");
++    assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 1);
++    const journals = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: { include: { account: true } } } });
++    for (const journal of journals) assert.equal(journal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
++    assert.equal(journals.flatMap(j => j.lines).filter(l => l.account.code === "1300").reduce((sum, l) => sum.plus(l.debit).minus(l.credit), new Prisma.Decimal(0)).toFixed(2), "759.75");
++    checks.push("lost-response/reload retry posts one receipt; changed payload denied (409), scoped finance denied (403); journals balance and AR equals 759.75");
++    for (const mode of ["INCLUDED", "EXCLUDED"]) {
++      const response = await request(`/api/v1/pdf/umrah-voucher/${booking.id}?mode=${mode}`, { actor: "staff" });
++      assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "private, no-store");
++      const bytes = Buffer.from(await response.arrayBuffer()); assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
++      fs.writeFileSync(path.join(outputDir, `voucher-${mode}.pdf`), bytes);
++    }
++    assert.equal((await request(`/api/v1/pdf/umrah-voucher/${booking.id}`, { actor: "outsider" })).status, 404);
++    checks.push("voucher HTTP downloads in both price modes; foreign branch denied (404)");
++    for (const [actor, email] of [["customer", lead.email], ["other-customer", `${tag}-other@example.test`]]) {
++      await json("/api/account/register", { actor, method: "POST", body: { email, password, confirmPassword: password, displayName: "Synthetic HTTP account" } }, 201);
++      await json("/api/account/login", { actor, method: "POST", body: { email, password } });
++    }
++    const website = await db.websiteCustomer.findUniqueOrThrow({ where: { email: lead.email } });
++    assert.equal((await request("/api/account/bookings", { actor: "customer" })).status, 403);
++    await json("/api/v1/website/customer-links", { actor: "staff", method: "POST", body: { websiteCustomerId: website.id, crmCustomerId: quote.customerId, ownershipVerified: true } }, 201);
++    const account = await json(`/api/account/bookings?website_customer_id=forged-other-customer`, { actor: "customer" });
++    assert.equal(account.bookings.length, 1); assert.equal(account.bookings[0].reference, booking.bookingNumber); assert.equal(account.bookings[0].travelDate, null);
++    assert.deepEqual(Object.keys(account.bookings[0]).sort(), ["reference", "service", "destination", "travelDate", "status", "createdAt", "updatedAt"].sort());
++    assert.equal((await request("/api/account/bookings", { actor: "other-customer" })).status, 403);
++    assert.equal((await request("/api/account/bookings")).status, 401);
++    assert.equal((await request(`/v1/customer/bookings?website_customer_id=${quote.customerId}`)).status, 401);
++    assert.equal((await request(`/api/v1/pdf/umrah-voucher/${booking.id}`, { actor: "customer" })).status, 401);
++    checks.push("real customer login cookies; unverified account denied (403); verified owner sees undated booking with null date; forged selector ignored; other/anonymous accounts and customer document access denied");
++    if (process.env.ZAT_PLAYWRIGHT_MODULE) {
++      const otherEmail = `${tag}-other@example.test`;
++      const otherWebsite = await db.websiteCustomer.findUniqueOrThrow({ where: { email: otherEmail } });
++      const otherCrm = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Other synthetic browser customer", email: otherEmail, branchId: branch.id } });
++      const otherBooking = await db.umrahBooking.create({ data: { bookingNumber: randomUUID(), customerId: otherCrm.id, branchId: branch.id, departureDate: new Date("2031-02-10"), status: "CONFIRMED" } });
++      await json("/api/v1/website/customer-links", { actor: "staff", method: "POST", body: { websiteCustomerId: otherWebsite.id, crmCustomerId: otherCrm.id, ownershipVerified: true } }, 201);
++      const browserResult = await require("./receipt-browser-checks.cjs")({ origin, outputDir, db, admin, outsider, password, lead, booking, receipt, otherEmail, otherBooking });
++      checks.push(...browserResult.checks);
++    }
++    const result = { status: "passed", checks, net: "1010.00", paid: "250.25", balance: "759.75", syntheticOnly: true, browserReload: process.env.ZAT_PLAYWRIGHT_MODULE ? "actual Chromium tabs, reload, browser closure and reopen; see browser-result.json for final browser totals" : "simulated new component using persisted storage; real HTTP requests and cookies", localReverseProxy: true, productionAccess: false };
++    fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify(result, null, 2));
++    console.log(JSON.stringify(result, null, 2));
++  } finally {
++    if (child && child.exitCode === null) {
++      child.send("stop");
++      await Promise.race([new Promise(resolve => child.once("exit", resolve)), new Promise(resolve => setTimeout(() => { child.kill(); resolve(); }, 5000).unref())]);
++    }
++    fs.closeSync(log); await db.$disconnect();
++  }
++}
++
++(process.argv.includes("--serve") ? serve() : journey()).catch(error => { console.error("Synthetic HTTP journey failed:", error.code || error.name, String(error.message).replace(/postgres(?:ql)?:\/\/[^\s]+/g, "[redacted]").slice(0, 300)); process.exitCode = 1; });
+diff --git a/backend/scripts/receipt-browser-checks.cjs b/backend/scripts/receipt-browser-checks.cjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..24ded356fa67e124c6bcf1526e2a5176cb853d48
+--- /dev/null
++++ b/backend/scripts/receipt-browser-checks.cjs
+@@ -0,0 +1,159 @@
++"use strict";
++const assert = require("node:assert/strict");
++const path = require("node:path");
++const fs = require("node:fs");
++const { randomUUID } = require("node:crypto");
++
++module.exports = async function browserChecks({ origin, outputDir, db, admin, outsider, password, lead, booking, receipt, otherEmail, otherBooking }) {
++  const { chromium } = require(process.env.ZAT_PLAYWRIGHT_MODULE);
++  const executablePath = process.env.ZAT_BROWSER_EXECUTABLE || "C:/Program Files/Google/Chrome/Application/chrome.exe";
++  const profile = path.join(outputDir, "synthetic-browser-profile");
++  const options = { executablePath, headless: true, viewport: { width: 1280, height: 900 }, acceptDownloads: true };
++  let context = await chromium.launchPersistentContext(profile, options);
++  context.setDefaultTimeout(20000);
++  const results = [];
++  async function staffLogin(page, user) {
++    await page.goto(origin + "/admin/login");
++    await page.getByLabel("Email or username", { exact: true }).fill(user.username);
++    await page.getByLabel("Password", { exact: true }).fill(password);
++    await page.getByRole("button", { name: "Staff sign in", exact: true }).click();
++    await page.waitForURL(origin + "/admin");
++  }
++  async function receiptForm(page) {
++    await page.goto(origin + "/admin/manage/receipts");
++    await page.getByRole("button", { name: "Record receipt", exact: true }).click();
++    await page.getByRole("heading", { name: "Record receipt", exact: true }).waitFor();
++  }
++  async function fillReceipt(page) {
++    await page.locator('select[name="bookingId"] option').filter({ hasText: booking.bookingNumber }).waitFor({ state: "attached" });
++    await page.locator('select[name="bookingId"]').selectOption(booking.id);
++    await page.locator('input[name="amount"]').fill("100.10");
++    await page.locator('select[name="method"]').selectOption("CASH");
++    await page.locator('input[name="confirm"]').check();
++  }
++  async function customerLogin(page, email) {
++    await page.goto(origin + "/my-bookings");
++    await page.getByLabel("Email", { exact: true }).fill(email);
++    await page.getByLabel("Password", { exact: true }).fill(password);
++    await page.locator("form").getByRole("button", { name: /^Sign in$/i }).click();
++  }
++  try {
++    const pageA = context.pages()[0] || await context.newPage();
++    await staffLogin(pageA, admin);
++    // Even with no browser key, the existing uncertain HTTP receipt blocks a fresh one.
++    const blocked = await context.request.post(origin + "/api/v1/finance/receipts", { data: { bookingId: booking.id, amount: 250.25, method: "CASH" }, headers: { "Idempotency-Key": randomUUID() } });
++    assert.equal(blocked.status(), 409);
++    assert.equal((await context.request.post(origin + "/api/v1/finance/receipts", { data: { bookingId: booking.id, amount: 1, method: "CASH" } })).status(), 400);
++    await pageA.goto(origin + `/admin/manage/receipts?record=${receipt.id}`);
++    await pageA.getByRole("button", { name: "I reviewed this saved receipt; allow a new payment", exact: true }).click();
++    await pageA.getByText("Saved receipt reviewed. You may explicitly start a new payment.", { exact: true }).waitFor();
++    results.push("server rejects fresh/missing keys for an uncertain payment; explicit browser review unlocks a new intentional payment");
++
++    const pageB = await context.newPage();
++    await Promise.all([receiptForm(pageA), receiptForm(pageB)]);
++    await Promise.all([fillReceipt(pageA), fillReceipt(pageB)]);
++    const submittedKeys = [];
++    let lostCommitted;
++    const committed = new Promise(resolve => { lostCommitted = resolve; });
++    await pageA.route("**/api/v1/finance/receipts", async route => {
++      if (route.request().method() !== "POST") return route.continue();
++      submittedKeys.push(route.request().headers()["idempotency-key"]);
++      const response = await route.fetch();
++      assert.equal(response.status(), 201);
++      lostCommitted();
++      await route.abort("failed");
++    });
++    pageB.on("request", request => { if (request.method() === "POST" && request.url().endsWith("/api/v1/finance/receipts")) submittedKeys.push(request.headers()["idempotency-key"]); });
++    await Promise.all([pageA.getByRole("button", { name: "Confirm record receipt", exact: true }).click(), pageB.getByRole("button", { name: "Confirm record receipt", exact: true }).click()]);
++    await committed;
++    await pageA.getByText(/Operation outcome is uncertain/).waitFor();
++    await pageB.getByText("Operation completed. Review the refreshed record.", { exact: true }).waitFor();
++    assert.equal(submittedKeys.length, 2); assert.ok(submittedKeys[0]); assert.equal(submittedKeys[0], submittedKeys[1]);
++    const lookup = await context.request.get(origin + `/api/v1/finance/receipts/submission/${submittedKeys[0]}`);
++    assert.equal(lookup.status(), 200); assert.equal(lookup.headers()["cache-control"], "private, no-store");
++    assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 2);
++    results.push("two actual tabs submit the same key; a committed response is deliberately lost; only one additional receipt exists");
++
++    await pageA.unroute("**/api/v1/finance/receipts");
++    await pageA.reload(); await receiptForm(pageA); await fillReceipt(pageA);
++    await pageA.getByRole("button", { name: "Confirm record receipt", exact: true }).click();
++    await pageA.getByText("Operation completed. Review the refreshed record.", { exact: true }).waitFor();
++    assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 2);
++    await context.close();
++    context = await chromium.launchPersistentContext(profile, options);
++    context.setDefaultTimeout(20000);
++    const pageC = context.pages()[0] || await context.newPage();
++    await pageC.goto(origin + "/admin/manage/receipts");
++    if (new URL(pageC.url()).pathname === "/admin/login") {
++      await staffLogin(pageC, admin);
++      results.push("browser reopen required real staff reauthentication; persisted receipt key recovered without replacement");
++    }
++    await receiptForm(pageC);
++    await pageC.getByText(/Saved receipt: ZAT-REC/).waitFor();
++    await fillReceipt(pageC);
++    await pageC.getByRole("button", { name: "Confirm record receipt", exact: true }).click();
++    await pageC.getByText("Operation completed. Review the refreshed record.", { exact: true }).waitFor();
++    assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 2);
++    await pageC.screenshot({ path: path.join(outputDir, "receipt-recovered.png"), fullPage: true });
++    results.push("actual page reload and full browser closure/reopen recover the saved submission and do not add payments");
++    const bypass = await context.request.post(origin + "/api/v1/finance/receipts", { data: { bookingId: booking.id, amount: 100.10, method: "CASH" }, headers: { "Idempotency-Key": randomUUID() } });
++    assert.equal(bypass.status(), 409);
++    assert.equal((await context.request.post(origin + "/api/v1/finance/receipts", { data: { bookingId: booking.id, amount: 1, method: "CASH" }, headers: { "Idempotency-Key": randomUUID(), Origin: "https://untrusted.example.test" } })).status(), 403);
++    const current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
++    assert.equal(current.paid.toFixed(2), "350.35"); assert.equal(current.balance.toFixed(2), "659.65");
++
++    await pageC.goto(origin + `/admin/manage/umrah-bookings?record=${booking.id}`);
++    const pdfResponse = context.waitForEvent("response", { predicate: response => response.url().includes(`/api/v1/pdf/umrah-booking/${booking.id}`) });
++    await pageC.getByRole("link", { name: "PDF with prices", exact: true }).click();
++    const pdf = await pdfResponse;
++    assert.equal(pdf.status(), 200); assert.ok(pdf.headers()["content-type"].includes("application/pdf"));
++    assert.equal(pdf.headers()["cache-control"], "private, no-store");
++    results.push("actual staff document link passes through the local gateway and returns a private PDF");
++
++    const browser = context.browser();
++    const owner = await browser.newContext();
++    const ownerPage = await owner.newPage();
++    await customerLogin(ownerPage, lead.email);
++    await ownerPage.getByText("Date to be confirmed", { exact: true }).waitFor();
++    await ownerPage.getByRole("heading", { name: booking.bookingNumber, exact: true }).waitFor();
++    await ownerPage.screenshot({ path: path.join(outputDir, "undated-owner-booking.png"), fullPage: true });
++    const ownerRows = await owner.request.get(origin + "/api/account/bookings?website_customer_id=forged-other-customer");
++    assert.equal(ownerRows.status(), 200); const ownData = await ownerRows.json();
++    assert.match(ownerRows.headers()["cache-control"] || "", /private/);
++    assert.match(ownerRows.headers()["cache-control"] || "", /no-store/);
++    assert.deepEqual(ownData.bookings.map(row => row.reference), [booking.bookingNumber]);
++    assert.equal(ownData.bookings[0].travelDate, null);
++    const forbidden = await ownerPage.goto(origin + `/api/v1/pdf/umrah-voucher/${booking.id}`);
++    assert.equal(forbidden.status(), 401);
++    const other = await browser.newContext();
++    const otherPage = await other.newPage();
++    await customerLogin(otherPage, otherEmail);
++    await otherPage.getByRole("heading", { name: otherBooking.bookingNumber, exact: true }).waitFor();
++    assert.ok(!(await otherPage.locator("body").innerText()).includes(booking.bookingNumber));
++    const otherRows = await other.request.get(origin + `/api/account/bookings?website_customer_id=${booking.customerId}`);
++    assert.equal(otherRows.status(), 200); assert.deepEqual((await otherRows.json()).bookings.map(row => row.reference), [otherBooking.bookingNumber]);
++    // Alternate authenticated accounts at the identical URL through the proxy.
++    // A shared-cache key that omits cookies must never reuse another customer's body.
++    for (const [actor, expected] of [[owner, booking.bookingNumber], [other, otherBooking.bookingNumber], [owner, booking.bookingNumber]]) {
++      const response = await actor.request.get(origin + "/api/account/bookings");
++      assert.equal(response.status(), 200);
++      assert.match(response.headers()["cache-control"] || "", /private/);
++      assert.match(response.headers()["cache-control"] || "", /no-store/);
++      assert.equal(Number(response.headers().age || 0), 0);
++      assert.deepEqual((await response.json()).bookings.map(row => row.reference), [expected]);
++    }
++    results.push("authenticated proxy cache checks: identical booking URL alternates owner/other/owner with private/no-store and no positive Age; each body remains isolated");
++    await otherPage.screenshot({ path: path.join(outputDir, "other-customer-isolation.png"), fullPage: true });
++    const staffOther = await browser.newContext();
++    const staffOtherPage = await staffOther.newPage();
++    await staffLogin(staffOtherPage, outsider);
++    const foreignPdf = await staffOtherPage.goto(origin + `/api/v1/pdf/umrah-voucher/${booking.id}`);
++    assert.equal(foreignPdf.status(), 404);
++    assert.equal((await staffOther.request.post(origin + `/api/v1/finance/receipts/${receipt.id}/review`, { data: { reviewed: true } })).status(), 403);
++    await owner.close(); await other.close(); await staffOther.close();
++    results.push("two verified customer logins display only their own bookings; forged selectors ignored; owner sees the pending date; customer/foreign staff document requests return 401/404; foreign receipt review denied (403)");
++    const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, paid: "350.35", balance: "659.65", syntheticOnly: true };
++    fs.writeFileSync(path.join(outputDir, "browser-result.json"), JSON.stringify(result, null, 2));
++    return result;
++  } finally { await context?.close(); }
++};
+diff --git a/backend/scripts/receipt-maintenance.spec.mjs b/backend/scripts/receipt-maintenance.spec.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ffc8cfec2c5ae06f83b86efb7fc517e80c9622aa
+--- /dev/null
++++ b/backend/scripts/receipt-maintenance.spec.mjs
+@@ -0,0 +1,20 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import gateway from "./hostinger-api-path.cjs";
++
++test("maintenance blocks receipt mutations including review and route variants", () => {
++  for (const url of ["/api/v1/finance/receipts", "/api/v1/finance/receipts/?x=1", "/API/V1/FINANCE/RECEIPTS", "/api/v1/finance/%72eceipts", "/api/v1/finance/receipts/request_test/review"]) {
++    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) assert.equal(gateway.receiptWriteBlocked({ method, url }, "true"), true);
++  }
++  assert.equal(gateway.receiptWriteBlocked({ method: "POST", url: "/api/v1/finance/receipts" }, "typo"), true);
++});
++
++test("maintenance preserves receipt recovery, documents and unrelated routes", () => {
++  for (const method of ["GET", "HEAD", "OPTIONS"]) assert.equal(gateway.receiptWriteBlocked({ method, url: "/api/v1/finance/receipts/submission/test_key" }, "true"), false);
++  for (const url of ["/api/v1/pdf/receipt/id", "/api/account/bookings", "/api/v1/finance/payments", "/api/v1/finance/receipts-other"]) assert.equal(gateway.receiptWriteBlocked({ method: "POST", url }, "true"), false);
++});
++
++test("normal mode leaves mandatory retry and review enforcement to finance", () => {
++  for (const flag of [undefined, "", "false"]) assert.equal(gateway.receiptWriteBlocked({ method: "POST", url: "/api/v1/finance/receipts" }, flag), false);
++  assert.equal(gateway.receiptWriteBlocked({ method: "POST", url: "/%invalid" }, "true"), true);
++});
+diff --git a/backend/scripts/receipt-readonly-assessment.sql b/backend/scripts/receipt-readonly-assessment.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..3f19c5c45ec5f7b3fbdd8e302a9e15a36e0177cc
+--- /dev/null
++++ b/backend/scripts/receipt-readonly-assessment.sql
+@@ -0,0 +1,15 @@
++\set ON_ERROR_STOP on
++BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
++SET LOCAL statement_timeout = '10s';
++SET LOCAL lock_timeout = '1s';
++SELECT json_build_object(
++  'read_only', current_setting('transaction_read_only'),
++  'receipt_count', (SELECT count(*) FROM "Receipt"),
++  'legacy_receipt_count', (SELECT count(*) FROM "Receipt" WHERE left(id, 8) <> 'request_'),
++  'unreviewed_keyed_count', (SELECT count(*) FROM "Receipt" r WHERE left(r.id, 8) = 'request_' AND NOT EXISTS (SELECT 1 FROM "AuditLog" a WHERE a.action = 'REVIEW_RECEIPT' AND a.entity = 'Receipt' AND a."entityId" = r.id)),
++  'missing_journal_count', (SELECT count(*) FROM "Receipt" r LEFT JOIN "JournalEntry" j ON j.id = r."journalId" WHERE j.id IS NULL),
++  'unbalanced_posted_journal_count', (SELECT count(*) FROM (SELECT j.id FROM "JournalEntry" j LEFT JOIN "JournalLine" l ON l."journalId" = j.id WHERE j.status IN ('POSTED','REVERSED') GROUP BY j.id HAVING coalesce(sum(l.debit-l.credit),0) <> 0 OR count(l.id) = 0) q),
++  'booking_paid_mismatch_count', (SELECT count(*) FROM "UmrahBooking" b LEFT JOIN (SELECT "bookingId", sum(amount) paid FROM "Receipt" WHERE "bookingId" IS NOT NULL GROUP BY "bookingId") r ON r."bookingId" = b.id WHERE b.paid <> coalesce(r.paid,0)),
++  'repeated_payment_candidate_groups_30d', (SELECT count(*) FROM (SELECT "customerId", "bookingId", "branchId", amount, method, date::date FROM "Receipt" WHERE date >= current_timestamp - interval '30 days' GROUP BY "customerId", "bookingId", "branchId", amount, method, date::date HAVING count(*) > 1) q)
++);
++ROLLBACK;
+diff --git a/backend/scripts/receipt-rollback-staging.cjs b/backend/scripts/receipt-rollback-staging.cjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..294d9be2626480b0e88f3157dfefd986859f4bfd
+--- /dev/null
++++ b/backend/scripts/receipt-rollback-staging.cjs
+@@ -0,0 +1,89 @@
++"use strict";
++
++// Opt-in compatibility proof for a locally rebuilt recorded base, not a deployed artifact.
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const path = require("node:path");
++const os = require("node:os");
++const http = require("node:http");
++const { spawn } = require("node:child_process");
++const { randomUUID, randomBytes, createHash } = require("node:crypto");
++
++async function main() {
++  const databaseUrl = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++  const target = new URL(databaseUrl);
++  assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const root = path.resolve(process.env.ZAT_ROLLBACK_STAGING_ROOT || "");
++  assert.equal(root, path.join(os.tmpdir(), "zat-rollback-base-307d174"));
++  const { PrismaClient } = require(path.join(root, "backend/node_modules/@prisma/client"));
++  const bcrypt = require(path.join(root, "backend/node_modules/bcryptjs"));
++  const db = new PrismaClient({ datasourceUrl: databaseUrl });
++  let child;
++  let log;
++  try {
++    const [server] = await db.$queryRaw`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    const receipt = await db.receipt.findFirstOrThrow({ where: { id: { startsWith: "request_" }, booking: { customer: { email: { endsWith: "@example.test" } } } }, orderBy: { createdAt: "desc" } });
++    const booking = await db.umrahBooking.findUniqueOrThrow({ where: { id: receipt.bookingId } });
++    const password = `Synthetic-${randomBytes(16).toString("hex")}!`;
++    const role = await db.role.findUniqueOrThrow({ where: { name: "SUPER_ADMIN" } });
++    const user = await db.user.create({ data: { username: randomUUID(), email: `${randomUUID()}@example.test`, fullName: "Synthetic rollback reviewer", passwordHash: await bcrypt.hash(password, 10), defaultBranchId: booking.branchId, roles: { create: { roleId: role.id } } } });
++    const snapshot = async () => ({ receipts: await db.receipt.count(), journals: await db.journalEntry.count(), lines: await db.journalLine.count(), audits: await db.auditLog.count(), booking: await db.umrahBooking.findUnique({ where: { id: booking.id } }), receipt: await db.receipt.findUnique({ where: { id: receipt.id } }) });
++    const before = await snapshot();
++    for (const file of ["hostinger-start.cjs", "hostinger-api-path.cjs"]) {
++      let source = fs.readFileSync(path.join(__dirname, file), "utf8");
++      if (file === "hostinger-start.cjs") {
++        assert.ok(source.includes('server.listen(publicPort, "0.0.0.0"'));
++        source = source.replace('server.listen(publicPort, "0.0.0.0"', 'server.listen(publicPort, "127.0.0.1"');
++      }
++      fs.writeFileSync(path.join(root, "backend/scripts", file), source);
++    }
++    const listener = http.createServer();
++    await new Promise(resolve => listener.listen(0, "127.0.0.1", resolve));
++    const port = listener.address().port;
++    await new Promise(resolve => listener.close(resolve));
++    const origin = `http://127.0.0.1:${port}`;
++    const env = {};
++    for (const key of ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "USERPROFILE", "LOCALAPPDATA"]) if (process.env[key]) env[key] = process.env[key];
++    Object.assign(env, { NODE_ENV: "production", DATABASE_URL: databaseUrl, JWT_SECRET: randomBytes(32).toString("hex"), JWT_REFRESH_SECRET: randomBytes(32).toString("hex"), START_MODE: "api", PORT: String(port), APP_URL: origin, COOKIE_SECURE: "false", RECEIPT_WRITES_DISABLED: "true" });
++    log = fs.openSync(path.join(root, "rollback-server.log"), "w");
++    child = spawn(process.execPath, [path.join(root, "backend/scripts/hostinger-start.cjs")], { cwd: root, env, stdio: ["ignore", log, log], windowsHide: true });
++    const deadline = Date.now() + 30000;
++    while (true) {
++      try { if ((await fetch(origin + "/api/health")).status === 200) break; } catch {}
++      assert.ok(Date.now() < deadline && child.exitCode === null, "Synthetic rollback gateway failed readiness");
++      await new Promise(resolve => setTimeout(resolve, 200));
++    }
++    const login = await fetch(origin + "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ identifier: user.username, password }) });
++    assert.equal(login.status, 201);
++    const cookie = login.headers.getSetCookie().map(c => c.split(";")[0]).join("; ");
++    const get = route => fetch(origin + route, { headers: { Cookie: cookie } });
++    const read = await get(`/api/v1/receipts/${receipt.id}`);
++    assert.equal(read.status, 200);
++    const row = await read.json();
++    assert.equal(row.id, receipt.id); assert.equal(row.amount, receipt.amount.toString());
++    for (const mode of ["INCLUDED", "EXCLUDED"]) {
++      const pdf = await get(`/api/v1/pdf/receipt/${receipt.id}?mode=${mode}`);
++      assert.equal(pdf.status, 200); assert.equal(pdf.headers.get("cache-control"), "private, no-store");
++      assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
++    }
++    assert.equal((await fetch(origin + `/api/v1/pdf/receipt/${receipt.id}`)).status, 401);
++    for (const route of ["/api/v1/finance/receipts", `/api/v1/finance/receipts/${receipt.id}/review`, "/API/V1/FINANCE/RECEIPTS/"]) {
++      const denied = await fetch(origin + route, { method: "POST", headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json", "Idempotency-Key": randomUUID() }, body: JSON.stringify({ bookingId: booking.id, amount: 1, method: "CASH", reviewed: true }) });
++      assert.equal(denied.status, 503); assert.equal(denied.headers.get("cache-control"), "private, no-store");
++    }
++    assert.deepEqual(await snapshot(), before, "Rollback reads and blocked writes must not mutate financial state or reviews");
++    const result = { status: "passed", syntheticOnly: true, deployedArtifactVerified: false, base: "307d174ce77a8eb7b79bd559ff1bad5ea1210c8d", baseArchiveSha256: createHash("sha256").update(fs.readFileSync(path.join(root, "source.tar"))).digest("hex"), checks: ["actual old API staff login and candidate request_ receipt read", "old receipt PDF in both price modes private/no-store", "anonymous receipt PDF denied 401", "candidate gateway blocks old API receipt/review mutations with uncached 503", "receipt, booking, journal, journal-line and audit snapshots unchanged"], paid: booking.paid.toFixed(2), balance: booking.balance.toFixed(2) };
++    fs.writeFileSync(path.join(root, "rollback-result.json"), JSON.stringify(result, null, 2));
++    console.log(JSON.stringify(result, null, 2));
++  } finally {
++    if (child && child.exitCode === null) {
++      child.kill();
++      await new Promise(resolve => child.once("exit", resolve));
++    }
++    if (log !== undefined) fs.closeSync(log);
++    await db.$disconnect();
++  }
++}
++main().catch(() => { console.error("Synthetic rollback compatibility failed; inspect isolated staging output."); process.exitCode = 1; });
+diff --git a/src/lib/receipt-retry.test.ts b/src/lib/receipt-retry.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c7101fce072dfa24971173e9efd55ebe0b2fa3fc
+--- /dev/null
++++ b/src/lib/receipt-retry.test.ts
+@@ -0,0 +1,39 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { clearReceiptRetry, hasPendingReceipt, receiptRetryKey } from "./receipt-retry";
++
++function storage() {
++  const rows = new Map<string, string>();
++  return { rows, getItem: (key: string) => rows.get(key) ?? null, setItem: (key: string, value: string) => { rows.set(key, value); }, removeItem: (key: string) => { rows.delete(key); } };
++}
++
++test("receipt key survives a reload and reordered fields without storing payment data", async () => {
++  const session = storage();
++  const key = await receiptRetryKey(session, "staff", { bookingId: "private-booking", amount: 100, method: "CASH" });
++  // A new module/component instance reads the same session storage after reload.
++  assert.equal(await receiptRetryKey(session, "staff", { method: "CASH", amount: 100, bookingId: "private-booking" }), key);
++  assert.equal(hasPendingReceipt(session, "staff"), true);
++  assert.ok(!JSON.stringify([...session.rows]).includes("private-booking"));
++  assert.ok(!JSON.stringify([...session.rows]).includes("CASH"));
++});
++
++test("uncertain receipt blocks changed payloads until history review; staff namespaces stay separate", async () => {
++  const session = storage();
++  const key = await receiptRetryKey(session, "staff", { amount: 100 });
++  await assert.rejects(receiptRetryKey(session, "staff", { amount: 101 }), /earlier receipt is unconfirmed/);
++  assert.notEqual(await receiptRetryKey(session, "other", { amount: 101 }), key);
++  clearReceiptRetry(session, "staff");
++  assert.equal(hasPendingReceipt(session, "staff"), false);
++  assert.notEqual(await receiptRetryKey(session, "staff", { amount: 100 }), key);
++});
++
++test("receipt storage failures or corruption fail before submission, without replacing the prior key", async () => {
++  const session = storage();
++  const key = await receiptRetryKey(session, "staff", { amount: 100 });
++  const storageKey = [...session.rows.keys()][0];
++  session.rows.set(storageKey, "broken");
++  await assert.rejects(receiptRetryKey(session, "staff", { amount: 100 }), /retry information is unavailable/);
++  assert.equal(session.rows.get(storageKey), "broken");
++  assert.ok(key);
++  await assert.rejects(receiptRetryKey({ ...session, setItem: () => { throw Error("storage disabled"); } }, "new-staff", { amount: 100 }), /storage disabled/);
++});
+diff --git a/src/lib/receipt-retry.ts b/src/lib/receipt-retry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ccb2e626be5551e261df50945ef7a9ffffcfc5c
+--- /dev/null
++++ b/src/lib/receipt-retry.ts
+@@ -0,0 +1,37 @@
++type RetryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
++const storageKey = (staffUsername: string) => `zat:pending-receipt:${staffUsername}`;
++
++export function hasPendingReceipt(storage: RetryStorage, staffUsername: string) {
++  return storage.getItem(storageKey(staffUsername)) !== null;
++}
++
++export function clearReceiptRetry(storage: RetryStorage, staffUsername: string) {
++  storage.removeItem(storageKey(staffUsername));
++}
++
++export function savedReceiptRetryKey(storage: RetryStorage, staffUsername: string): string | null {
++  const prior = storage.getItem(storageKey(staffUsername));
++  if (prior === null) return null;
++  const value = JSON.parse(prior);
++  if (!value || typeof value.key !== "string" || !/^[A-Za-z0-9_-]{8,100}$/.test(value.key)) throw new Error("Receipt retry information is unavailable. Review receipt history.");
++  return value.key;
++}
++
++/** Persist only a fingerprint and retry key, never receipt fields or credentials. */
++export async function receiptRetryKey(storage: RetryStorage, staffUsername: string, payload: Record<string, unknown>) {
++  const canonical = JSON.stringify(Object.fromEntries(Object.entries(payload).sort(([a], [b]) => a.localeCompare(b))));
++  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
++  const fingerprint = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, "0")).join("");
++  const key = storageKey(staffUsername);
++  const prior = storage.getItem(key);
++  if (prior !== null) {
++    let pending: { fingerprint?: unknown; key?: unknown };
++    try { pending = JSON.parse(prior); } catch { throw new Error("Receipt retry information is unavailable. Review receipt history before starting another payment."); }
++    if (!pending || pending.fingerprint !== fingerprint || typeof pending.key !== "string" || !/^[A-Za-z0-9_-]{8,100}$/.test(pending.key)) throw new Error("An earlier receipt is unconfirmed. Retry its original details, or review receipt history before starting another payment.");
++    return pending.key;
++  }
++  const pending = JSON.stringify({ fingerprint, key: crypto.randomUUID() });
++  storage.setItem(key, pending);
++  if (storage.getItem(key) !== pending) throw new Error("Receipt retry information could not be saved. Payment was not submitted.");
++  return (JSON.parse(pending) as { key: string }).key;
++}
+diff --git a/src/server/customer-bookings/account-journey.pg17.test.ts b/src/server/customer-bookings/account-journey.pg17.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d5e3899fc328922ba4c5e075fe06315c18e010e0
+--- /dev/null
++++ b/src/server/customer-bookings/account-journey.pg17.test.ts
+@@ -0,0 +1,49 @@
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { test } from "node:test";
++import { PrismaClient } from "../../../backend/node_modules/@prisma/client";
++import { WebsiteCustomerBookingsService } from "../../../backend/apps/api/src/website/website-customer-bookings.service";
++import { customerDatabase } from "@/server/customer-db/db";
++import * as repository from "@/server/customer-db/repository";
++import { resolveCustomerSession } from "@/server/customer-auth/session";
++import { resolveAccountBookings } from "@/server/customer-bookings/resolve";
++
++const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++test("PG17 account sessions and verified CRM links isolate booking visibility", { skip: !url }, async () => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  process.env.DATABASE_URL = url;
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    const website = await repository.insertCustomer({ email: `${randomUUID()}@example.test`, displayName: "Synthetic account", passwordHash: "invalid" });
++    const crm = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic customer", email: website.email } });
++    const own = await db.umrahBooking.create({ data: { bookingNumber: randomUUID(), customerId: crm.id, departureDate: new Date("2030-01-10"), status: "CONFIRMED", net: 100, paid: 20, balance: 80 } });
++    const other = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Other synthetic customer" } });
++    const foreign = await db.umrahBooking.create({ data: { bookingNumber: randomUUID(), customerId: other.id, departureDate: new Date("2030-01-11"), status: "CONFIRMED" } });
++    const tokenHash = randomUUID();
++    await repository.insertSession({ customerId: website.id, tokenHash, expiresAt: new Date(Date.now() + 60000).toISOString() });
++    await repository.setCustomerCrmId(website.id, crm.id);
++    const session = await resolveCustomerSession(tokenHash);
++    assert.equal(session?.id, website.id);
++    const service = new WebsiteCustomerBookingsService(db as never);
++    const fetchBookings = async (id: string) => ({ ok: true as const, ...(await service.listForWebsiteCustomer(id)) });
++    assert.equal((await resolveAccountBookings(session, fetchBookings)).status, 403);
++    await db.auditLog.create({ data: { action: "VERIFY_WEBSITE_CUSTOMER_LINK", entity: "WebsiteCustomer", entityId: website.id, after: { crmCustomerId: crm.id } } });
++    const result = await resolveAccountBookings(session, fetchBookings);
++    assert.equal(result.status, 200);
++    assert.ok(result.body.ok);
++    if (result.body.ok) {
++      assert.deepEqual(result.body.bookings.map(row => row.reference), [own.bookingNumber]);
++      assert.ok(!JSON.stringify(result.body).includes(foreign.bookingNumber));
++      assert.ok(!JSON.stringify(result.body).includes("balance"));
++    }
++    // An altered CRM selector is denied unless that exact account link was verified.
++    assert.equal((await resolveAccountBookings({ ...session!, crmCustomerId: other.id }, fetchBookings)).status, 403);
++    await repository.revokeSessionByTokenHash(tokenHash);
++    assert.equal(await resolveCustomerSession(tokenHash), null);
++    assert.equal((await resolveAccountBookings(await resolveCustomerSession(tokenHash), fetchBookings)).status, 401);
++  } finally { await db.$disconnect(); await customerDatabase().end(); }
++});

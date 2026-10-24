@@ -26,6 +26,8 @@ const sample: WebsiteCustomerBookingDto = {
   updatedAt: new Date().toISOString(),
 };
 assert("valid row", isWebsiteBookingRow(sample));
+assert("undated row stays visible", isWebsiteBookingRow({ ...sample, travelDate: null }));
+assert("missing travel date is explicit null", travelDateFrom(null) === null);
 assert("invalid service", !isWebsiteBookingRow({ ...sample, service: "Ticket" as WebsiteCustomerBookingDto["service"] }));
 
 console.log("website booking dto OK");

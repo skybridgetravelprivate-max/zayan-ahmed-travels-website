@@ -15,6 +15,13 @@ const APPROVED_KEYS = [
   "updatedAt",
 ];
 
+test("explicitly undated bookings remain allowlisted; missing dates remain invalid", () => {
+  const row = { reference: "UNDATED", service: "Umrah", destination: "Umrah", travelDate: null, status: "Upcoming", createdAt: "2030-01-01", updatedAt: "2030-01-01" };
+  assert.equal(sanitizeCustomerBooking(row)?.travelDate, null);
+  assert.equal(sanitizeCustomerBookingsResponse({ bookings: [row] })?.length, 1);
+  assert.equal(sanitizeCustomerBooking({ ...row, travelDate: undefined }), null);
+});
+
 test("sanitizeCustomerBooking allowlists approved fields only", () => {
   const dto = sanitizeCustomerBooking({
     reference: "ZAT-BK-0001",

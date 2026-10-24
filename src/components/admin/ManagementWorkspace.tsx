@@ -4,15 +4,16 @@ import Link from "next/link";
 import { AgencyMasthead } from "@/components/admin/AgencyMasthead";
 import { bookingDocumentUrl, bookingFieldSection } from "@/lib/booking-presentation";
 import { workflowsFor, type StaffWorkflow } from "@/lib/staff-workflows";
-import { useEffect, useState } from "react";
+import { clearReceiptRetry, hasPendingReceipt, receiptRetryKey, savedReceiptRetryKey } from "@/lib/receipt-retry";
+import { useEffect, useRef, useState } from "react";
 import { displayValue, formPayload, rowLabel, type ManagementField, type ManagementModule, type ManagementRow } from "@/lib/staff-management";
 
 const control = "mt-1 w-full min-w-0 rounded-lg border border-line bg-white px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue";
 const button = "rounded-xl border border-line px-4 py-2 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue disabled:cursor-not-allowed disabled:opacity-50";
 const api = "/api/v1/management";
 
-async function request(path: string, method = "GET", body?: unknown) {
-  const response = await fetch(path, { method, credentials: "same-origin", cache: "no-store", redirect: "error", headers: body ? { "Content-Type": "application/json" } : {}, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20000) });
+async function request(path: string, method = "GET", body?: unknown, requestKey?: string) {
+  const response = await fetch(path, { method, credentials: "same-origin", cache: "no-store", redirect: "error", headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(requestKey ? { "Idempotency-Key": requestKey } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20000) });
   if (response.status === 401) throw new Error("Your staff session expired. Sign in again.");
   if (response.status === 403) throw new Error("You do not have permission for this operation.");
   if (response.status === 404) throw new Error("This record is unavailable or outside your authorized scope.");
@@ -105,7 +106,7 @@ function NewStaffForm({ close, saved }: { close: () => void; saved: () => void }
   return <form action={save} className="mt-5 rounded-xl border border-line bg-surface p-5"><h2 className="text-xl font-semibold">Create staff account</h2><p className="mt-2 text-sm">The new account starts inactive with no roles. Configure its access and activate it separately.</p>{error && <p role="alert" className="mt-3">{error}</p>}<div className="mt-4 grid gap-4 sm:grid-cols-2">{[{ name: "fullName", label: "Full name", type: "text" }, { name: "username", label: "Username", type: "text" }, { name: "email", label: "Email", type: "email" }, { name: "password", label: "Initial password", type: "password" }].map(f => <label key={f.name} className="font-semibold">{f.label}<input className={control} name={f.name} type={f.type} required disabled={busy} autoComplete={f.name === "password" ? "new-password" : "off"} minLength={f.name === "password" ? 10 : undefined} maxLength={f.name === "password" ? 72 : 254} pattern={f.name === "username" ? "[a-z0-9._-]{3,32}" : undefined} /></label>)}</div><p className="mt-2 text-sm text-muted">Username: 3–32 lowercase letters, numbers, dots, underscores or hyphens. Password: at least 10 characters and at most 72 UTF-8 bytes.</p><div className="mt-4 flex gap-3"><button className={button} disabled={busy}>Create inactive account</button><button type="button" className={button} disabled={busy} onClick={close}>Cancel</button></div></form>;
 }
 
-export function ManagementWorkspace({ resource, canAssign, permissions, isSuperAdmin, initialId }: { resource: string; canAssign: boolean; permissions: string[]; isSuperAdmin: boolean; initialId?: string }) {
+export function ManagementWorkspace({ resource, staffUsername, canAssign, permissions, isSuperAdmin, initialId }: { resource: string; staffUsername: string; canAssign: boolean; permissions: string[]; isSuperAdmin: boolean; initialId?: string }) {
   const { modules, error: catalogError } = useCatalog();
   const contract = modules?.find(m => m.key === resource);
   const [query, setQuery] = useState("");
@@ -122,6 +123,9 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
   const [assignees, setAssignees] = useState<{ id: string; fullName: string }[]>([]);
   const [assigning, setAssigning] = useState(false);
   const [workflow, setWorkflow] = useState<StaffWorkflow | null>(null);
+  const [pendingReceipt, setPendingReceipt] = useState(false);
+  const [receiptPreview, setReceiptPreview] = useState<{ id: string; receiptNo: string; amount: string; method: string } | null>(null);
+  const workflowPending = useRef(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [staffCreate, setStaffCreate] = useState(false);
   useEffect(() => {
@@ -157,6 +161,18 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
   }
   async function chooseWorkflow(action: StaffWorkflow) {
     setMessage(""); setError("");
+    if (resource === "receipts") {
+      try {
+        setPendingReceipt(hasPendingReceipt(localStorage, staffUsername));
+        setReceiptPreview(null);
+        const key = savedReceiptRetryKey(localStorage, staffUsername);
+        if (key) {
+          try { setReceiptPreview(await request(`/api/v1/finance/receipts/submission/${encodeURIComponent(key)}`)); }
+          catch { /* Keep the original key: a missing response is not proof of no payment. */ }
+        }
+      }
+      catch { setError("Browser storage is unavailable. Receipt submissions need reload-safe retry storage."); return; }
+    }
     if (["checkin", "checkout"].includes(action.key) && row) {
       setBusy(true);
       try {
@@ -167,7 +183,8 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
     } else setWorkflow(action);
   }
   async function runWorkflow(form: FormData) {
-    if (!workflow || busy || form.get("confirm") !== "yes") return;
+    if (!workflow || busy || workflowPending.current || form.get("confirm") !== "yes") return;
+    workflowPending.current = true;
     setBusy(true); setError(""); setMessage("");
     try {
       const data = formPayload(workflow.fields, form, true);
@@ -188,14 +205,36 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
         for (const key of ["roomCount", "occupancy", "sellingPrice", "supplierCost", "roomTypeId"]) delete data[key];
       }
       if (workflow.version && row) data.version = row.version;
-      await request(workflow.path.replace(":id", encodeURIComponent(row?.id || "")), "POST", data);
+      let requestKey: string | undefined;
+      if (resource === "receipts") {
+        if (!navigator.locks) throw new Error("This browser cannot safely coordinate receipt retries across tabs.");
+        requestKey = await navigator.locks.request(`zat:receipt-key:${staffUsername}`, () => receiptRetryKey(localStorage, staffUsername, data));
+        setPendingReceipt(true);
+      }
+      const result = await request(workflow.path.replace(":id", encodeURIComponent(row?.id || "")), "POST", data, requestKey);
+      if (requestKey) setReceiptPreview(result);
       const selectedId = row?.id;
       setWorkflow(null); setRevision(r => r + 1);
       if (selectedId) setRow(await request(`${api}/${resource}/${selectedId}`));
       setMessage("Operation completed. Review the refreshed record.");
     } catch (e) {
       setError(e instanceof Error && !["TypeError", "TimeoutError"].includes(e.name) ? e.message : "Operation outcome is uncertain. Review the record and accounting history before retrying.");
-    } finally { setBusy(false); }
+    } finally { workflowPending.current = false; setBusy(false); }
+  }
+  async function reviewSavedReceipt(id: string) {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      await request(`/api/v1/finance/receipts/${encodeURIComponent(id)}/review`, "POST", { reviewed: true });
+      const key = savedReceiptRetryKey(localStorage, staffUsername);
+      if (key) {
+        const saved = await request(`/api/v1/finance/receipts/submission/${encodeURIComponent(key)}`);
+        if (saved.id === id) clearReceiptRetry(localStorage, staffUsername);
+      }
+      setPendingReceipt(hasPendingReceipt(localStorage, staffUsername)); setReceiptPreview(null); setWorkflow(null);
+      setMessage("Saved receipt reviewed. You may explicitly start a new payment.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Receipt review was not confirmed. Retry the original submission."); }
+    finally { setBusy(false); }
   }
   if (catalogError || (modules && !contract)) return <section role="alert"><h1 className="text-2xl font-bold">Module unavailable</h1><p>{catalogError || "Your account does not have access to this module."}</p><Link href="/admin/manage" className="underline">Back to management</Link></section>;
   if (!contract) return <p role="status">Loading workspace…</p>;
@@ -203,6 +242,8 @@ export function ManagementWorkspace({ resource, canAssign, permissions, isSuperA
     {error && <p role="alert" className="mt-4 rounded-xl border border-red-300 p-4">{error} <button className="underline" onClick={() => { if (row) void open(row.id); setRevision(r => r + 1); }} disabled={busy}>Reload</button></p>}
     {row && !editing && (isSuperAdmin || permissions.includes("document.view")) && bookingDocumentUrl(resource, row.id, false) && <div className="mt-4 rounded-xl border border-line bg-surface p-4"><h2 className="font-semibold text-zayan-blue">Agency document</h2><p className="mt-1 text-sm text-muted">Print the saved record. Access is checked again by the document service.</p><div className="mt-3 flex flex-wrap gap-3"><a className={button} href={bookingDocumentUrl(resource, row.id, true)!} target="_blank" rel="noopener noreferrer">{resource === "visa-applications" ? "Application PDF" : "PDF with prices"}</a>{resource !== "visa-applications" && <a className={button} href={bookingDocumentUrl(resource, row.id, false)!} target="_blank" rel="noopener noreferrer">PDF without prices</a>}</div></div>}
     {message && <p role="status" className="mt-4 rounded-xl border border-green-300 p-4">{message}</p>}
+    {resource === "receipts" && pendingReceipt && <div className="mt-4 rounded-xl border border-amber-300 p-4"><p>A prior receipt submission is saved across tabs. Retry the original details safely, or review its saved receipt before starting another payment.</p>{receiptPreview && <><p className="mt-2">Saved receipt: {receiptPreview.receiptNo} · {Number(receiptPreview.amount).toFixed(2)} · {receiptPreview.method}</p><button type="button" className={`${button} mt-3`} disabled={busy} onClick={() => void reviewSavedReceipt(receiptPreview.id)}>I reviewed this saved receipt; allow a new payment</button></>}<Link className="mt-3 block underline" href="/admin/manage/receipts">View receipt history</Link></div>}
+    {resource === "receipts" && row && isSuperAdmin && <button type="button" className={`${button} mt-4`} disabled={busy} onClick={() => void reviewSavedReceipt(row.id)}>I reviewed this saved receipt; allow a new payment</button>}
     {resource === "users" && isSuperAdmin && <div className="mt-4 flex flex-wrap gap-2"><button className={button} disabled={busy} onClick={() => { setRow(null); setStaffCreate(true); setAccessOpen(false); }}>New staff account</button>{row && <button className={button} disabled={busy} onClick={() => { setAccessOpen(true); setStaffCreate(false); setWorkflow(null); }}>Manage access</button>}</div>}
     {staffCreate && <NewStaffForm close={() => setStaffCreate(false)} saved={() => { setStaffCreate(false); setRevision(r => r + 1); setMessage("Inactive staff account created. Open its record to assign roles, branches and activate access."); }} />}
     {accessOpen && row && <StaffAccessEditor key={row.id} id={row.id} close={() => setAccessOpen(false)} saved={() => { setAccessOpen(false); void open(row.id); setMessage("Access saved. Existing sessions for this account were revoked."); }} />}

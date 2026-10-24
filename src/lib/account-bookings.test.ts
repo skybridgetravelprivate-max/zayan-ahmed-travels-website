@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
+test("account list preserves an explicit pending date without inventing a travel date", () => {
+  const row = { reference: "UNDATED", service: "Umrah", destination: "Umrah", travelDate: null, status: "Upcoming", createdAt: "2030-01-01", updatedAt: "2030-01-01" };
+  assert.equal(parseAccountBooking(row)?.travelDate, null);
+  assert.equal(parseAccountBooking({ ...row, travelDate: undefined }), null);
+});
 import {
   parseAccountBooking,
   parseAccountBookingsResponse,

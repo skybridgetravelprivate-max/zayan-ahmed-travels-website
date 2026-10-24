@@ -13,6 +13,7 @@ test("form serialization sends only declared fields and preserves explicit clear
 test("display excludes nested secrets and workflow availability follows permissions", () => {
   assert.equal(displayValue({ passwordHash: "secret" }), "—");
   assert.equal(rowLabel({ id: "one", version: null, fullName: "Synthetic" }), "Synthetic");
+  assert.equal(rowLabel({ id: "request_internal", version: null, receiptNo: "ZAT-REC-1" }), "ZAT-REC-1");
   assert.equal(workflowsFor("tickets", true, ["ticket.view"], false).length, 0);
   assert.equal(workflowsFor("tickets", true, ["ticket.refund"], false)[0].key, "refund");
   assert.equal(workflowsFor("payments", false, ["account.post"], false).length, 0);

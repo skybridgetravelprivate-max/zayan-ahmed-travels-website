@@ -7,7 +7,7 @@ export function displayValue(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "—";
 }
 export function rowLabel(row: ManagementRow) {
-  return ["fullName", "name", "subject", "title", "bookingNumber", "leadNumber", "customerNumber", "ticketNumber", "entryNumber", "code", "id"].map(k => row[k]).find(v => typeof v === "string" && v) as string || row.id;
+  return ["fullName", "name", "subject", "title", "receiptNo", "bookingNumber", "leadNumber", "customerNumber", "ticketNumber", "entryNumber", "code", "id"].map(k => row[k]).find(v => typeof v === "string" && v) as string || row.id;
 }
 export function formPayload(fields: ManagementField[], form: FormData, create: boolean) {
   const data: Record<string, unknown> = {};

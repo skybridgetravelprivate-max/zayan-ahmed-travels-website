@@ -11,5 +11,5 @@ export default async function ResourcePage({ params, searchParams }: { params: P
   if (!/^[a-z-]{1,40}$/.test(resource)) return <p role="alert">Module unavailable.</p>;
   const selected = (await searchParams).record;
   const initialId = typeof selected === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(selected) ? selected : undefined;
-  return <ManagementWorkspace key={`${resource}-${initialId || ""}`} resource={resource} initialId={initialId} canAssign={identity.user.isSuperAdmin || identity.user.permissions.includes("lead.assign")} permissions={identity.user.permissions} isSuperAdmin={identity.user.isSuperAdmin} />;
+  return <ManagementWorkspace key={`${resource}-${initialId || ""}`} resource={resource} staffUsername={identity.user.username} initialId={initialId} canAssign={identity.user.isSuperAdmin || identity.user.permissions.includes("lead.assign")} permissions={identity.user.permissions} isSuperAdmin={identity.user.isSuperAdmin} />;
 }

@@ -200,10 +200,15 @@ export class PdfController {
       ]);
       doc.moveDown();
       q.items.forEach((i) => {
-        const price = m === "EXCLUDED" ? "" : `  ${i.sellingPrice}`;
+        const price = m === "EXCLUDED" ? "" : `  ${i.sellingPrice.toFixed(2)}`;
         doc.text(`${i.description}  x${i.quantity}${price}`);
       });
-      this.pdf.customerLines(m, [{ label: "Net", value: String(q.net) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
+      this.pdf.customerLines(m, [
+        { label: "Subtotal", value: q.sellingTotal.toFixed(2) },
+        { label: "Discount", value: q.discount.toFixed(2) },
+        { label: "Tax", value: q.tax.toFixed(2) },
+        { label: "Net", value: q.net.toFixed(2) },
+      ]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
     });
   }
 
@@ -227,9 +232,12 @@ export class PdfController {
       ]);
       (b.passengers || []).forEach((p) => doc.text(`PAX: ${p.passenger?.fullName || p.passengerId}`));
       this.pdf.customerLines(m, [
-        { label: "Selling", value: String(b.sellingPrice) },
-        { label: "Paid", value: String(b.paid) },
-        { label: "Balance", value: String(b.balance) },
+        { label: "Selling", value: b.sellingPrice.toFixed(2) },
+        { label: "Discount", value: b.discount.toFixed(2) },
+        { label: "Tax", value: b.tax.toFixed(2) },
+        { label: "Net", value: b.net.toFixed(2) },
+        { label: "Paid", value: b.paid.toFixed(2) },
+        { label: "Balance", value: b.balance.toFixed(2) },
       ]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
     });
   }
@@ -387,7 +395,7 @@ export class PdfController {
         ["Customer", r.customer?.fullName ?? "-"],
         ["Method", r.method],
       ]);
-      this.pdf.customerLines(m, [{ label: "Amount", value: String(r.amount) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
+      this.pdf.customerLines(m, [{ label: "Amount", value: r.amount.toFixed(2) }]).forEach((l) => doc.text(`${l.label}: ${l.value}`));
     });
   }
 

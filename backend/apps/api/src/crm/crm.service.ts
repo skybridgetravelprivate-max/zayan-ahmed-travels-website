@@ -2,7 +2,7 @@ import { convertLeadToCustomer } from "./convert-lead";
 import { convertQuotationToBooking } from "./convert-quotation";
 import { AccountingService } from "../finance/accounting.service";
 import { assertBranch } from "../auth/record-scope";
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
@@ -10,7 +10,7 @@ import { NotifyService } from "../common/notify.service";
 import { MailService } from "../common/mail.service";
 import { WhatsAppService } from "../common/whatsapp.service";
 import { AuthUser } from "../auth/auth.types";
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus, Prisma } from "@prisma/client";
 
 const STATUSES: LeadStatus[] = [
   "NEW",
@@ -362,32 +362,33 @@ export class CrmService {
   }
 
   async quoteFromLead(id: string, user: AuthUser) {
-    const lead = await this.prisma.lead.findUnique({ where: { id } });
-    if (!lead) throw new NotFoundException();
-    let customerId = (await this.prisma.customer.findFirst({ where: { leadId: id } }))?.id;
-    if (!customerId) {
-      const created = await this.convertLead(id, user);
-      customerId = created.id;
-    }
-    const quotationNumber = await this.seq.next("quotation", "ZAT-QT");
-    const selling = Number(lead.budget ?? 0);
-    const q = await this.prisma.quotation.create({
-      data: {
-        quotationNumber,
-        customerId,
-        leadId: id,
-        agentId: lead.assignedAgentId,
-        branchId: lead.branchId,
-        sellingTotal: selling,
-        net: selling,
-        status: "DRAFT",
-        items: {
-          create: [{ description: `Umrah package for ${lead.fullName}`, quantity: lead.adults || 1, sellingPrice: selling }],
+    return this.prisma.$transaction(async tx => {
+      const lead = await tx.lead.findUnique({ where: { id } });
+      if (!lead) throw new NotFoundException();
+      assertBranch(user, lead.branchId);
+      const selling = Number(lead.budget ?? 0);
+      if (!Number.isFinite(selling) || selling < 0) throw new BadRequestException("Invalid lead budget");
+      const customer = await convertLeadToCustomer(this.prisma, this.seq, this.audit, id, user, tx);
+      const quotationNumber = await this.seq.next("quotation", "ZAT-QT", tx);
+      const q = await tx.quotation.create({
+        data: {
+          quotationNumber,
+          customerId: customer.id,
+          leadId: id,
+          agentId: lead.assignedAgentId,
+          branchId: lead.branchId,
+          sellingTotal: selling,
+          net: selling,
+          status: "DRAFT",
+          items: {
+            // The lead budget is the whole package total, not a per-passenger price.
+            create: [{ description: `Umrah package for ${lead.fullName}`, quantity: 1, sellingPrice: selling }],
+          },
         },
-      },
+      });
+      await tx.lead.update({ where: { id }, data: { status: "QUOTED" } });
+      return q;
     });
-    await this.prisma.lead.update({ where: { id }, data: { status: "QUOTED" } });
-    return q;
   }
 
   async bookingFromLead(id: string, user: AuthUser) {
@@ -403,6 +404,7 @@ export class CrmService {
           quotationNumber: await this.seq.next("quotation", "ZAT-QT", tx),
           customerId: customer.id, leadId: id, agentId: lead.assignedAgentId,
           branchId: lead.branchId, sellingTotal: amount, net: amount, status: "DRAFT",
+          items: { create: [{ description: `Umrah package for ${lead.fullName}`, quantity: 1, sellingPrice: amount }] },
         } });
       }
       let booking = await convertQuotationToBooking(tx, this.seq, this.accounting, quote.id, user);
@@ -648,31 +650,42 @@ export class CrmService {
   async setQuotationStatus(id: string, status: string, user: AuthUser) {
     const allowed = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"];
     if (!allowed.includes(status)) throw new BadRequestException("Invalid quotation status");
-    const quotation = await this.prisma.quotation.update({ where: { id }, data: { status: status as never } });
-    await this.audit.log({ userId: user.id, action: "STATUS", entity: "quotation", entityId: id, after: { status } });
-    return quotation;
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Quotation" WHERE id = ${id} FOR UPDATE`;
+      const q = await tx.quotation.findUnique({ where: { id } });
+      if (!q) throw new NotFoundException();
+      assertBranch(user, q.branchId);
+      if (q.status === "CONVERTED" || await tx.umrahBooking.findFirst({ where: { quotationId: id } })) throw new ConflictException("Converted quotation cannot change status");
+      const quotation = await tx.quotation.update({ where: { id }, data: { status: status as never } });
+      await this.audit.log({ userId: user.id, action: "STATUS", entity: "quotation", entityId: id, after: { status }, db: tx });
+      return quotation;
+    });
   }
 
   async bookingFromCustomer(id: string, user: AuthUser) {
     const customer = await this.prisma.customer.findUnique({ where: { id } });
     if (!customer) throw new NotFoundException();
+    assertBranch(user, customer.branchId);
     if (customer.leadId) return this.bookingFromLead(customer.leadId, user);
     const quote = await this.prisma.quotation.findFirst({
       where: { customerId: id },
       orderBy: { createdAt: "desc" },
     });
+    if (quote) return this.prisma.$transaction(async tx => {
+      const booking = await convertQuotationToBooking(tx, this.seq, this.accounting, quote.id, user);
+      if (booking.status !== "QUOTED" || booking.workflowStep !== "QUOTATION") return booking;
+      return tx.umrahBooking.update({ where: { id: booking.id }, data: { status: "CONFIRMED", workflowStep: "CUSTOMER_CONFIRMATION" } });
+    });
     const bookingNumber = await this.seq.next("umrah-bk", "ZAT-UM");
-    const net = Number(quote?.net ?? 0);
     return this.prisma.umrahBooking.create({
       data: {
         bookingNumber,
         customerId: id,
-        quotationId: quote?.id,
         agentId: customer.agentId,
         branchId: customer.branchId,
-        net,
-        sellingPrice: net,
-        balance: net,
+        net: 0,
+        sellingPrice: 0,
+        balance: 0,
         status: "CONFIRMED",
         workflowStep: "CUSTOMER_CONFIRMATION",
       },
@@ -734,26 +747,29 @@ export class CrmService {
     const cost = body.cost ?? 0;
     if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647) throw new BadRequestException("Quantity must be a positive whole number");
     if ([sellingPrice, cost].some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1e12)) throw new BadRequestException("Enter valid non-negative quotation amounts");
-    const q = await this.prisma.quotation.findUnique({ where: { id } });
-    if (!q) throw new NotFoundException();
-    if (!body.description?.trim()) throw new BadRequestException("Description required");
-    await this.prisma.quotationItem.create({
-      data: {
-        quotationId: id,
-        description: body.description.trim(),
-        quantity,
-        sellingPrice,
-        cost,
-      },
+    return this.prisma.$transaction(async tx => {
+      await this.editableQuotation(tx, id);
+      await tx.quotationItem.create({
+        data: {
+          quotationId: id,
+          description: body.description.trim(),
+          quantity,
+          sellingPrice,
+          cost,
+        },
+      });
+      return this.recalcQuote(id, tx);
     });
-    return this.recalcQuote(id);
   }
 
   async removeQuoteItem(id: string, itemId: string) {
-    const item = await this.prisma.quotationItem.findFirst({ where: { id: itemId, quotationId: id } });
-    if (!item) throw new NotFoundException("Line item not found");
-    await this.prisma.quotationItem.delete({ where: { id: itemId } });
-    return this.recalcQuote(id);
+    return this.prisma.$transaction(async tx => {
+      await this.editableQuotation(tx, id);
+      const item = await tx.quotationItem.findFirst({ where: { id: itemId, quotationId: id } });
+      if (!item) throw new NotFoundException("Line item not found");
+      await tx.quotationItem.delete({ where: { id: itemId } });
+      return this.recalcQuote(id, tx);
+    });
   }
 
   async updateQuotation(
@@ -761,21 +777,27 @@ export class CrmService {
     user: AuthUser,
     body: { discount?: number; tax?: number; terms?: string; notes?: string; expiresAt?: string; currency?: string },
   ) {
-    const q = await this.prisma.quotation.findUnique({ where: { id } });
-    if (!q) throw new NotFoundException();
-    await this.prisma.quotation.update({
-      where: { id },
-      data: {
-        discount: body.discount === undefined ? undefined : Number(body.discount),
-        tax: body.tax === undefined ? undefined : Number(body.tax),
-        terms: body.terms,
-        notes: body.notes,
-        currency: body.currency,
-        expiresAt: body.expiresAt ? new Date(body.expiresAt) : body.expiresAt === "" ? null : undefined,
-      },
+    for (const amount of [body.discount, body.tax]) {
+      if (amount !== undefined && (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 || amount > 1e12)) throw new BadRequestException("Invalid quotation amount");
+    }
+    if (body.expiresAt && !Number.isFinite(new Date(body.expiresAt).getTime())) throw new BadRequestException("Invalid expiry date");
+    return this.prisma.$transaction(async tx => {
+      const q = await this.editableQuotation(tx, id);
+      assertBranch(user, q.branchId);
+      await tx.quotation.update({
+        where: { id },
+        data: {
+          discount: body.discount === undefined ? undefined : Number(body.discount),
+          tax: body.tax === undefined ? undefined : Number(body.tax),
+          terms: body.terms,
+          notes: body.notes,
+          currency: body.currency,
+          expiresAt: body.expiresAt ? new Date(body.expiresAt) : body.expiresAt === "" ? null : undefined,
+        },
+      });
+      await this.audit.log({ userId: user.id, action: "UPDATE", entity: "quotation", entityId: id, after: body, db: tx });
+      return this.recalcQuote(id, tx);
     });
-    await this.audit.log({ userId: user.id, action: "UPDATE", entity: "quotation", entityId: id, after: body });
-    return this.recalcQuote(id);
   }
 
   async listQuotations(user: AuthUser, q?: string, status?: string) {
@@ -830,13 +852,22 @@ export class CrmService {
     });
   }
 
-  private async recalcQuote(id: string) {
-    const q = await this.prisma.quotation.findUnique({ where: { id }, include: { items: true } });
+  private async editableQuotation(tx: Prisma.TransactionClient, id: string) {
+    await tx.$queryRaw`SELECT id FROM "Quotation" WHERE id = ${id} FOR UPDATE`;
+    const q = await tx.quotation.findUnique({ where: { id } });
     if (!q) throw new NotFoundException();
-    const sellingTotal = q.items.reduce((s, i) => s + Number(i.sellingPrice) * i.quantity, 0);
-    const costTotal = q.items.reduce((s, i) => s + Number(i.cost) * i.quantity, 0);
-    const net = sellingTotal - Number(q.discount) + Number(q.tax);
-    return this.prisma.quotation.update({
+    if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status) || await tx.umrahBooking.findFirst({ where: { quotationId: id } })) throw new ConflictException("Quotation is no longer editable");
+    return q;
+  }
+
+  private async recalcQuote(id: string, tx: Prisma.TransactionClient) {
+    const q = await tx.quotation.findUnique({ where: { id }, include: { items: true } });
+    if (!q) throw new NotFoundException();
+    const sellingTotal = q.items.reduce((s, i) => s.plus(i.sellingPrice.mul(i.quantity)), new Prisma.Decimal(0));
+    const costTotal = q.items.reduce((s, i) => s.plus(i.cost.mul(i.quantity)), new Prisma.Decimal(0));
+    const net = sellingTotal.minus(q.discount).plus(q.tax);
+    if (net.isNegative()) throw new BadRequestException("Quotation net cannot be negative");
+    return tx.quotation.update({
       where: { id },
       data: { sellingTotal, costTotal, net },
       include: { items: true, customer: true, lead: true, umrahBookings: true },

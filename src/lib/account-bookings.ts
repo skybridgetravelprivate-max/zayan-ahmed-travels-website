@@ -12,7 +12,7 @@ export type AccountBooking = {
   reference: string;
   service: string;
   destination: string;
-  travelDate: string;
+  travelDate: string | null;
   status: AccountBookingStatus;
   createdAt: string;
   updatedAt: string;
@@ -34,11 +34,11 @@ export function parseAccountBooking(row: unknown): AccountBooking | null {
   const reference = asNonEmptyString(record.reference);
   const service = asNonEmptyString(record.service);
   const destination = asNonEmptyString(record.destination);
-  const travelDate = asNonEmptyString(record.travelDate);
+  const travelDate = record.travelDate === null ? null : asNonEmptyString(record.travelDate);
   const status = asNonEmptyString(record.status);
   const createdAt = asNonEmptyString(record.createdAt);
   const updatedAt = asNonEmptyString(record.updatedAt);
-  if (!reference || !service || !destination || !travelDate || !createdAt || !updatedAt) return null;
+  if (!reference || !service || !destination || travelDate === "" || !createdAt || !updatedAt) return null;
   if (!isStatus(status)) return null;
   return { reference, service, destination, travelDate, status, createdAt, updatedAt };
 }

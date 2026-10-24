@@ -17,6 +17,7 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
     const existing = await tx.umrahBooking.findFirst({ where: { quotationId: id } });
     if (existing) return existing;
     if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status)) throw new ConflictException("Quotation cannot be converted in its current state");
+    const lead = q.leadId ? await tx.lead.findUnique({ where: { id: q.leadId } }) : null;
     const bookingNumber = await seq.next("umrah-bk", "ZAT-UM", tx);
     const booking = await tx.umrahBooking.create({
       data: {
@@ -25,6 +26,9 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
         quotationId: q.id,
         agentId: q.agentId,
         branchId: q.branchId,
+        packageId: lead?.packageId,
+        departureDate: lead?.travelDate,
+        returnDate: lead?.returnDate,
         cost: q.costTotal,
         sellingPrice: q.sellingTotal,
         discount: q.discount,

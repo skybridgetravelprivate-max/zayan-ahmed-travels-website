@@ -21,7 +21,7 @@ export type CustomerBookingDto = {
   reference: string;
   service: CustomerBookingService;
   destination: string;
-  travelDate: string;
+  travelDate: string | null;
   status: CustomerBookingStatus;
   createdAt: string;
   updatedAt: string;
@@ -47,12 +47,12 @@ export function sanitizeCustomerBooking(row: unknown): CustomerBookingDto | null
   const reference = asNonEmptyString(record.reference);
   const service = asNonEmptyString(record.service);
   const destination = asNonEmptyString(record.destination);
-  const travelDate = asNonEmptyString(record.travelDate);
+  const travelDate = record.travelDate === null ? null : asNonEmptyString(record.travelDate);
   const status = asNonEmptyString(record.status);
   const createdAt = asNonEmptyString(record.createdAt);
   const updatedAt = asNonEmptyString(record.updatedAt);
 
-  if (!reference || !destination || !travelDate || !createdAt || !updatedAt) return null;
+  if (!reference || !destination || travelDate === "" || !createdAt || !updatedAt) return null;
   if (!isService(service) || !isStatus(status)) return null;
 
   return {

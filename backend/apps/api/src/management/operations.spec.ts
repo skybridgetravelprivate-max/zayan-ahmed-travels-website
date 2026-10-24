@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Prisma } from "@prisma/client";
 import { WorkflowsController } from "../workflows/workflows.controller";
 import { UmrahOpsService } from "../umrah/umrah-ops.service";
 import { CrmService } from "../crm/crm.service";
@@ -144,11 +145,11 @@ test("quotation items reject invalid quantities and amounts before database acce
 
 test("quotation item quantities and amounts reach the existing recalculation", async () => {
   let created: unknown;
-  const db = { quotation: { findUnique: async () => ({ id: "quote", items: [{ quantity: 2, sellingPrice: 10, cost: 5 }], discount: 0, tax: 0 }), update: async ({ data }: { data: unknown }) => data }, quotationItem: { create: async ({ data }: { data: unknown }) => { created = data; } } };
+  const db = { $transaction: async (run: (tx: unknown) => unknown) => run(db), $queryRaw: async () => [], umrahBooking: { findFirst: async () => null }, quotation: { findUnique: async () => ({ id: "quote", status: "DRAFT", items: [{ quantity: 2, sellingPrice: new Prisma.Decimal(10), cost: new Prisma.Decimal(5) }], discount: 0, tax: 0 }), update: async ({ data }: { data: unknown }) => data }, quotationItem: { create: async ({ data }: { data: unknown }) => { created = data; } } };
   const svc = new CrmService(db as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
   const result = await svc.addQuoteItem("quote", { description: " Synthetic ", quantity: 2, sellingPrice: 10, cost: 5 });
   assert.deepEqual(created, { quotationId: "quote", description: "Synthetic", quantity: 2, sellingPrice: 10, cost: 5 });
-  assert.deepEqual(result, { sellingTotal: 20, costTotal: 10, net: 20 });
+  assert.deepEqual(result, { sellingTotal: new Prisma.Decimal(20), costTotal: new Prisma.Decimal(10), net: new Prisma.Decimal(20) });
 });
 
 test("hotel references reject foreign, missing, deleted and mismatched physical rooms", async () => {

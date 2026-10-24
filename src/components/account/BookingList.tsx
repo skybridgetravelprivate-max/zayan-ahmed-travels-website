@@ -147,7 +147,7 @@ export function BookingList({
                     <Detail label="Booking reference" value={booking.reference} />
                     <Detail label="Service type" value={booking.service} />
                     <Detail label="Destination" value={booking.destination} />
-                    <Detail label="Travel date" value={booking.travelDate} />
+                    <Detail label="Travel date" value={booking.travelDate ?? "Date to be confirmed"} />
                   </dl>
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <BookingStatusBadge status={booking.status} />

@@ -10,7 +10,7 @@ export type WebsiteCustomerBookingDto = {
   reference: string;
   service: WebsiteBookingService;
   destination: string;
-  travelDate: string;
+  travelDate: string | null;
   status: WebsiteBookingStatus;
   createdAt: string;
   updatedAt: string;
@@ -21,8 +21,8 @@ export function isoDate(value: Date | null | undefined): string {
   return value.toISOString();
 }
 
-export function travelDateFrom(value: Date | null | undefined): string {
-  if (!value) return "";
+export function travelDateFrom(value: Date | null | undefined): string | null {
+  if (!value) return null;
   return value.toISOString().slice(0, 10);
 }
 
@@ -36,7 +36,8 @@ export function mapWebsiteStatus(raw: string, cancelled: boolean): WebsiteBookin
 
 export function isWebsiteBookingRow(row: WebsiteCustomerBookingDto): boolean {
   return (
-    Boolean(row.reference && row.destination && row.travelDate && row.createdAt && row.updatedAt) &&
+    Boolean(row.reference && row.destination && row.createdAt && row.updatedAt) &&
+    (row.travelDate === null || (typeof row.travelDate === "string" && row.travelDate.length > 0)) &&
     (WEBSITE_BOOKING_SERVICES as readonly string[]).includes(row.service) &&
     (WEBSITE_BOOKING_STATUSES as readonly string[]).includes(row.status)
   );

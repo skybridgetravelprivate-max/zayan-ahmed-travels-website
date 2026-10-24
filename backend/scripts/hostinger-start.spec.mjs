@@ -21,7 +21,7 @@ test("gateway waits for website readiness before accepting requests", async () =
     fs: { existsSync: () => false },
     path,
     url: { parse: () => ({}) },
-    "./hostinger-api-path.cjs": { isApiPathname: p => p.startsWith("/api/") },
+    "./hostinger-api-path.cjs": (await import("./hostinger-api-path.cjs")).default,
     next: () => ({ prepare: () => prepared, getRequestHandler: () => (_req, res) => { res.writeHead(200, {}); res.end("ready"); } }),
   };
   const context = { require(name) { assert.ok(name in dependencies); return dependencies[name]; }, __dirname: scriptsDir, process: { env: { START_MODE: "web" } }, console: { log() {}, error() {} }, URL };
@@ -39,6 +39,16 @@ test("gateway waits for website readiness before accepting requests", async () =
   assert.equal(status, 503);
   assert.equal(headers["cache-control"], "no-store");
   assert.equal(headers["retry-after"], "3");
+  context.process.env.RECEIPT_WRITES_DISABLED = "true";
+  handleRequest({ method: "POST", url: "/api/v1/finance/receipts?retry=1" }, response);
+  assert.equal(status, 503);
+  assert.equal(headers["cache-control"], "private, no-store");
+  assert.equal(headers["retry-after"], "60");
+  assert.match(body, /Preserve the original retry key/);
+  handleRequest({ method: "POST", url: "/api/v1/finance/receipts/request_test/review" }, response);
+  assert.equal(headers["retry-after"], "60");
+  handleRequest({ method: "GET", url: "/admin" }, response);
+  assert.equal(status, 200);
 });
 
 for (const mode of ["api", "all"]) {
