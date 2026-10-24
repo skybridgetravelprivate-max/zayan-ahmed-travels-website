@@ -25,7 +25,7 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null }) 
             description={
               signedIn
                 ? "Open your booking list."
-                : "Sign in to view bookings. Sample trips are not shown as your bookings."
+                : "Sign in to view your bookings."
             }
           >
             <Button href="/my-bookings">My bookings</Button>
@@ -35,7 +35,7 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null }) 
           <li key={item.id}>
             <Card
               title={item.title}
-              description={signedIn ? "Not connected to your account yet." : "Demo section. Nothing is stored or sent."}
+              description={item.id === "support" ? "Contact our team about your trip." : "Our team can help with this service."}
             >
               <Button
                 variant={panel === item.id ? "secondary" : "outline"}
@@ -50,20 +50,23 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null }) 
       </ul>
 
       {active ? (
+        <section className="space-y-4">
         <AccountState
           status="empty"
           title={active.title}
-          message={signedIn ? "Nothing is stored here yet." : active.empty}
+          message={active.empty}
         />
+        <Button href="/contact">Contact agency</Button>
+        </section>
       ) : null}
 
       <AccountState
         status="empty"
-        title="No inquiries in this account"
+        title="Need help with an inquiry?"
         message={
           signedIn
-            ? "Questions sent from the public forms are not listed on this account."
-            : "Questions sent from the public forms are not listed here. This sample account does not store an inquiry."
+            ? "Contact our team with your booking or inquiry reference for an update."
+            : "Contact our team for assistance with an inquiry or an existing booking."
         }
       />
 

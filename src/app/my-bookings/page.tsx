@@ -29,7 +29,7 @@ export default async function MyBookingsPage() {
           <AccountState
             status="empty"
             title="Sign in to view bookings"
-            message="Bookings are shown only for the signed-in account. Sample trips are not listed here."
+            message="Sign in to view the bookings linked to your account."
           />
           <section className="max-w-xl rounded-3xl border border-line bg-surface p-6">
             <h2 className="text-lg font-bold text-zayan-blue">Sign in</h2>

@@ -126,7 +126,7 @@ function workflowHarness(failCost = false) {
   let active: typeof state;
   const db = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => {
     const prior = tail; let release!: () => void; tail = new Promise<void>(r => { release = r; }); await prior;
-    active = structuredClone(state);
+    active = JSON.parse(JSON.stringify(state)) as typeof state;
     let locked = false;
     const tx = {
       $queryRaw: async (parts: TemplateStringsArray) => { assert.match(parts.join("?"), /FOR UPDATE/); locked = true; return []; },
@@ -135,7 +135,7 @@ function workflowHarness(failCost = false) {
       umrahBooking: { findFirst: async () => active.bookings[0], create: async ({ data }: { data: object }) => { const b = { id: "booking", ...data }; active.bookings.push(b); return b; } },
       umrahGroup: { findUnique: async () => { assert.ok(locked); return { branchId: "a", reservedSeats: active.reserved, totalSeats: 5 }; }, update: async ({ data }: { data: { reservedSeats: number } }) => { active.reserved = data.reservedSeats; return data; } },
       ticketSale: {
-        findUnique: async () => { assert.ok(locked); return { id: "ticket", branchId: "a", status: active.ticketStatus, fare: 100, net: 100, cost: 50, profit: 50, tax: 0, paymentStatus: "PAID", currency: "PKR" }; },
+        findUnique: async () => { assert.ok(locked); return { id: "ticket", branchId: "a", status: active.ticketStatus, fare: 100, net: 100, cost: 50, profit: 50, tax: 0, paidAmount: 100, paymentStatus: "PAID", currency: "PKR" }; },
         create: async ({ data }: { data: object }) => { const t = { id: "new-ticket", ...data }; active.tickets.push(t); return t; },
         update: async () => { active.ticketStatus = "REISSUED"; },
       },

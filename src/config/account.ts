@@ -68,21 +68,21 @@ export const accountPanels: readonly {
   {
     id: "documents",
     title: "Travel Documents",
-    empty: "No demo documents are stored. This account is not connected to a record.",
+    empty: "Contact our team for your travel documents. Private document downloads are not available in this account yet.",
   },
   {
     id: "visas",
     title: "Visa Applications",
-    empty: "No demo visa applications are stored. Nothing is filed from this page.",
+    empty: "Contact our team with your application reference for a visa status update. Personal visa tracking is not available here yet.",
   },
   {
     id: "support",
     title: "Support",
-    empty: "Support messages are not connected. This panel does not send a request.",
+    empty: "Use our contact page to ask about your trip, booking or travel documents.",
   },
   {
     id: "settings",
     title: "Account Settings",
-    empty: "Settings are not available on this screen.",
+    empty: "Your account details are shown above when signed in. Contact our team if you need assistance with them.",
   },
 ];

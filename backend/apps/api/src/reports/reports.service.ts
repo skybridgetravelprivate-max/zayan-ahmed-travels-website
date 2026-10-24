@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { AccountingService } from "../finance/accounting.service";
 
@@ -70,7 +71,7 @@ export class ReportsService {
       rows = await this.receivables();
     } else if (key === "receivables-summary") {
       const detail = await this.receivables();
-      const amount = detail.reduce((s, r) => s + Number(r.debit || 0), 0);
+      const amount = detail.reduce((s, r) => s.plus(Number(r.debit || 0)), new Prisma.Decimal(0)).toNumber();
       rows = [{ status: "Open", parties: detail.length, debit: amount }];
     } else if (key === "trial-balance") {
       const tb = await this.accounting.trialBalance(q.to ? new Date(q.to) : undefined);
@@ -83,9 +84,9 @@ export class ReportsService {
     }
     const totals = { debit: 0, credit: 0, sale: 0, rooms: 0, pax: 0, count: 0 };
     for (const r of rows) {
-      totals.debit += Number(r.debit || 0);
-      totals.credit += Number(r.credit || 0);
-      totals.sale += Number(r.sale || r.amount || 0);
+      totals.debit = new Prisma.Decimal(totals.debit).plus(Number(r.debit ?? 0)).toNumber();
+      totals.credit = new Prisma.Decimal(totals.credit).plus(Number(r.credit ?? 0)).toNumber();
+      totals.sale = new Prisma.Decimal(totals.sale).plus(Number(r.sale ?? r.amount ?? 0)).toNumber();
       totals.rooms += Number(r.rooms || 0);
       totals.pax += Number(r.pax || 0);
       totals.count += Number(r.count || r.bookings || 1);
@@ -306,15 +307,15 @@ export class ReportsService {
       const d = date.toISOString().slice(0, 10);
       if (!by[d]) by[d] = { date: d, count: 0, sale: 0, cost: 0, paid: 0, profit: 0 };
       by[d].count += 1;
-      by[d].sale += sale;
-      by[d].cost += cost;
-      by[d].paid += paid;
-      by[d].profit = by[d].sale - by[d].cost;
+      by[d].sale = new Prisma.Decimal(by[d].sale).plus(sale).toNumber();
+      by[d].cost = new Prisma.Decimal(by[d].cost).plus(cost).toNumber();
+      by[d].paid = new Prisma.Decimal(by[d].paid).plus(paid).toNumber();
+      by[d].profit = new Prisma.Decimal(by[d].sale).minus(by[d].cost).toNumber();
     };
     (await this.prisma.umrahBooking.findMany()).forEach((u) => add(u.departureDate || u.createdAt, Number(u.net), Number(u.cost), Number(u.paid)));
     (await this.prisma.ticketSale.findMany()).forEach((t) => add(t.createdAt, Number(t.net), Number(t.cost), Number(t.paidAmount || 0)));
     (await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null } })).forEach((h) => add(h.checkIn, Number(h.net), Number(h.cost), Number(h.paid)));
-    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, Number(t.net), Number(t.cost), Number(t.paid || 0)));
+    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, Number(t.sellingPrice), Number(t.cost), Number(t.paid || 0)));
     (await this.prisma.starBooking.findMany()).forEach((s) => add(s.createdAt, Number(s.sellingPrice), Number(s.cost), Number(s.paid)));
     return Object.values(by).sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -327,19 +328,7 @@ export class ReportsService {
       const names = Object.fromEntries(customers.map((c) => [c.id, c.fullName]));
       return posted.map((p) => ({ party: names[p.partyId] || p.partyId, debit: p.balance, count: 1, clientId: p.partyId }));
     }
-    const umrah = await this.prisma.umrahBooking.findMany({ include: { customer: true } });
-    const hotels = await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null }, include: { customer: true } });
-    const tickets = await this.prisma.ticketSale.findMany({ include: { customer: true } });
-    const map: Record<string, { party: string; debit: number; count: number; clientId: string }> = {};
-    const bump = (id: string | null | undefined, name: string, due: number) => {
-      if (due <= 0.009 || !id) return;
-      if (!map[id]) map[id] = { party: name, debit: 0, count: 0, clientId: id };
-      map[id].debit += due;
-      map[id].count += 1;
-    };
-    umrah.forEach((u) => bump(u.customerId, u.customer.fullName, Number(u.balance)));
-    hotels.forEach((h) => bump(h.customerId, h.customer?.fullName || "", Number(h.balance)));
-    tickets.forEach((t) => bump(t.customerId, t.customer?.fullName || "", Number(t.net) - Number(t.paidAmount || 0)));
-    return Object.values(map);
+    // A settled or empty posted ledger must not resurrect operational estimates.
+    return [];
   }
 }

@@ -1,0 +1,13 @@
+# Platform corrections release review — 24 October 2026
+
+Candidate against 34fc72c6b4b04de76ff3861e02f545cb2b584f50. The completion matrix and payment proposal are included alongside source; they deliberately do not claim every diagram capability is complete.
+
+Changes: ticket replacement preserves payment/context and exact fee AR; replaced/partially-refunded sources fail closed; hotel splitting reuses save in one transaction with ownership/confirmation preservation and physical-room serialization; posted receivables no longer fall back to source estimates; transport daily selling totals and financial aggregations are exact; account guest/profile/support presentation is truthful.
+
+Proof: 13 new PG17 checks including parents; 138 backend regressions; API build; Next.js production build and combined Hostinger packaging; changed customer-UI lint; real Chrome/HTTP/proxy financial/customer isolation and 390px/1280px account acceptance. New ticket/report tests failed on the prior baseline. Two mock harnesses were updated for Decimal serialization/transaction entry without removing safety assertions. Dependencies are unchanged from the previously audited patched release.
+
+Recovery: exact currently deployed 34fc72c bundle retained with SHA256 287d2811ad28a1d3a2aa24afa78c9a14e232c453c951656c3e0dcfb5ec916240. Guarded archive SHA256 fe8aa00dbbd47f83483d6d7723d392d73c5acb2ea7eadd4e46ba454a63c81ba7. Local recovery storage has restricted owner/SYSTEM access. The retained API passed synthetic receipt/PDF/read/blocked-write checks using installed Windows dependencies. Full Linux bundle execution was not performed locally. Retain existing server configuration and customer storage; do not restore the database for a code rollback. Use the guarded bundle and keep receipt writes blocked during rollback; pause ticket/reservation operations operationally until the corrected version is restored.
+
+No schema migration, seed, historical backfill or production financial test write is included. Initial paid-amount integration was explicitly selected as a proposal for approval and remains unchanged. Document uploads remain disabled; configured bucket metadata was checked read-only and is private with 8MB limit. SMTP/WhatsApp adapters lack credentials. No provider activation, permission/credential change, paid service, scheduler, pruning, object change or additional agent is included.
+
+After final manifest/hash and remote-branch checks, the owner-authorized commit/push may trigger Hostinger deployment. Observe the exact commit Completed/Current and run read-only public/runtime smoke checks. Store final deployment identity and acceptance results in the output report. Authenticated production financial testing is not authorized.

@@ -128,6 +128,11 @@ export class ReservationService {
     db: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
     const conflicts: string[] = [];
+    // Shared physical rooms are serialized across processes when called inside save's transaction.
+    // Use one hotel identity so a physical-room ID and its displayed number cannot use different locks.
+    const keys = [...new Set(segments.filter(seg => seg.rooms.some(room => room.hotelRoomId || room.roomNumber))
+      .map(seg => `hotel-occupancy:${seg.hotelId}`))].sort();
+    for (const key of keys) await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 2))::text`;
     for (const seg of segments) {
       const cin = new Date(seg.checkIn);
       const cout = new Date(seg.checkOut);
@@ -158,7 +163,7 @@ export class ReservationService {
     if (conflicts.length) throw new BadRequestException(conflicts[0]);
   }
 
-  async save(user: AuthUser, input: ReservationInput, ip?: string) {
+  async save(user: AuthUser, input: ReservationInput, ip?: string, transaction?: Prisma.TransactionClient) {
     assertCan(user, "hotel.booking");
     this.validateGraph(input);
     const tot = this.totals(input.segments);
@@ -210,8 +215,7 @@ export class ReservationService {
       }
     };
 
-    const bookingId = await this.prisma.$transaction(
-      async (tx) => {
+    const persistBooking = async (tx: Prisma.TransactionClient) => {
         for (const segment of input.segments) for (const room of segment.rooms) await assertHotelRoomLinks(tx, { ...room, hotelId: segment.hotelId });
         if (input.id) {
           await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${input.id} FOR UPDATE`;
@@ -321,11 +325,9 @@ export class ReservationService {
         });
         await this.audit.log({ userId: user.id, action: "create", entity: "HotelBooking", entityId: row.id, after: row, ipAddress: ip, db: tx });
         return row.id;
-      },
-      { maxWait: 10_000, timeout: 30_000 },
-    );
-
-    return this.get(user, bookingId);
+      };
+    const bookingId = transaction ? await persistBooking(transaction) : await this.prisma.$transaction(persistBooking, { maxWait: 10_000, timeout: 30_000 });
+    return this.get(user, bookingId, transaction);
   }
 
   private include() {
@@ -336,9 +338,9 @@ export class ReservationService {
     } as const;
   }
 
-  async get(user: AuthUser, id: string) {
+  async get(user: AuthUser, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
     assertCan(user, "hotel.booking");
-    const row = await this.prisma.hotelBooking.findUnique({ where: { id }, include: this.include() });
+    const row = await db.hotelBooking.findUnique({ where: { id }, include: this.include() });
     if (!row) throw new NotFoundException();
     assertBranch(user, row.branchId);
     return row;
@@ -550,45 +552,66 @@ export class ReservationService {
   async split(user: AuthUser, bookingId: string, roomIds: string[], ip?: string) {
     assertCan(user, "reservation.split");
     if (!roomIds?.length) throw new BadRequestException("Select at least one room to split.");
-    const booking = await this.get(user, bookingId);
-    if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
-    if (Number(booking.net) !== 0 || Number(booking.cost) !== 0 || Number(booking.paid) !== 0) throw new BadRequestException("Posted financial reservations cannot be split.");
-    const ownedIds = new Set(booking.staySegments.flatMap(segment => segment.rooms.map(room => room.id)));
-    if (roomIds.some(id => !ownedIds.has(id))) throw new NotFoundException("Room does not belong to this reservation");
-    const move = new Set(roomIds);
-    const childSegs: StaySegmentInput[] = [];
-    for (const seg of booking.staySegments) {
-      const rooms = seg.rooms.filter((r) => move.has(r.id));
-      if (!rooms.length) continue;
-      childSegs.push({
-        hotelId: seg.hotelId,
-        supplierId: undefined,
-        checkIn: seg.checkIn.toISOString(),
-        checkOut: seg.checkOut.toISOString(),
-        rooms: rooms.map((r) => ({
-          roomTypeId: r.roomTypeId || undefined,
-          hotelRoomId: r.hotelRoomId || undefined,
-          roomNumber: r.roomNumber || undefined,
-          occupancy: r.occupancy,
-          passengerIds: r.pax.map((p) => p.passengerId),
-          supplierCost: Number(r.supplierCost),
-          sellingPrice: Number(r.sellingPrice),
-          discount: Number(r.discount),
-          tax: Number(r.tax),
-          commission: Number(r.commission),
-        })),
-      });
-    }
-    if (!childSegs.length) throw new BadRequestException("Selected rooms were not found on this booking.");
-    const child = await this.save(user, {
-      kind: booking.kind,
-      customerId: booking.customerId || undefined,
-      hotelId: childSegs[0].hotelId,
-      segments: childSegs,
-    }, ip);
-    await this.prisma.hotelBooking.update({ where: { id: child.id }, data: { parentBookingId: bookingId } });
-    await this.prisma.hotelStayRoom.deleteMany({ where: { id: { in: roomIds } } });
-    await this.audit.log({ userId: user.id, action: "split", entity: "HotelBooking", entityId: bookingId, after: { childId: child.id }, ipAddress: ip });
-    return { parentId: bookingId, child };
+    if (new Set(roomIds).size !== roomIds.length) throw new BadRequestException("Select each room only once.");
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${bookingId} FOR UPDATE`;
+      const booking = await this.get(user, bookingId, tx);
+      if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+      if (Number(booking.net) !== 0 || Number(booking.cost) !== 0 || Number(booking.paid) !== 0) throw new BadRequestException("Posted financial reservations cannot be split.");
+      const ownedIds = new Set(booking.staySegments.flatMap(segment => segment.rooms.map(room => room.id)));
+      if (roomIds.some(id => !ownedIds.has(id))) throw new NotFoundException("Room does not belong to this reservation");
+      if (roomIds.length >= ownedIds.size) throw new BadRequestException("A split must leave at least one room in the original reservation.");
+      const move = new Set(roomIds);
+      if (booking.staySegments.some(segment => segment.rooms.some(room => move.has(room.id) && (room.checkinAt || ["CHECKED_IN", "CHECKED_OUT", "TRANSFERRED", "CANCELLED"].includes(room.status))))) {
+        throw new BadRequestException("Rooms with an active or completed stay cannot be split.");
+      }
+      const childSegs: StaySegmentInput[] = [];
+      for (const seg of booking.staySegments) {
+        const rooms = seg.rooms.filter((r) => move.has(r.id));
+        if (!rooms.length) continue;
+        childSegs.push({
+          hotelId: seg.hotelId,
+          supplierId: seg.supplierId || undefined,
+          confirmationNo: seg.confirmationNo || undefined,
+          status: seg.status,
+          notes: seg.notes || undefined,
+          specialRequest: seg.specialRequest || undefined,
+          checkIn: seg.checkIn.toISOString(),
+          checkOut: seg.checkOut.toISOString(),
+          rooms: rooms.map((r) => ({
+            roomTypeId: r.roomTypeId || undefined,
+            hotelRoomId: r.hotelRoomId || undefined,
+            roomNumber: r.roomNumber || undefined,
+            occupancy: r.occupancy,
+            status: r.status,
+            passengerIds: r.pax.map((p) => p.passengerId),
+            supplierCost: Number(r.supplierCost),
+            sellingPrice: Number(r.sellingPrice),
+            discount: Number(r.discount),
+            tax: Number(r.tax),
+            commission: Number(r.commission),
+          })),
+        });
+      }
+      if (!childSegs.length) throw new BadRequestException("Selected rooms were not found on this booking.");
+      // Release the selected occupancy only inside this transaction. Any creation or audit failure restores it.
+      await tx.hotelStayRoom.deleteMany({ where: { id: { in: roomIds } } });
+      const child = await this.save(user, {
+        kind: booking.kind,
+        customerId: booking.customerId || undefined,
+        passengerId: booking.passengerId || undefined,
+        supplierId: booking.supplierId || undefined,
+        agentId: booking.agentId || undefined,
+        branchId: booking.branchId || undefined,
+        notes: booking.notes || undefined,
+        specialRequests: booking.specialRequests || undefined,
+        hotelId: childSegs[0].hotelId,
+        segments: childSegs,
+      }, ip, tx);
+      await tx.hotelBooking.update({ where: { id: child.id }, data: { parentBookingId: bookingId } });
+      await tx.hotelBooking.update({ where: { id: bookingId }, data: { rooms: ownedIds.size - roomIds.length } });
+      await this.audit.log({ userId: user.id, action: "split", entity: "HotelBooking", entityId: bookingId, after: { childId: child.id }, ipAddress: ip, db: tx });
+      return { parentId: bookingId, child: await this.get(user, child.id, tx) };
+    }, { maxWait: 10_000, timeout: 30_000 });
   }
 }

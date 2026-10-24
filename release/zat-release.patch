@@ -1,427 +1,944 @@
-diff --git a/backend/apps/api/package.json b/backend/apps/api/package.json
-index d40b90b7b29f2e6177ede985ae99cc45f909d8b8..bfc5b565cd91e3813f9016076edcd123e3118116 100644
---- a/backend/apps/api/package.json
-+++ b/backend/apps/api/package.json
-@@ -34,8 +34,8 @@
-     "cookie-parser": "^1.4.7",
-     "dotenv": "^16.6.1",
-     "ioredis": "^5.7.0",
--    "multer": "^2.0.1",
--    "nodemailer": "^10.0.9",
-+    "multer": "^2.5.0",
-+    "nodemailer": "^10.1.4",
-     "passport": "^0.7.0",
-     "passport-jwt": "^4.0.1",
-     "pdfkit": "^0.17.1",
-diff --git a/backend/package-lock.json b/backend/package-lock.json
-index a050e461fb926a49644adcbfe5730f9b34f074e3..a0dd44c6c2fb003de3e0d389e6b9862160cde70e 100644
---- a/backend/package-lock.json
-+++ b/backend/package-lock.json
-@@ -44,8 +44,8 @@
-         "cookie-parser": "^1.4.7",
-         "dotenv": "^16.6.1",
-         "ioredis": "^5.7.0",
--        "multer": "^2.0.1",
--        "nodemailer": "^10.0.9",
-+        "multer": "^2.5.0",
-+        "nodemailer": "^10.1.4",
-         "passport": "^0.7.0",
-         "passport-jwt": "^4.0.1",
-         "pdfkit": "^0.17.1",
-@@ -805,9 +805,9 @@
-       }
-     },
-     "node_modules/@nestjs/platform-express": {
--      "version": "11.2.7",
--      "resolved": "https://registry.npmjs.org/@nestjs/platform-express/-/platform-express-11.2.7.tgz",
--      "integrity": "sha512-+F0hV/4yJM+D/Qwyo5XmKMe6YGEb+ssT2jFWrgdFe1obumXCUeC1GNob/kNeXyzAXm7dcxZVUtmcoqaF6z36jA==",
-+      "version": "11.2.8",
-+      "resolved": "https://registry.npmjs.org/@nestjs/platform-express/-/platform-express-11.2.8.tgz",
-+      "integrity": "sha512-aSAAz8E31qv+sDsL0s7Cw/HoXmeM0TVf35ny17BjLL10c2PgFDp2vunycL7muVyp3/IP5TStMb3Ia4B/RTNHZA==",
-       "license": "MIT",
-       "dependencies": {
-         "cors": "2.8.6",
-@@ -1596,18 +1596,18 @@
-       "license": "MIT"
-     },
-     "node_modules/body-parser": {
--      "version": "2.3.0",
--      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.3.0.tgz",
--      "integrity": "sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==",
-+      "version": "2.4.0",
-+      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.4.0.tgz",
-+      "integrity": "sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==",
-       "license": "MIT",
-       "dependencies": {
-         "bytes": "^3.1.2",
--        "content-type": "^2.0.0",
-+        "content-type": "^2.1.0",
-         "debug": "^4.4.3",
-         "http-errors": "^2.0.1",
--        "iconv-lite": "^0.7.2",
-+        "iconv-lite": "^0.7.3",
-         "on-finished": "^2.4.1",
--        "qs": "^6.15.2",
-+        "qs": "^6.16.1",
-         "raw-body": "^3.0.2",
-         "type-is": "^2.1.0"
+diff --git a/backend/apps/api/src/common/p0-remediation.spec.ts b/backend/apps/api/src/common/p0-remediation.spec.ts
+index 04f369caaed94cb2fc0d5765b9aa02d83ec8f9aa..5d56ba70498ba557a5e19dedb9f23996eeae7aa9 100644
+--- a/backend/apps/api/src/common/p0-remediation.spec.ts
++++ b/backend/apps/api/src/common/p0-remediation.spec.ts
+@@ -126,7 +126,7 @@ function workflowHarness(failCost = false) {
+   let active: typeof state;
+   const db = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => {
+     const prior = tail; let release!: () => void; tail = new Promise<void>(r => { release = r; }); await prior;
+-    active = structuredClone(state);
++    active = JSON.parse(JSON.stringify(state)) as typeof state;
+     let locked = false;
+     const tx = {
+       $queryRaw: async (parts: TemplateStringsArray) => { assert.match(parts.join("?"), /FOR UPDATE/); locked = true; return []; },
+@@ -135,7 +135,7 @@ function workflowHarness(failCost = false) {
+       umrahBooking: { findFirst: async () => active.bookings[0], create: async ({ data }: { data: object }) => { const b = { id: "booking", ...data }; active.bookings.push(b); return b; } },
+       umrahGroup: { findUnique: async () => { assert.ok(locked); return { branchId: "a", reservedSeats: active.reserved, totalSeats: 5 }; }, update: async ({ data }: { data: { reservedSeats: number } }) => { active.reserved = data.reservedSeats; return data; } },
+       ticketSale: {
+-        findUnique: async () => { assert.ok(locked); return { id: "ticket", branchId: "a", status: active.ticketStatus, fare: 100, net: 100, cost: 50, profit: 50, tax: 0, paymentStatus: "PAID", currency: "PKR" }; },
++        findUnique: async () => { assert.ok(locked); return { id: "ticket", branchId: "a", status: active.ticketStatus, fare: 100, net: 100, cost: 50, profit: 50, tax: 0, paidAmount: 100, paymentStatus: "PAID", currency: "PKR" }; },
+         create: async ({ data }: { data: object }) => { const t = { id: "new-ticket", ...data }; active.tickets.push(t); return t; },
+         update: async () => { active.ticketStatus = "REISSUED"; },
        },
-@@ -3251,9 +3251,9 @@
-       "license": "MIT"
-     },
-     "node_modules/multer": {
--      "version": "2.4.0",
--      "resolved": "https://registry.npmjs.org/multer/-/multer-2.4.0.tgz",
--      "integrity": "sha512-7dqa0ZcFfzbefdTuIkzOSMvZWC0J7FLqBOjJUZvDCXShIURWKxAyTT1wHhnE5q19c7jOJf43IYYKjBmZVZmvhg==",
-+      "version": "2.5.0",
-+      "resolved": "https://registry.npmjs.org/multer/-/multer-2.5.0.tgz",
-+      "integrity": "sha512-BsqOzYGVq49JcW2IzoSAxeKYRevb+dGGPPWleOR8Lrlk4igwxu1/9pwSXlByhCb7MVZDrNJFC0IBP5/O5nLYRw==",
-       "license": "MIT",
-       "dependencies": {
-         "append-field": "^1.0.0",
-@@ -3354,9 +3354,9 @@
-       "license": "MIT"
-     },
-     "node_modules/nodemailer": {
--      "version": "10.0.9",
--      "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-10.0.9.tgz",
--      "integrity": "sha512-BF0qcyplCwp+jMk6HCjFykBz/YhhZSsxrARhOldLwFWH+8kGjQsd2WIMIZhqEuyXRoGFi0ONbDeWDMDoL8MhLw==",
-+      "version": "10.2.1",
-+      "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-10.2.1.tgz",
-+      "integrity": "sha512-ZrDNsPFoDMwefNs7sJwrYiEJ/CG4ClJWDZv05iNJsEBWa8GRDry1QJHTJxsuTAY9eDDKjX4k+q3SxslXJOao7w==",
-       "license": "MIT-0",
-       "engines": {
-         "node": ">=20.0.0"
-@@ -3861,9 +3861,9 @@
-       "license": "MIT"
-     },
-     "node_modules/qs": {
--      "version": "6.16.0",
--      "resolved": "https://registry.npmjs.org/qs/-/qs-6.16.0.tgz",
--      "integrity": "sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==",
-+      "version": "6.16.1",
-+      "resolved": "https://registry.npmjs.org/qs/-/qs-6.16.1.tgz",
-+      "integrity": "sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==",
-       "license": "BSD-3-Clause",
-       "dependencies": {
-         "es-define-property": "^1.0.1",
+diff --git a/backend/apps/api/src/common/pr16-review.spec.ts b/backend/apps/api/src/common/pr16-review.spec.ts
+index f158ec6f701b5ff688e547640cadd2c6bccabebc..09d014e3dca844fb016e5e164f229600b9fea5fd 100644
+--- a/backend/apps/api/src/common/pr16-review.spec.ts
++++ b/backend/apps/api/src/common/pr16-review.spec.ts
+@@ -112,7 +112,8 @@ test("reservation get, cancellation and room mutations reject foreign bookings b
+ });
+ 
+ test("priced reservation split cannot duplicate posted accounting", async () => {
+-  const svc = new ReservationService({ hotelBooking: { findUnique: async () => ({ branchId: "a", net: 100, cost: 50, paid: 0, staySegments: [] }) } } as never, {} as never, audit as never, {} as never);
++  const tx = { $queryRaw: async () => [], hotelBooking: { findUnique: async () => ({ branchId: "a", net: 100, cost: 50, paid: 0, staySegments: [] }) } };
++  const svc = new ReservationService({ $transaction: async (run: (db: typeof tx) => Promise<unknown>) => run(tx) } as never, {} as never, audit as never, {} as never);
+   await assert.rejects(svc.split(user, "r", ["room"]), /cannot be split/);
+ });
+ 
+diff --git a/backend/apps/api/src/finance/accounting.service.ts b/backend/apps/api/src/finance/accounting.service.ts
+index 2f395a95e33f27bc73bbcc95ad7d8c683d481b8c..c3f90cb1be8e38ac569915e8091e573ed7c22ce0 100644
+--- a/backend/apps/api/src/finance/accounting.service.ts
++++ b/backend/apps/api/src/finance/accounting.service.ts
+@@ -487,13 +487,13 @@ export class AccountingService {
+     const lines = await this.prisma.journalLine.findMany({
+       where: { accountId: acc.id, partyType, journal: { status: { in: ["POSTED", "REVERSED"] } } },
+     });
+-    const map: Record<string, number> = {};
++    const map: Record<string, Prisma.Decimal> = {};
+     for (const l of lines) {
+       const id = l.partyId || "unknown";
+-      map[id] = (map[id] || 0) + Number(l.debit) - Number(l.credit);
++      map[id] = (map[id] ?? new Prisma.Decimal(0)).plus(l.debit).minus(l.credit);
+     }
+     return Object.entries(map)
+-      .map(([partyId, balance]) => ({ partyId, balance: partyType === "supplier" ? -balance : balance }))
++      .map(([partyId, balance]) => ({ partyId, balance: (partyType === "supplier" ? balance.negated() : balance).toNumber() }))
+       .filter((r) => Math.abs(r.balance) > 0.009);
+   }
+ }
+diff --git a/backend/apps/api/src/reports/reports.service.ts b/backend/apps/api/src/reports/reports.service.ts
+index 4ddbc89118ff30faaad79b697ec3464bdd8a7185..fd5a429215765873c000cc87642dd28b57479e7e 100644
+--- a/backend/apps/api/src/reports/reports.service.ts
++++ b/backend/apps/api/src/reports/reports.service.ts
+@@ -1,4 +1,5 @@
+ import { Injectable } from "@nestjs/common";
++import { Prisma } from "@prisma/client";
+ import { PrismaService } from "../common/prisma.service";
+ import { AccountingService } from "../finance/accounting.service";
+ 
+@@ -70,7 +71,7 @@ export class ReportsService {
+       rows = await this.receivables();
+     } else if (key === "receivables-summary") {
+       const detail = await this.receivables();
+-      const amount = detail.reduce((s, r) => s + Number(r.debit || 0), 0);
++      const amount = detail.reduce((s, r) => s.plus(Number(r.debit || 0)), new Prisma.Decimal(0)).toNumber();
+       rows = [{ status: "Open", parties: detail.length, debit: amount }];
+     } else if (key === "trial-balance") {
+       const tb = await this.accounting.trialBalance(q.to ? new Date(q.to) : undefined);
+@@ -83,9 +84,9 @@ export class ReportsService {
+     }
+     const totals = { debit: 0, credit: 0, sale: 0, rooms: 0, pax: 0, count: 0 };
+     for (const r of rows) {
+-      totals.debit += Number(r.debit || 0);
+-      totals.credit += Number(r.credit || 0);
+-      totals.sale += Number(r.sale || r.amount || 0);
++      totals.debit = new Prisma.Decimal(totals.debit).plus(Number(r.debit ?? 0)).toNumber();
++      totals.credit = new Prisma.Decimal(totals.credit).plus(Number(r.credit ?? 0)).toNumber();
++      totals.sale = new Prisma.Decimal(totals.sale).plus(Number(r.sale ?? r.amount ?? 0)).toNumber();
+       totals.rooms += Number(r.rooms || 0);
+       totals.pax += Number(r.pax || 0);
+       totals.count += Number(r.count || r.bookings || 1);
+@@ -306,15 +307,15 @@ export class ReportsService {
+       const d = date.toISOString().slice(0, 10);
+       if (!by[d]) by[d] = { date: d, count: 0, sale: 0, cost: 0, paid: 0, profit: 0 };
+       by[d].count += 1;
+-      by[d].sale += sale;
+-      by[d].cost += cost;
+-      by[d].paid += paid;
+-      by[d].profit = by[d].sale - by[d].cost;
++      by[d].sale = new Prisma.Decimal(by[d].sale).plus(sale).toNumber();
++      by[d].cost = new Prisma.Decimal(by[d].cost).plus(cost).toNumber();
++      by[d].paid = new Prisma.Decimal(by[d].paid).plus(paid).toNumber();
++      by[d].profit = new Prisma.Decimal(by[d].sale).minus(by[d].cost).toNumber();
+     };
+     (await this.prisma.umrahBooking.findMany()).forEach((u) => add(u.departureDate || u.createdAt, Number(u.net), Number(u.cost), Number(u.paid)));
+     (await this.prisma.ticketSale.findMany()).forEach((t) => add(t.createdAt, Number(t.net), Number(t.cost), Number(t.paidAmount || 0)));
+     (await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null } })).forEach((h) => add(h.checkIn, Number(h.net), Number(h.cost), Number(h.paid)));
+-    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, Number(t.net), Number(t.cost), Number(t.paid || 0)));
++    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, Number(t.sellingPrice), Number(t.cost), Number(t.paid || 0)));
+     (await this.prisma.starBooking.findMany()).forEach((s) => add(s.createdAt, Number(s.sellingPrice), Number(s.cost), Number(s.paid)));
+     return Object.values(by).sort((a, b) => a.date.localeCompare(b.date));
+   }
+@@ -327,19 +328,7 @@ export class ReportsService {
+       const names = Object.fromEntries(customers.map((c) => [c.id, c.fullName]));
+       return posted.map((p) => ({ party: names[p.partyId] || p.partyId, debit: p.balance, count: 1, clientId: p.partyId }));
+     }
+-    const umrah = await this.prisma.umrahBooking.findMany({ include: { customer: true } });
+-    const hotels = await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null }, include: { customer: true } });
+-    const tickets = await this.prisma.ticketSale.findMany({ include: { customer: true } });
+-    const map: Record<string, { party: string; debit: number; count: number; clientId: string }> = {};
+-    const bump = (id: string | null | undefined, name: string, due: number) => {
+-      if (due <= 0.009 || !id) return;
+-      if (!map[id]) map[id] = { party: name, debit: 0, count: 0, clientId: id };
+-      map[id].debit += due;
+-      map[id].count += 1;
+-    };
+-    umrah.forEach((u) => bump(u.customerId, u.customer.fullName, Number(u.balance)));
+-    hotels.forEach((h) => bump(h.customerId, h.customer?.fullName || "", Number(h.balance)));
+-    tickets.forEach((t) => bump(t.customerId, t.customer?.fullName || "", Number(t.net) - Number(t.paidAmount || 0)));
+-    return Object.values(map);
++    // A settled or empty posted ledger must not resurrect operational estimates.
++    return [];
+   }
+ }
+diff --git a/backend/apps/api/src/reservation/reservation.service.ts b/backend/apps/api/src/reservation/reservation.service.ts
+index 7b68604811a43324d8fab1901b7e4f2b22a00672..6603d6b70c983483abd4d67cc11af9b5866dccab 100644
+--- a/backend/apps/api/src/reservation/reservation.service.ts
++++ b/backend/apps/api/src/reservation/reservation.service.ts
+@@ -128,6 +128,11 @@ export class ReservationService {
+     db: Prisma.TransactionClient | PrismaService = this.prisma,
+   ) {
+     const conflicts: string[] = [];
++    // Shared physical rooms are serialized across processes when called inside save's transaction.
++    // Use one hotel identity so a physical-room ID and its displayed number cannot use different locks.
++    const keys = [...new Set(segments.filter(seg => seg.rooms.some(room => room.hotelRoomId || room.roomNumber))
++      .map(seg => `hotel-occupancy:${seg.hotelId}`))].sort();
++    for (const key of keys) await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 2))::text`;
+     for (const seg of segments) {
+       const cin = new Date(seg.checkIn);
+       const cout = new Date(seg.checkOut);
+@@ -158,7 +163,7 @@ export class ReservationService {
+     if (conflicts.length) throw new BadRequestException(conflicts[0]);
+   }
+ 
+-  async save(user: AuthUser, input: ReservationInput, ip?: string) {
++  async save(user: AuthUser, input: ReservationInput, ip?: string, transaction?: Prisma.TransactionClient) {
+     assertCan(user, "hotel.booking");
+     this.validateGraph(input);
+     const tot = this.totals(input.segments);
+@@ -210,8 +215,7 @@ export class ReservationService {
+       }
+     };
+ 
+-    const bookingId = await this.prisma.$transaction(
+-      async (tx) => {
++    const persistBooking = async (tx: Prisma.TransactionClient) => {
+         for (const segment of input.segments) for (const room of segment.rooms) await assertHotelRoomLinks(tx, { ...room, hotelId: segment.hotelId });
+         if (input.id) {
+           await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${input.id} FOR UPDATE`;
+@@ -321,11 +325,9 @@ export class ReservationService {
+         });
+         await this.audit.log({ userId: user.id, action: "create", entity: "HotelBooking", entityId: row.id, after: row, ipAddress: ip, db: tx });
+         return row.id;
+-      },
+-      { maxWait: 10_000, timeout: 30_000 },
+-    );
+-
+-    return this.get(user, bookingId);
++      };
++    const bookingId = transaction ? await persistBooking(transaction) : await this.prisma.$transaction(persistBooking, { maxWait: 10_000, timeout: 30_000 });
++    return this.get(user, bookingId, transaction);
+   }
+ 
+   private include() {
+@@ -336,9 +338,9 @@ export class ReservationService {
+     } as const;
+   }
+ 
+-  async get(user: AuthUser, id: string) {
++  async get(user: AuthUser, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+     assertCan(user, "hotel.booking");
+-    const row = await this.prisma.hotelBooking.findUnique({ where: { id }, include: this.include() });
++    const row = await db.hotelBooking.findUnique({ where: { id }, include: this.include() });
+     if (!row) throw new NotFoundException();
+     assertBranch(user, row.branchId);
+     return row;
+@@ -550,45 +552,66 @@ export class ReservationService {
+   async split(user: AuthUser, bookingId: string, roomIds: string[], ip?: string) {
+     assertCan(user, "reservation.split");
+     if (!roomIds?.length) throw new BadRequestException("Select at least one room to split.");
+-    const booking = await this.get(user, bookingId);
+-    if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
+-    if (Number(booking.net) !== 0 || Number(booking.cost) !== 0 || Number(booking.paid) !== 0) throw new BadRequestException("Posted financial reservations cannot be split.");
+-    const ownedIds = new Set(booking.staySegments.flatMap(segment => segment.rooms.map(room => room.id)));
+-    if (roomIds.some(id => !ownedIds.has(id))) throw new NotFoundException("Room does not belong to this reservation");
+-    const move = new Set(roomIds);
+-    const childSegs: StaySegmentInput[] = [];
+-    for (const seg of booking.staySegments) {
+-      const rooms = seg.rooms.filter((r) => move.has(r.id));
+-      if (!rooms.length) continue;
+-      childSegs.push({
+-        hotelId: seg.hotelId,
+-        supplierId: undefined,
+-        checkIn: seg.checkIn.toISOString(),
+-        checkOut: seg.checkOut.toISOString(),
+-        rooms: rooms.map((r) => ({
+-          roomTypeId: r.roomTypeId || undefined,
+-          hotelRoomId: r.hotelRoomId || undefined,
+-          roomNumber: r.roomNumber || undefined,
+-          occupancy: r.occupancy,
+-          passengerIds: r.pax.map((p) => p.passengerId),
+-          supplierCost: Number(r.supplierCost),
+-          sellingPrice: Number(r.sellingPrice),
+-          discount: Number(r.discount),
+-          tax: Number(r.tax),
+-          commission: Number(r.commission),
+-        })),
+-      });
+-    }
+-    if (!childSegs.length) throw new BadRequestException("Selected rooms were not found on this booking.");
+-    const child = await this.save(user, {
+-      kind: booking.kind,
+-      customerId: booking.customerId || undefined,
+-      hotelId: childSegs[0].hotelId,
+-      segments: childSegs,
+-    }, ip);
+-    await this.prisma.hotelBooking.update({ where: { id: child.id }, data: { parentBookingId: bookingId } });
+-    await this.prisma.hotelStayRoom.deleteMany({ where: { id: { in: roomIds } } });
+-    await this.audit.log({ userId: user.id, action: "split", entity: "HotelBooking", entityId: bookingId, after: { childId: child.id }, ipAddress: ip });
+-    return { parentId: bookingId, child };
++    if (new Set(roomIds).size !== roomIds.length) throw new BadRequestException("Select each room only once.");
++    return this.prisma.$transaction(async tx => {
++      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${bookingId} FOR UPDATE`;
++      const booking = await this.get(user, bookingId, tx);
++      if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
++      if (Number(booking.net) !== 0 || Number(booking.cost) !== 0 || Number(booking.paid) !== 0) throw new BadRequestException("Posted financial reservations cannot be split.");
++      const ownedIds = new Set(booking.staySegments.flatMap(segment => segment.rooms.map(room => room.id)));
++      if (roomIds.some(id => !ownedIds.has(id))) throw new NotFoundException("Room does not belong to this reservation");
++      if (roomIds.length >= ownedIds.size) throw new BadRequestException("A split must leave at least one room in the original reservation.");
++      const move = new Set(roomIds);
++      if (booking.staySegments.some(segment => segment.rooms.some(room => move.has(room.id) && (room.checkinAt || ["CHECKED_IN", "CHECKED_OUT", "TRANSFERRED", "CANCELLED"].includes(room.status))))) {
++        throw new BadRequestException("Rooms with an active or completed stay cannot be split.");
++      }
++      const childSegs: StaySegmentInput[] = [];
++      for (const seg of booking.staySegments) {
++        const rooms = seg.rooms.filter((r) => move.has(r.id));
++        if (!rooms.length) continue;
++        childSegs.push({
++          hotelId: seg.hotelId,
++          supplierId: seg.supplierId || undefined,
++          confirmationNo: seg.confirmationNo || undefined,
++          status: seg.status,
++          notes: seg.notes || undefined,
++          specialRequest: seg.specialRequest || undefined,
++          checkIn: seg.checkIn.toISOString(),
++          checkOut: seg.checkOut.toISOString(),
++          rooms: rooms.map((r) => ({
++            roomTypeId: r.roomTypeId || undefined,
++            hotelRoomId: r.hotelRoomId || undefined,
++            roomNumber: r.roomNumber || undefined,
++            occupancy: r.occupancy,
++            status: r.status,
++            passengerIds: r.pax.map((p) => p.passengerId),
++            supplierCost: Number(r.supplierCost),
++            sellingPrice: Number(r.sellingPrice),
++            discount: Number(r.discount),
++            tax: Number(r.tax),
++            commission: Number(r.commission),
++          })),
++        });
++      }
++      if (!childSegs.length) throw new BadRequestException("Selected rooms were not found on this booking.");
++      // Release the selected occupancy only inside this transaction. Any creation or audit failure restores it.
++      await tx.hotelStayRoom.deleteMany({ where: { id: { in: roomIds } } });
++      const child = await this.save(user, {
++        kind: booking.kind,
++        customerId: booking.customerId || undefined,
++        passengerId: booking.passengerId || undefined,
++        supplierId: booking.supplierId || undefined,
++        agentId: booking.agentId || undefined,
++        branchId: booking.branchId || undefined,
++        notes: booking.notes || undefined,
++        specialRequests: booking.specialRequests || undefined,
++        hotelId: childSegs[0].hotelId,
++        segments: childSegs,
++      }, ip, tx);
++      await tx.hotelBooking.update({ where: { id: child.id }, data: { parentBookingId: bookingId } });
++      await tx.hotelBooking.update({ where: { id: bookingId }, data: { rooms: ownedIds.size - roomIds.length } });
++      await this.audit.log({ userId: user.id, action: "split", entity: "HotelBooking", entityId: bookingId, after: { childId: child.id }, ipAddress: ip, db: tx });
++      return { parentId: bookingId, child: await this.get(user, child.id, tx) };
++    }, { maxWait: 10_000, timeout: 30_000 });
+   }
+ }
+diff --git a/backend/apps/api/src/workflows/workflows.controller.ts b/backend/apps/api/src/workflows/workflows.controller.ts
+index 88d0cb2c50bbeb0ff65fee09fabea9c6d6a8a07e..0e182227fdbd08071654301bb8ef04d8d7644ce1 100644
+--- a/backend/apps/api/src/workflows/workflows.controller.ts
++++ b/backend/apps/api/src/workflows/workflows.controller.ts
+@@ -174,7 +174,7 @@ export class WorkflowsController {
+       const ticket = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
+       if (!ticket) throw new BadRequestException("Ticket not found");
+       assertBranch(req.user, ticket.branchId);
+-      if (ticket.status === "CANCELLED") throw new BadRequestException("Cancelled ticket cannot be refunded");
++      if (["CANCELLED", "REISSUED"].includes(ticket.status)) throw new BadRequestException("Cancelled or replaced ticket cannot be refunded; use its current replacement");
+       if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
+       const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toNumber();
+       const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
+@@ -237,14 +237,23 @@ export class WorkflowsController {
+   ) {
+     return this.prisma.$transaction(async tx => {
+     await tx.$queryRaw`SELECT id FROM "TicketSale" WHERE id = ${id} FOR UPDATE`;
+-    const original = await tx.ticketSale.findUnique({ where: { id } });
++    const original = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
+     if (!original) throw new BadRequestException();
+     assertBranch(req.user, original.branchId);
+     await assertPeopleLinks(tx, req.user, original);
+     if (["REISSUED", "REFUNDED", "CANCELLED"].includes(original.status)) throw new ConflictException("Ticket cannot be reissued in its current state");
+     const fees = [body.airlineChangeFee ?? 0, body.agencyFee ?? 0, body.fareDifference ?? 0];
+     if (!fees.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Fees must be nonnegative amounts with at most two decimal places");
+-    const extra = Number(body.airlineChangeFee ?? 0) + Number(body.agencyFee ?? 0) + Number(body.fareDifference ?? 0);
++    if (original.refunds?.length) throw new ConflictException("Refunded ticket requires accounting review before reissue");
++    for (const field of ["newItinerary", "newTicketNumber", "reason"] as const) {
++      if (body[field] !== undefined && (typeof body[field] !== "string" || body[field]!.length > 500)) throw new BadRequestException("Invalid reissue field");
++    }
++    const extra = fees.reduce((sum, fee) => sum.plus(fee), new Prisma.Decimal(0));
++    const net = new Prisma.Decimal(original.net).plus(extra);
++    const paid = new Prisma.Decimal(original.paidAmount ?? 0);
++    if (paid.isNegative() || paid.greaterThan(net) || (original.paymentStatus === "PAID" && !paid.equals(original.net))) {
++      throw new ConflictException("Ticket payment totals require accounting review before reissue");
++    }
+     const newTicket = await tx.ticketSale.create({
+       data: {
+         customerId: original.customerId,
+@@ -253,19 +262,32 @@ export class WorkflowsController {
+         branchId: original.branchId,
+         agentId: original.agentId,
+         ticketNumber: body.newTicketNumber,
+-        sector: original.sector,
+-        fare: Number(original.fare) + Number(body.fareDifference ?? 0),
++        sector: body.newItinerary?.trim() || original.sector,
++        supplierId: original.supplierId,
++        pnrId: original.pnrId,
++        flightNumber: original.flightNumber,
++        departureAt: original.departureAt,
++        arrivalAt: original.arrivalAt,
++        cabin: original.cabin,
++        baggage: original.baggage,
++        sectors: original.sectors ?? undefined,
++        groupId: original.groupId,
++        exchangeRate: original.exchangeRate,
++        discount: original.discount,
++        commission: original.commission,
++        fare: new Prisma.Decimal(original.fare).plus(body.fareDifference ?? 0),
+         tax: original.tax,
+-        net: Number(original.net) + extra,
++        net,
++        paidAmount: paid,
+         cost: original.cost,
+-        profit: Number(original.profit) + extra,
++        profit: new Prisma.Decimal(original.profit).plus(extra),
+         currency: original.currency,
+         status: "ISSUED",
+-        paymentStatus: extra > 0 ? "PARTIAL" : original.paymentStatus,
++        paymentStatus: paid.greaterThanOrEqualTo(net) && net.greaterThan(0) ? "PAID" : paid.greaterThan(0) ? "PARTIAL" : "UNPAID",
+       },
+     });
+     let journalId: string | undefined;
+-    if (extra > 0) {
++    if (extra.greaterThan(0)) {
+       const ar = await this.accounting.accountByCode("1300", tx);
+       const rev = await this.accounting.accountByCode("4200", tx);
+       const journal = await this.accounting.postJournal({
+@@ -278,8 +300,8 @@ export class WorkflowsController {
+         branchId: original.branchId,
+         userId: req.user.id,
+         lines: [
+-          { accountId: ar.id, debit: extra, credit: 0 },
+-          { accountId: rev.id, debit: 0, credit: extra },
++          { accountId: ar.id, debit: extra.toNumber(), credit: 0, partyType: "customer", partyId: original.customerId ?? undefined },
++          { accountId: rev.id, debit: 0, credit: extra.toNumber() },
+         ],
+       });
+       journalId = journal.id;
 diff --git a/backend/package.json b/backend/package.json
-index 63ff5909400fbc44278221bb114982c3815dd7cd..4758fe7601485851681adbf5212642751fdd5c1c 100644
+index 4758fe7601485851681adbf5212642751fdd5c1c..ebde6ca972d7baaad3ca8f2220d9268289bc7cde 100644
 --- a/backend/package.json
 +++ b/backend/package.json
-@@ -35,6 +35,7 @@
+@@ -24,11 +24,12 @@
+     "db:push": "npm run push -w @zat/database",
+     "lint": "npm run lint --workspaces --if-present",
+     "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit",
+-    "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/jwt.guard.spec.ts apps/api/src/common/storage.service.spec.ts apps/api/src/documents/documents.controller.spec.ts apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts apps/api/src/website/website-inquiries.controller.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs apps/api/src/common/security-audit.spec.ts apps/api/src/common/final-audit.spec.ts apps/api/src/common/pr16-review.spec.ts apps/api/src/resources/lead-access.spec.ts apps/api/src/management/management.spec.ts apps/api/src/management/operations.spec.ts scripts/prepare-umrah-reference.spec.mjs apps/api/src/documents/document-brand.spec.ts apps/api/src/common/p0-remediation.spec.ts apps/api/src/common/communications.spec.ts",
++    "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/jwt.guard.spec.ts apps/api/src/common/storage.service.spec.ts apps/api/src/documents/documents.controller.spec.ts apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts apps/api/src/website/website-inquiries.controller.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs apps/api/src/common/security-audit.spec.ts apps/api/src/common/final-audit.spec.ts apps/api/src/common/pr16-review.spec.ts apps/api/src/resources/lead-access.spec.ts apps/api/src/management/management.spec.ts apps/api/src/management/operations.spec.ts scripts/prepare-umrah-reference.spec.mjs apps/api/src/documents/document-brand.spec.ts apps/api/src/common/p0-remediation.spec.ts apps/api/src/common/communications.spec.ts apps/api/src/reports/reports-completion.spec.ts",
+     "test:e2e": "npx tsx scripts/e2e-api.mjs",
+     "test:quotation:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/crm/lead-quotation.pg17.spec.ts apps/api/src/crm/quotation-journey.pg17.spec.ts",
+     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs",
+-    "test:document-backup": "node --test scripts/document-backup.spec.mjs"
++    "test:document-backup": "node --test scripts/document-backup.spec.mjs",
++    "test:operations:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/workflows/remaining-workflows.pg17.spec.ts apps/api/src/reservation/reservation-completion.pg17.spec.ts"
    },
-   "overrides": {
-     "postcss": "^8.5.30",
--    "deepmerge-ts": "^8.0.0"
-+    "deepmerge-ts": "^8.0.0",
-+    "multer": "2.5.0"
+   "engines": {
+     "node": ">=20"
+diff --git a/backend/scripts/receipt-browser-checks.cjs b/backend/scripts/receipt-browser-checks.cjs
+index 24ded356fa67e124c6bcf1526e2a5176cb853d48..27bad7ca073e65ba707e2b28304bde8838779ec1 100644
+--- a/backend/scripts/receipt-browser-checks.cjs
++++ b/backend/scripts/receipt-browser-checks.cjs
+@@ -150,6 +150,24 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
+     const foreignPdf = await staffOtherPage.goto(origin + `/api/v1/pdf/umrah-voucher/${booking.id}`);
+     assert.equal(foreignPdf.status(), 404);
+     assert.equal((await staffOther.request.post(origin + `/api/v1/finance/receipts/${receipt.id}/review`, { data: { reviewed: true } })).status(), 403);
++    await ownerPage.goto(origin + "/account");
++    await ownerPage.getByRole("heading", { name: "Need help with an inquiry?", exact: true }).waitFor();
++    assert.ok(!(await ownerPage.locator("body").innerText()).includes("Demo Traveller"));
++    for (const width of [390, 1280]) {
++      await ownerPage.setViewportSize({ width, height: 844 });
++      await ownerPage.getByRole("button", { name: "Support", exact: true }).click();
++      assert.equal(await ownerPage.getByRole("link", { name: "Contact agency", exact: true }).getAttribute("href"), "/contact");
++      assert.ok(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Account layout must fit mobile and desktop");
++      await ownerPage.screenshot({ path: path.join(outputDir, `account-${width}.png`), fullPage: true });
++      await ownerPage.getByRole("button", { name: "Support", exact: true }).click();
++    }
++    const guest = await browser.newContext();
++    const guestPage = await guest.newPage();
++    await guestPage.goto(origin + "/account");
++    assert.ok(!(await guestPage.locator("body").innerText()).includes("Demo Traveller"));
++    await guestPage.getByRole("heading", { name: "Create an account", exact: true }).waitFor();
++    await guest.close();
++    results.push("real account identity and support link render at mobile/desktop sizes; signed-out account has no fabricated profile");
+     await owner.close(); await other.close(); await staffOther.close();
+     results.push("two verified customer logins display only their own bookings; forged selectors ignored; owner sees the pending date; customer/foreign staff document requests return 401/404; foreign receipt review denied (403)");
+     const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, paid: "350.35", balance: "659.65", syntheticOnly: true };
+diff --git a/src/app/account/page.tsx b/src/app/account/page.tsx
+index 7e09b8aa300960cc7c8d0c0d47e3abe2983a4d30..613dcca762cbfb129ae533cc65e9e685dc7a85d6 100644
+--- a/src/app/account/page.tsx
++++ b/src/app/account/page.tsx
+@@ -23,7 +23,7 @@ export default async function AccountPage() {
+       intro={
+         identity
+           ? "You are signed in to this website."
+-          : "Sign in to see your account. A sample profile is shown until you do."
++          : "Sign in to see your account, or create one below."
+       }
+     >
+       <AccountHome customer={identity} />
+diff --git a/src/app/my-bookings/page.tsx b/src/app/my-bookings/page.tsx
+index 40450bbe449870ba41d688a9a32254b7f342169b..c060356085d1b039fbc653e4b9b8859f63ec4814 100644
+--- a/src/app/my-bookings/page.tsx
++++ b/src/app/my-bookings/page.tsx
+@@ -29,7 +29,7 @@ export default async function MyBookingsPage() {
+           <AccountState
+             status="empty"
+             title="Sign in to view bookings"
+-            message="Bookings are shown only for the signed-in account. Sample trips are not listed here."
++            message="Sign in to view the bookings linked to your account."
+           />
+           <section className="max-w-xl rounded-3xl border border-line bg-surface p-6">
+             <h2 className="text-lg font-bold text-zayan-blue">Sign in</h2>
+diff --git a/src/components/account/AccountHome.tsx b/src/components/account/AccountHome.tsx
+index 1c331072c1d1cb0f68dbbc31de620f7669a4cdf5..f0987c2fe335be81284cd5a504015fe13dd99f37 100644
+--- a/src/components/account/AccountHome.tsx
++++ b/src/components/account/AccountHome.tsx
+@@ -25,7 +25,7 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null })
+             description={
+               signedIn
+                 ? "Open your booking list."
+-                : "Sign in to view bookings. Sample trips are not shown as your bookings."
++                : "Sign in to view your bookings."
+             }
+           >
+             <Button href="/my-bookings">My bookings</Button>
+@@ -35,7 +35,7 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null })
+           <li key={item.id}>
+             <Card
+               title={item.title}
+-              description={signedIn ? "Not connected to your account yet." : "Demo section. Nothing is stored or sent."}
++              description={item.id === "support" ? "Contact our team about your trip." : "Our team can help with this service."}
+             >
+               <Button
+                 variant={panel === item.id ? "secondary" : "outline"}
+@@ -50,20 +50,23 @@ export function AccountHome({ customer }: { customer: AccountIdentity | null })
+       </ul>
+ 
+       {active ? (
++        <section className="space-y-4">
+         <AccountState
+           status="empty"
+           title={active.title}
+-          message={signedIn ? "Nothing is stored here yet." : active.empty}
++          message={active.empty}
+         />
++        <Button href="/contact">Contact agency</Button>
++        </section>
+       ) : null}
+ 
+       <AccountState
+         status="empty"
+-        title="No inquiries in this account"
++        title="Need help with an inquiry?"
+         message={
+           signedIn
+-            ? "Questions sent from the public forms are not listed on this account."
+-            : "Questions sent from the public forms are not listed here. This sample account does not store an inquiry."
++            ? "Contact our team with your booking or inquiry reference for an update."
++            : "Contact our team for assistance with an inquiry or an existing booking."
+         }
+       />
+ 
+diff --git a/src/components/account/BookingList.tsx b/src/components/account/BookingList.tsx
+index 964093a9011c63ab29005e59eaa8f73e432c5d55..4b9eac6daa02a1b259677ac9269a2b7a7db8fca2 100644
+--- a/src/components/account/BookingList.tsx
++++ b/src/components/account/BookingList.tsx
+@@ -65,7 +65,7 @@ export function BookingList({
+       <AccountState
+         status="empty"
+         title="No bookings yet"
+-        message="Trips you book later will appear here. Sample bookings are not part of this account."
++        message="Bookings linked to your account will appear here. Contact our team if an existing booking is missing."
+       />
+     );
    }
- }
-diff --git a/package-lock.json b/package-lock.json
-index 1d7e13f6c373a400527ebdcdfddb97dfaf3ca6b2..f93e7881b5f12536a88559d70b8abda0d3901bc3 100644
---- a/package-lock.json
-+++ b/package-lock.json
-@@ -9,7 +9,7 @@
-       "version": "0.1.0",
-       "dependencies": {
-         "bcryptjs": "^3.0.3",
--        "next": "16.3.8",
-+        "next": "16.4.3",
-         "pg": "^8.23.1",
-         "react": "19.2.8",
-         "react-dom": "19.2.8",
-@@ -22,7 +22,7 @@
-         "@types/react-dom": "^19",
-         "autoprefixer": "^10.4.21",
-         "eslint": "^9",
--        "eslint-config-next": "16.3.8",
-+        "eslint-config-next": "16.4.3",
-         "postcss": "^8.5.30",
-         "tailwindcss": "^3.4.17",
-         "typescript": "^5"
-@@ -1098,15 +1098,15 @@
-       }
-     },
-     "node_modules/@next/env": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/env/-/env-16.3.8.tgz",
--      "integrity": "sha512-Al9zqHVV7TJv0eFuOU4U7Lvv74PTih4Ch63sk2xCIpSTkE3udFnaOcnzP2lQVymiL7yS9Cj2iClUXlR3EQ5sEw==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/env/-/env-16.4.3.tgz",
-+      "integrity": "sha512-a7tz1QCcWWkwC/rPJcPMJk/UNRu9CFhDd3OHYE5hddbJrs8BqRTalxI6GlKCWEGzRLHN+S/B7a4PAHCtm25aBQ==",
-       "license": "MIT"
-     },
-     "node_modules/@next/eslint-plugin-next": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/eslint-plugin-next/-/eslint-plugin-next-16.3.8.tgz",
--      "integrity": "sha512-eCR9RcLTZrVS+K3+VOhi0xMdUUGNuriCHHhU1ZoABC/QQ/Gp0OWbLKQxV2/9DkmihYdYRcQWFmZXW8M1AMUXYw==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/eslint-plugin-next/-/eslint-plugin-next-16.4.3.tgz",
-+      "integrity": "sha512-oxuC06wt/71h6ACYCV9GbKOfnf5a7VlRe/p80YHTut15TNgDEmynDnaq8t/xhy5rlvk7dhItIPs6H3rvIM4kyw==",
-       "dev": true,
-       "license": "MIT",
-       "dependencies": {
-@@ -1147,9 +1147,9 @@
-       }
-     },
-     "node_modules/@next/swc-darwin-arm64": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-darwin-arm64/-/swc-darwin-arm64-16.3.8.tgz",
--      "integrity": "sha512-2JPRMh2nmQG5CiL7cXGL9AGwnPWJQ//cTtAUCT+w511QHk79SYz3LGv/pc5X643B/WEO0rvu3Yww0hqwt3kgeA==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-darwin-arm64/-/swc-darwin-arm64-16.4.3.tgz",
-+      "integrity": "sha512-4yq5EXBt+VDtAZwTyfijaFp5D2C5oz3Ikw5a2kiX2K9nw72vrZX2q5UuAlkPtUMO1tQz6JTKpaKWjS7OOefTDQ==",
-       "cpu": [
-         "arm64"
-       ],
-@@ -1163,9 +1163,9 @@
-       }
-     },
-     "node_modules/@next/swc-darwin-x64": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-darwin-x64/-/swc-darwin-x64-16.3.8.tgz",
--      "integrity": "sha512-GZtCCOBKJ4leVIT/Th0llWKhD1ca92lzbQiS5R5ON9QkoiFnilFsebDae1JU2a3HWoKMEmEZWGs1AGLavVM72Q==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-darwin-x64/-/swc-darwin-x64-16.4.3.tgz",
-+      "integrity": "sha512-1Rvkn/LUhnEF8WxnRkOrqGhbwXui1bkWFxONKIbN+r7C+9KHDSZ+iUoj4CzymVMWUyZIyx9szcb9+kbKhD500A==",
-       "cpu": [
-         "x64"
-       ],
-@@ -1179,12 +1179,15 @@
-       }
-     },
-     "node_modules/@next/swc-linux-arm64-gnu": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-linux-arm64-gnu/-/swc-linux-arm64-gnu-16.3.8.tgz",
--      "integrity": "sha512-O659ygeQYqneJ1fBKMpFxIFqYkYswu8IAS1OCKK/4f3ZgJJm1dRz4fVJZRi/kLLWjnBKnebOePA4WNv+sV1pVA==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-linux-arm64-gnu/-/swc-linux-arm64-gnu-16.4.3.tgz",
-+      "integrity": "sha512-dCKpXErGg3abUM6t5JTJV/ottVBTStJB5lRJTbgdUdQaQ+jNHiK56Hsc0YAEg/rinSh42hYG3HWiYmEMdilnxg==",
-       "cpu": [
-         "arm64"
-       ],
-+      "libc": [
-+        "glibc"
-+      ],
-       "license": "MIT",
-       "optional": true,
-       "os": [
-@@ -1195,12 +1198,15 @@
-       }
-     },
-     "node_modules/@next/swc-linux-arm64-musl": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-linux-arm64-musl/-/swc-linux-arm64-musl-16.3.8.tgz",
--      "integrity": "sha512-dSjKSyWpzxoO1d3DIZZcP4XJcNaKeLmxQMFOiYl5vuBRMmweIqnAhty8tAmRsvTss779cK1FtYnDMj40e4TQlg==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-linux-arm64-musl/-/swc-linux-arm64-musl-16.4.3.tgz",
-+      "integrity": "sha512-WwYbhWkhYBvBtib1K4W0kL8MW2snBD2A5b3SN4vPpqalZbZs5+bQ1yzAdepVoOqrFfEW3dmREy4Zs1MrWcrFbw==",
-       "cpu": [
-         "arm64"
-       ],
-+      "libc": [
-+        "musl"
-+      ],
-       "license": "MIT",
-       "optional": true,
-       "os": [
-@@ -1211,12 +1217,15 @@
-       }
-     },
-     "node_modules/@next/swc-linux-x64-gnu": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-linux-x64-gnu/-/swc-linux-x64-gnu-16.3.8.tgz",
--      "integrity": "sha512-lbqOuz3RPRcv+o9msNsJw5x4+Y1ZwPTs6vmL6DCf7i0fZfvng/F59wyeDwqHIvV0mK//RBy/jJkZ+nCKsSMXjQ==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-linux-x64-gnu/-/swc-linux-x64-gnu-16.4.3.tgz",
-+      "integrity": "sha512-QymWvfUwDEC5/lpJOsxX5VAbyoR2D13+2Jsjz4be7gT4LPqEgdpkeLIR/HFfCLgKzoMhpJbp6I/JnogyNZHcaA==",
-       "cpu": [
-         "x64"
-       ],
-+      "libc": [
-+        "glibc"
-+      ],
-       "license": "MIT",
-       "optional": true,
-       "os": [
-@@ -1227,12 +1236,15 @@
-       }
-     },
-     "node_modules/@next/swc-linux-x64-musl": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-16.3.8.tgz",
--      "integrity": "sha512-+316WswI8ScVgZeUd+1KGaXkHhaYQzCjvH/05TZSpJ8zBizb1a4G7DtO7F12jcBIqMOtsz9ji1t48fmKtzqsGA==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-16.4.3.tgz",
-+      "integrity": "sha512-Vmjd9D7DpA4Vv3cUlr82QWgJD/BQZmns801vtC5VWHg6jCIA4a5vMKpQnfrM2pyCrp2eV0ENdUg4PlN3bAc2Yw==",
-       "cpu": [
-         "x64"
-       ],
-+      "libc": [
-+        "musl"
-+      ],
-       "license": "MIT",
-       "optional": true,
-       "os": [
-@@ -1243,9 +1255,9 @@
-       }
-     },
-     "node_modules/@next/swc-win32-arm64-msvc": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-win32-arm64-msvc/-/swc-win32-arm64-msvc-16.3.8.tgz",
--      "integrity": "sha512-ji0gd4kMYUxO+1fJBIbiBVRCjzG/lloiyCccnlebvb1ZJ5qXCPZqYg4Jl1DrrixnWNMKylzgpmMWx0yNDYXlzw==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-win32-arm64-msvc/-/swc-win32-arm64-msvc-16.4.3.tgz",
-+      "integrity": "sha512-lG1pPdPLk7gTyGb00n5JIMLdBJgjb+UEhSdZvFbhUMg0DyC6z4B7RnpSKF9VCd4imkLObVbXOFA0kFCpw7yFow==",
-       "cpu": [
-         "arm64"
-       ],
-@@ -1259,9 +1271,9 @@
-       }
-     },
-     "node_modules/@next/swc-win32-x64-msvc": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-16.3.8.tgz",
--      "integrity": "sha512-WcTlaKt/TWkh5kUjdJcUmB1XgZ+1c6fz4Y9fDHL73YNSdGaUWjceeWrrlwF0nv19iABYWC4iAq1oX1w4Bn0vfg==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-16.4.3.tgz",
-+      "integrity": "sha512-NmQC9RkJdnPXRaMxtkCzobB3teVjqF33oSOnwDfi+XYGWWYpt+xlGK3mtktSKLbdjwaWbJu2OkkMiRFGUUncKg==",
-       "cpu": [
-         "x64"
-       ],
-@@ -3185,21 +3197,21 @@
-       }
-     },
-     "node_modules/eslint-config-next": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/eslint-config-next/-/eslint-config-next-16.3.8.tgz",
--      "integrity": "sha512-81vovwMe6NGnoFsl0KUJWzlS+y239i3fdsxs49gSEX3pDQW2cuKy+fxUPXNkQqqx6OCPheYPtBlSufc9aZ0k+w==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/eslint-config-next/-/eslint-config-next-16.4.3.tgz",
-+      "integrity": "sha512-j9IqBma6abp800frdUURaizYMgXOK+jNGyq6CsYcM9AxpSJs5D/TgMNGeAmRUilZvA7g9V1Tr71gNg9/SVTuMQ==",
-       "dev": true,
-       "license": "MIT",
-       "dependencies": {
--        "@next/eslint-plugin-next": "16.3.8",
-+        "@next/eslint-plugin-next": "16.4.3",
-         "eslint-import-resolver-node": "^0.3.6",
-         "eslint-import-resolver-typescript": "^3.5.2",
-         "eslint-plugin-import": "^2.32.0",
-         "eslint-plugin-jsx-a11y": "^6.10.0",
-         "eslint-plugin-react": "^7.37.0",
--        "eslint-plugin-react-hooks": "^7.0.0",
-+        "eslint-plugin-react-hooks": "^7.1.0",
-         "globals": "16.4.0",
--        "typescript-eslint": "^8.46.0"
-+        "typescript-eslint": "^8.56.0"
-       },
-       "peerDependencies": {
-         "eslint": ">=9.0.0",
-@@ -4864,12 +4876,12 @@
-       "license": "MIT"
-     },
-     "node_modules/next": {
--      "version": "16.3.8",
--      "resolved": "https://registry.npmjs.org/next/-/next-16.3.8.tgz",
--      "integrity": "sha512-U7QEZaTini6wKrb8A8hqLLqYQyCetegKjCpJOyxk642vWoMoU1x5PyZCJFvgYgiptA8xc5j/9xYlZFO7w9Sjmw==",
-+      "version": "16.4.3",
-+      "resolved": "https://registry.npmjs.org/next/-/next-16.4.3.tgz",
-+      "integrity": "sha512-OqxKTGi9u80FydydsMNYNjnuje9Au+kvHlt2GZ//ftdpDHm1dxKqAaENoOOTX5wKzn+9vaKUNIfZeyZUuLhCnA==",
-       "license": "MIT",
-       "dependencies": {
--        "@next/env": "16.3.8",
-+        "@next/env": "16.4.3",
-         "@swc/helpers": "0.5.23",
-         "baseline-browser-mapping": "^2.9.19",
-         "caniuse-lite": "^1.0.30001579",
-@@ -4883,15 +4895,15 @@
-         "node": ">=20.9.0"
-       },
-       "optionalDependencies": {
--        "@next/swc-darwin-arm64": "16.3.8",
--        "@next/swc-darwin-x64": "16.3.8",
--        "@next/swc-linux-arm64-gnu": "16.3.8",
--        "@next/swc-linux-arm64-musl": "16.3.8",
--        "@next/swc-linux-x64-gnu": "16.3.8",
--        "@next/swc-linux-x64-musl": "16.3.8",
--        "@next/swc-win32-arm64-msvc": "16.3.8",
--        "@next/swc-win32-x64-msvc": "16.3.8",
--        "sharp": "^0.35.4"
-+        "@next/swc-darwin-arm64": "16.4.3",
-+        "@next/swc-darwin-x64": "16.4.3",
-+        "@next/swc-linux-arm64-gnu": "16.4.3",
-+        "@next/swc-linux-arm64-musl": "16.4.3",
-+        "@next/swc-linux-x64-gnu": "16.4.3",
-+        "@next/swc-linux-x64-musl": "16.4.3",
-+        "@next/swc-win32-arm64-msvc": "16.4.3",
-+        "@next/swc-win32-x64-msvc": "16.4.3",
-+        "sharp": "^0.35.5"
-       },
-       "peerDependencies": {
-         "@opentelemetry/api": "^1.1.0",
-@@ -6948,9 +6960,9 @@
-       }
-     },
-     "node_modules/zod": {
--      "version": "4.6.5",
--      "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.5.tgz",
--      "integrity": "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==",
-+      "version": "4.6.6",
-+      "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.6.tgz",
-+      "integrity": "sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==",
-       "dev": true,
-       "license": "MIT",
-       "funding": {
-diff --git a/package.json b/package.json
-index 5bf1c4ade829f7eb90d97a7413f6605ca2b5f4c7..28953f60f1dad59ec4f9aaf5179619e6975ea756 100644
---- a/package.json
-+++ b/package.json
-@@ -18,7 +18,7 @@
+diff --git a/src/components/account/ProfileSummary.tsx b/src/components/account/ProfileSummary.tsx
+index 157c946307ef58b6786981875048b37c9463e4e6..de813ada9844fd49fdf6fc692a34fdd434e1f282 100644
+--- a/src/components/account/ProfileSummary.tsx
++++ b/src/components/account/ProfileSummary.tsx
+@@ -1,5 +1,4 @@
+ import { SignOutButton } from "@/components/account/LoginForm";
+-import { demoProfile } from "@/config/account";
+ import { site } from "@/config/site";
+ 
+ export type AccountIdentity = {
+@@ -11,21 +10,11 @@ export function ProfileSummary({ customer }: { customer: AccountIdentity | null
+   if (!customer) {
+     return (
+       <section className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+-        <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">Demo profile</p>
+-        <h2 className="mt-2 text-2xl font-bold text-zayan-blue">{demoProfile.displayName}</h2>
++        <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">Your travel account</p>
++        <h2 className="mt-2 text-2xl font-bold text-zayan-blue">Welcome to {site.shortName}</h2>
+         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+-          A sample summary for the {site.shortName} account screen. It is not a customer record.
++          Sign in to see your bookings, or create an account below. Contact our team if you need help linking an existing booking.
+         </p>
+-        <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-2">
+-          <div>
+-            <dt className="text-muted">Display name</dt>
+-            <dd className="mt-1 font-semibold text-foreground">{demoProfile.displayName}</dd>
+-          </div>
+-          <div>
+-            <dt className="text-muted">Account</dt>
+-            <dd className="mt-1 font-semibold text-foreground">{demoProfile.accountStatus}</dd>
+-          </div>
+-        </dl>
+       </section>
+     );
+   }
+diff --git a/src/config/account.ts b/src/config/account.ts
+index 23fa33c27e80b259c065531800ebcd921d7672af..ec85abfb6b075159da1d8806e2f582e6a4345c57 100644
+--- a/src/config/account.ts
++++ b/src/config/account.ts
+@@ -68,21 +68,21 @@ export const accountPanels: readonly {
+   {
+     id: "documents",
+     title: "Travel Documents",
+-    empty: "No demo documents are stored. This account is not connected to a record.",
++    empty: "Contact our team for your travel documents. Private document downloads are not available in this account yet.",
    },
-   "dependencies": {
-     "bcryptjs": "^3.0.3",
--    "next": "16.3.8",
-+    "next": "16.4.3",
-     "react": "19.2.8",
-     "react-dom": "19.2.8",
-     "server-only": "^0.0.1",
-@@ -30,7 +30,7 @@
-     "@types/react-dom": "^19",
-     "autoprefixer": "^10.4.21",
-     "eslint": "^9",
--    "eslint-config-next": "16.3.8",
-+    "eslint-config-next": "16.4.3",
-     "postcss": "^8.5.30",
-     "tailwindcss": "^3.4.17",
-     "typescript": "^5",
-@@ -39,6 +39,7 @@
-   "overrides": {
-     "postcss": "^8.5.30",
-     "braces": "npm:@dieub/braces-depth-guard@3.0.3-pn.0",
--    "postcss-selector-parser": "^7.1.6"
-+    "postcss-selector-parser": "^7.1.6",
-+    "zod": "4.6.6"
-   }
- }
-diff --git a/SECURITY-RELEASE-2026-10-24.md b/SECURITY-RELEASE-2026-10-24.md
+   {
+     id: "visas",
+     title: "Visa Applications",
+-    empty: "No demo visa applications are stored. Nothing is filed from this page.",
++    empty: "Contact our team with your application reference for a visa status update. Personal visa tracking is not available here yet.",
+   },
+   {
+     id: "support",
+     title: "Support",
+-    empty: "Support messages are not connected. This panel does not send a request.",
++    empty: "Use our contact page to ask about your trip, booking or travel documents.",
+   },
+   {
+     id: "settings",
+     title: "Account Settings",
+-    empty: "Settings are not available on this screen.",
++    empty: "Your account details are shown above when signed in. Contact our team if you need assistance with them.",
+   },
+ ];
+diff --git a/PAYMENT-INTEGRATION-PROPOSAL.md b/PAYMENT-INTEGRATION-PROPOSAL.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..db8d6005cfbe814ad8a061caf76b63ee2467ec91
+index 0000000000000000000000000000000000000000..6daca9d0fcfc597fb0863b3794f1b0666f37a1d7
 --- /dev/null
-+++ b/SECURITY-RELEASE-2026-10-24.md
-@@ -0,0 +1,15 @@
-+# Security dependency release — 24 October 2026
++++ b/PAYMENT-INTEGRATION-PROPOSAL.md
+@@ -0,0 +1,59 @@
++# Payment and receipt integration — proposal for approval
 +
-+The owner authorized fixes and deployment. The preceding application release 85f152c completed on Hostinger as deployment 01a16ce8-34f9-7372-bb51-359d40fa6deb.
++The owner selected **prepare explicit payment/receipt integration for approval**. This document is a proposal, not authorization to implement or migrate it. Existing initial-paid behavior has not been blocked or silently changed.
 +
-+GitHub reported dependency alerts during that push. Lockfile-only npm audits confirmed critical Next.js, high Zod, high Multer/body-parser and moderate Nodemailer advisories. This follow-up updates affected dependencies without application workflow changes or database migrations.
++## Confirmed problem
 +
-+Validated installed versions: Next.js/eslint-config-next 16.4.3; Zod 4.6.6; Multer 2.5.0; body-parser 2.4.0; Nodemailer 10.2.1; Nest platform-express 11.2.8. A backend Multer override removes Nest's exact vulnerable nested version without downgrading or changing Nest's major version. Root and backend lockfiles both report zero known vulnerabilities in the current npm audit snapshot. Future advisories remain possible.
++`WorkflowsController.sellTicket` and `sellTransport`, `ReservationService.save`, `UmrahOpsService.save` and the STAR workflow can store an initial paid amount while their creation paths post sale/cost journals without going through the durable receipt recovery/review flow. The forms do not collect enough explicit receipt information. A stored paid amount alone does not prove cash/bank receipt or ledger reconciliation. Do not infer a payment method, create a bank account or retroactively post historical money.
 +
-+Validation ran in a separate clean source copy with no application environment files or production credentials. Free npm dependencies were installed only there, with lifecycle scripts disabled; Prisma client generation was explicit and no migration/seed ran. Installed Next upgrade guidance was read. All 136 backend regression tests, 15 customer-booking tests and 3 receipt retry tests passed. API compilation and the Next.js production build with combined Hostinger packaging passed.
++## Proposed behavior
 +
-+Actual Chrome and HTTP/proxy synthetic PG17 checks passed with the new dependency set: real login cookies, branch/customer isolation, quotation totals/conversion, lost payment response, same-key two-tab retry, reload and full browser closure recovery, explicit review, PDF access and authenticated private/no-store cache assertions. All financial test data remained in the loopback synthetic database. Off-system providers and production financial writes were not tested.
++1. An unpaid booking remains available through its existing operational permission. If an initial paid amount is entered, require an explicit approved payment method, a durable client retry key and the existing finance authorization. Never infer CASH, BANK, CARD or ONLINE from missing input.
++2. Route initial and later module payments through one shared receipt implementation used by FinanceController. Keep current staff-scoped key identity, transaction-scoped locks, same-payload replay, conflicting replay rejection, pending-receipt review and no-store recovery responses.
++3. Lock the target booking and customer scope. Resolve branch/customer/module from the owned booking, not the request. In one transaction create the booking if applicable, post sale/cost entries, post the receipt, store its source allocation, update paid/balance/payment state and audit. Any failure rolls everything back. A retry returns the same linked booking and receipt, not another booking or payment.
++4. Keep current super-admin/`account.post` finance boundaries. A ticket/transport/hotel creator must not gain payment authority merely by entering a paid amount. Do not grant new permissions automatically.
++5. Keep existing Umrah clients and customer-only receipts compatible. Adding module targets is additive; requests supplying multiple targets or inconsistent customer/branch details are rejected.
++6. The UI preserves pending keys across tabs/restarts, shows the saved receipt and requires explicit review. Unknown outcomes remain recoverable. Do not clear the key or silently create a new submission.
 +
-+The exact pre-release application bundle and a separate receipt-write-blocked recovery bundle are retained locally with owner/SYSTEM-only access. The old bundle contains the old dependency versions: use only as an emergency recovery artifact, with receipt writes blocked and public exposure restricted until patched service is restored. Do not restore a database snapshot to undo a code release. Do not delete financial records or review events.
++## Concrete schema proposal — review only
 +
-+This report records validation, not completion of every platform module. Final Hostinger build status and live smoke checks are recorded separately after deployment. No paid services, plan changes, production migrations, seeds, credential or permission changes are included.
++Extend `Receipt` while preserving its existing `bookingId` (Umrah) field:
++
++| Field | Type / constraint | Purpose |
++|---|---|---|
++| `ticketSaleId` | nullable FK to TicketSale, delete restricted | Ticket allocation |
++| `hotelBookingId` | nullable FK to HotelBooking, delete restricted | Reservation allocation |
++| `transportBookingId` | nullable FK to TransportBooking, delete restricted | Transport allocation |
++| `starBookingId` | nullable FK to StarBooking, delete restricted | STAR allocation |
++| `submissionFingerprint` | nullable SHA-256 text | Detect changed booking/payment payloads on initial-payment replay |
++
++Add a database CHECK permitting **at most one** source among these four and the existing Umrah `bookingId`. Zero sources remains valid for current customer-only receipts. Add indexes to the new foreign keys. Old rows remain untouched; no default monetary values or historical allocations are invented.
++
++The exact SQL/Prisma migration must be generated, reviewed and tested locally after implementation approval. No production migration has been prepared for execution or run in this task.
++
++## Historical data and cutover
++
++- Prepare an aggregate-only reconciliation of stored paid totals, source-linked receipts, posted journals and pending submissions by module. Retrieve detailed customer/payment records only if separately authorized and necessary.
++- Historical amounts without a verifiable receipt remain marked as unreconciled for an accountant's decision. Do not automatically generate receipts, journals, refunds, opening balances or migration backfills.
++- Owner/accountant must confirm payment-method-to-account mappings and real bank/cash details where needed. Existing GL defaults are not proof of actual account identity or opening balance. No account records or balances are created by this proposal.
++- Cash disbursement for refunds is a separate, explicitly approved workflow. A sales credit journal is not evidence that cash was paid out.
++
++## Acceptance criteria
++
++- For each supported module: initial payment and later payment create one receipt/journal, and paid/balance agrees with allocated receipts and posted customer AR.
++- Zero, negative, fractional-cent, overpayment and cancelled/replaced-source requests are handled explicitly; no floating-point drift.
++- Same key/same payload, lost response, reload, closure/reopen and two tabs return one persisted result. Changed payload or another staff/key cannot bypass pending review.
++- Injected journal, receipt, source-update and audit failures leave no partial booking, receipt, sequence use or balance change.
++- Branch, customer, permission and generic-CRUD bypass attempts are denied. Key recovery does not expose another staff user's submissions.
++- Existing Umrah/customer-only clients pass compatibility tests. New schema passes PostgreSQL 17 rollback and forward tests with synthetic data.
++- Browser/mobile, PDF receipt, cancellation credit and accountant reconciliation checks pass without real money or provider calls.
++
++## Approval gates and costs
++
++**A — next approval:** authorize local implementation of this proposal, local draft migration and isolated synthetic PG17/browser tests. No production writes, permissions, migrations or provider activation.
++
++**B — separate production approval:** only after A passes, approve the exact migration and deployment sequence using fresh verified recovery evidence and a read-only reconciliation. A does not authorize B. Keep receipt writes blocked during any incompatible cutover.
++
++**C — separate approval:** any historical correction, real bank/cash setup, refund payout, provider access or live financial transaction.
++
++Cost: free tools, existing PC/hosting and Supabase Free only. No paid services, billing, extra database project or hosted branch is required for local implementation/testing. Check actual Free storage/egress limits before any production change.
+diff --git a/PLATFORM-COMPLETION-2026-10-24.md b/PLATFORM-COMPLETION-2026-10-24.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..e442da7939ca866c6316b1a3e9403e15b9905d37
+--- /dev/null
++++ b/PLATFORM-COMPLETION-2026-10-24.md
+@@ -0,0 +1,58 @@
++# Platform completion matrix — 24 October 2026
++
++This compares the supplied target diagram with the existing application and scoped acceptance evidence. “Verified” applies to the named behavior, not an entire business domain. No real customer transaction was used as a test. Existing approvals, initialization and test work were reused; old report statements are superseded where this report provides newer evidence.
++
++## Actual architecture
++
++Next.js 16.4.3 public/customer/staff UI and NestJS 11 modular monolith run behind the combined Hostinger Node gateway. Customer SQL and Prisma CRM use the same Supabase PostgreSQL database. The recorded live baseline is commit `34fc72c6b4b04de76ff3861e02f545cb2b584f50`, Hostinger deployment `01a16cf4-ae24-70d5-9bc8-5ea2ff183508`. The final deployment for this candidate is recorded separately.
++
++Do not recreate the diagram's SQLite/Redis boxes or split services solely for visual similarity. No measured need or separately verified Redis/worker runtime was established. Supabase Free and existing hosting remain the cost boundary.
++
++## Completion matrix
++
++| Area | Actual status and evidence | Remaining work / dependency |
++|---|---|---|
++| Hosting, routing and TLS | Verified selected live behavior: `backend/scripts/hostinger-start.cjs`, `hostinger-api-path.cjs`; prior deployment proof, runtime process/database mapping and public health checks. | Final candidate smoke checks; no multi-instance/load-capacity certification. |
++| Edge security | HTTPS/redirects and application rate/auth controls verified selectively. | Cloudflare labels in the diagram are not evidence of WAF, geo/IP rules, bot challenges or edge policies. Do not activate paid edge products. |
++| Customer identity | Synthetic HTTP/Chrome registration/login, actual cookies, revocation/link checks and account isolation: `src/server/customer-auth/*`, `src/app/api/account/*`. | Owner production onboarding; password recovery/2FA acceptance is not established. |
++| Account profile and assistance | Real signed-in identity remains displayed. Guest fake identity removed in `ProfileSummary`; `AccountHome` links assistance to the real contact page. Desktop/mobile browser checks verify no fabricated profile and working support link. | Profile editing, account inquiry history and personal document/visa lists are not implemented by this cleanup. |
++| Website inquiries | Existing `/api/inquiries`, `src/server/crm-lead.ts`, `WebsiteInquiriesController`; earlier inquiry regression coverage reused. | Full public inquiry-to-assigned-staff browser acceptance remains partial; no claim based on form filenames. |
++| Staff authorization | Existing `JwtGuard`, `GlobalFinanceGuard`, record-scope and permission guards; branch/customer denial regressions and synthetic browser checks. | Actual staff roles/assignments and any widened access require owner approval. Existing HO initialization/assignment is preserved. |
++| CRM | `CrmService`, `convertLeadToCustomer`, `convertQuotationToBooking`; prior row-lock, retry and rollback checks reused. | Complete follow-up/task/report usability acceptance and actual staff operating procedures. |
++| Quotations and Umrah bookings | Prior real-PG17/browser/HTTP checks verify whole-package quantity, edit locking, atomic conversion, sale/cost journals and customer visibility. | Full operational Umrah visa/hotel/transport orchestration and supplier confirmations remain partial. |
++| Receipts | Durable key identity, pending review, same-tab/cross-tab/closure recovery and private recovery responses are verified; current Chrome/proxy suite passes. | Initial paid values in other booking modules are not yet integrated into this flow. Owner chose a proposal for approval; see payment design. No automatic historical reconciliation. |
++| Ticketing | Manual issue/reissue/refund code exists. This candidate verifies replacement paid totals, source metadata, customer-tagged fee AR, decimal fees, concurrency, rollback and denial of refunds against replaced tickets. Evidence: `WorkflowsController.reissue/refund`, `remaining-workflows.pg17.spec.ts`. | Partially refunded tickets require accounting review before reissue. Live GDS/airline search, settlement and initial-payment integration remain unaccepted. Sales credits are not cash payout proof. |
++| Hotels and reservations | New PG17 checks verify atomic zero-value splits, branch/confirmation preservation, physical-room collision prevention, duplicate split protection and sale/cost cancellation offsets preserving customer credit. Evidence: `ReservationService.save/get/split/occupancyConflicts/cancel`, `reservation-completion.pg17.spec.ts`. | Full room/PAX/check-in/transfer visual acceptance, supplier settlement, STAR lifecycle and refund disbursement remain partial. Financially posted reservations remain unsplittable. |
++| Transport | Existing `sellTransport` atomically creates booking/voucher and sale/cost entries; earlier selected checks reused. Daily report now reads selling price rather than the profit field. | Assignment-to-completion/cancellation lifecycle and explicit receipt integration need acceptance. Do not reinterpret stored `net` as sales. |
++| Visas | Scoped resources for visa types/applications/Umrah visas exist in `resources/registry.ts`. | Jurisdiction-specific requirements, document/status/invoice/refund lifecycle and customer-facing tracking remain partial. Generic CRUD is not full workflow proof. |
++| GL accounting | Existing posting-account eligibility, balanced journals and transaction/audit safety retained. `AccountingService.arAp` now aggregates exact Decimal values. | Initial module payments, source allocations, real bank/cash identities, opening balances, reconciliation and accountant signoff require the separate design/business gates. |
++| Reports | `ReportsService.receivables` uses posted AR only, including an empty/settled ledger; no resurrection from source estimates. `dailySale` uses correct transport selling value and exact Decimal totals. Two new regression tests pass. | Daily-sale remains an operational source snapshot, not a certified journal revenue report. Ticket replacement/refund period presentation and complete cross-module financial/report acceptance remain pending accountant requirements. |
++| Generated documents | Existing quotation/receipt/voucher PDFs and ownership/private-no-store checks pass in synthetic HTTP/Chrome; previous six rendered single-page PDF checks reused. | Multipage layouts, non-PKR numerical presentation, full service voucher layouts and production owner document acceptance remain partial. |
++| Uploaded document storage | Read-only runtime/API check confirms Supabase driver and a **private** configured bucket with 8 MB size limit. `StorageService` validates names/types/signatures and fails closed. | `DOCUMENT_UPLOADS_ENABLED` is false. Do not enable until approved persistence, policy and independent object backup/restore acceptance. No object was uploaded, downloaded or deleted for this check. |
++| Email and WhatsApp | Existing adapters and failure/redaction tests; exact runtime names confirm SMTP and WhatsApp credentials absent. | Explicit provider access, free quotas/terms and activation approval; no delivery claim or live messages. |
++| Airline/hotel/Nusuk/payment/insurance APIs | No operational acceptance established. | Owner-supplied free sandbox/provider access and exact business rules. Do not fabricate live inventory, confirmations or payments. Manual operations remain separate. |
++| Workers and caching | Synchronous existing paths and PostgreSQL sessions/rate limiting retained. | Separate queue, Redis, scheduled report and sync operation not established. Add only for measured need and available free resources. |
++| Monitoring/auditing | Application health, Hostinger logs and transaction-participating audit code exist; audit-failure rollback tests pass. | Independent alert runner/destination, retention and incident runbook acceptance. No new scheduler or outbound alerts activated. |
++| Database recovery | Prior specific encrypted public-schema archive/PG17 restore proof reused. Exact current application artifact retained separately for code recovery. | A past DB archive is not a fresh full-project backup. Unattended schedule/token lifecycle, independent key custody, object bytes, nonpublic schemas and full recovery acceptance remain incomplete. |
++| Staging/security/dependencies | Local loopback synthetic PG17 and real Chrome/proxy acceptance. Current patched lockfiles reused; no dependency change in this candidate. | No isolated hosted staging inventory or full penetration/load/accessibility certification. Current npm snapshot does not guarantee absence of future advisories. |
++
++## This candidate's proof
++
++- New tests failed on the deployed baseline for the confirmed ticket/report defects, then passed with the corrections.
++- **13 PG17 checks** passed (including two parent tests) covering ticket lineage/refund safeguards, financial snapshots/rollback, branch denial, hotel split/collision/cancellation behavior.
++- **138 backend regression tests** passed, including two new report tests. Two outdated unit harnesses were adapted to Decimal serialization and transaction-scoped split; their safety assertions remain unchanged.
++- Both application builds and combined Hostinger packaging passed. Changed customer UI lint passed.
++- Real Chrome/HTTP/proxy journey passed: existing finance/customer recovery and cache assertions plus signed-in/guest account rendering at 390px and 1280px without horizontal overflow.
++- Test DB and credentials were synthetic. Production reads were metadata/configuration only. No migrations, seeds, financial production writes, credential changes, permissions, provider activation or messaging were performed.
++
++## Priorities, dependencies and exact gates
++
++1. **Release these independently verified corrections.** No schema migration. Require checked source manifest, current runtime identity, retained guarded application recovery, successful Hostinger build and live read-only smoke. Owner has already authorized this code release.
++2. **Approve payment integration locally.** `payment-receipt-integration-proposal-2026-10-24.md` specifies typed source allocations, idempotency/fingerprint/review, explicit method and preserved finance authorization. No production migration follows from local approval.
++3. **Owner/accountant decisions.** Actual cash/bank mapping, office/tax details, balances, historical reconciliation and partial-refund/reissue policy. Never invent financial rows or backfill historical money.
++4. **Document acceptance and recovery.** Approve a scoped synthetic object persistence/access/restore test, independent storage/key custody and verified free quotas. Only then separately approve upload activation. No production object changes are included here.
++5. **Operational backup and monitoring.** Identify an independent runner/destination, resolve Google token lifecycle, approve exact exports/uploads/schedules/pruning and alert recipient. Keep disabled until those gates pass.
++6. **Remaining manual lifecycles and reports.** Accept hotel/STAR/check-in/transport/visa workflows and journal-versus-operational report definitions in synthetic staging before enabling new financial behavior. Validate cancellation credit separately from cash disbursement.
++7. **External services.** Only after owner supplies approved free sandbox access and business decisions. Paid-only features remain blocked under the mandatory cost constraint.
++
++All proposed work stays on Supabase Free and existing/free tools. These gates explain why no defensible “entire platform complete” claim can be made in one deployment.
+diff --git a/PLATFORM-RELEASE-REVIEW.md b/PLATFORM-RELEASE-REVIEW.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..94ca9889a13c61703d7466513f047d180adcb7bf
+--- /dev/null
++++ b/PLATFORM-RELEASE-REVIEW.md
+@@ -0,0 +1,13 @@
++# Platform corrections release review — 24 October 2026
++
++Candidate against 34fc72c6b4b04de76ff3861e02f545cb2b584f50. The completion matrix and payment proposal are included alongside source; they deliberately do not claim every diagram capability is complete.
++
++Changes: ticket replacement preserves payment/context and exact fee AR; replaced/partially-refunded sources fail closed; hotel splitting reuses save in one transaction with ownership/confirmation preservation and physical-room serialization; posted receivables no longer fall back to source estimates; transport daily selling totals and financial aggregations are exact; account guest/profile/support presentation is truthful.
++
++Proof: 13 new PG17 checks including parents; 138 backend regressions; API build; Next.js production build and combined Hostinger packaging; changed customer-UI lint; real Chrome/HTTP/proxy financial/customer isolation and 390px/1280px account acceptance. New ticket/report tests failed on the prior baseline. Two mock harnesses were updated for Decimal serialization/transaction entry without removing safety assertions. Dependencies are unchanged from the previously audited patched release.
++
++Recovery: exact currently deployed 34fc72c bundle retained with SHA256 287d2811ad28a1d3a2aa24afa78c9a14e232c453c951656c3e0dcfb5ec916240. Guarded archive SHA256 fe8aa00dbbd47f83483d6d7723d392d73c5acb2ea7eadd4e46ba454a63c81ba7. Local recovery storage has restricted owner/SYSTEM access. The retained API passed synthetic receipt/PDF/read/blocked-write checks using installed Windows dependencies. Full Linux bundle execution was not performed locally. Retain existing server configuration and customer storage; do not restore the database for a code rollback. Use the guarded bundle and keep receipt writes blocked during rollback; pause ticket/reservation operations operationally until the corrected version is restored.
++
++No schema migration, seed, historical backfill or production financial test write is included. Initial paid-amount integration was explicitly selected as a proposal for approval and remains unchanged. Document uploads remain disabled; configured bucket metadata was checked read-only and is private with 8MB limit. SMTP/WhatsApp adapters lack credentials. No provider activation, permission/credential change, paid service, scheduler, pruning, object change or additional agent is included.
++
++After final manifest/hash and remote-branch checks, the owner-authorized commit/push may trigger Hostinger deployment. Observe the exact commit Completed/Current and run read-only public/runtime smoke checks. Store final deployment identity and acceptance results in the output report. Authenticated production financial testing is not authorized.
+diff --git a/backend/apps/api/src/reports/reports-completion.spec.ts b/backend/apps/api/src/reports/reports-completion.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4263200286bd2bbf7293e656bc616a3157f31cad
+--- /dev/null
++++ b/backend/apps/api/src/reports/reports-completion.spec.ts
+@@ -0,0 +1,24 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { ReportsService } from "./reports.service";
++
++test("settled posted receivables never fall back to unposted booking estimates", async () => {
++  const service = new ReportsService({} as never, { arAp: async () => [] } as never);
++  const result = await service.run("receivables", {});
++  assert.deepEqual(result.rows, []);
++  assert.equal(result.totals.debit, 0);
++});
++
++test("transport daily sales use selling value and exact decimal daily/report totals", async () => {
++  const empty = { findMany: async () => [] };
++  const db = { umrahBooking: empty, ticketSale: empty, hotelBooking: empty, starBooking: empty,
++    transportBooking: { findMany: async () => [
++      { tripDate: new Date("2050-01-01"), sellingPrice: "0.10", cost: "0.03", net: "0.07", paid: "0.01" },
++      { tripDate: new Date("2050-01-02"), sellingPrice: "0.20", cost: "0.04", net: "0.16", paid: "0.02" },
++    ] } };
++  const result = await new ReportsService(db as never, {} as never).run("daily-sale", {});
++  assert.equal(result.rows[0].sale, 0.1);
++  assert.equal(result.rows[0].profit, 0.07);
++  assert.equal(result.totals.sale, 0.3);
++  assert.equal(result.rows[1].profit, 0.16);
++});
+diff --git a/backend/apps/api/src/reservation/reservation-completion.pg17.spec.ts b/backend/apps/api/src/reservation/reservation-completion.pg17.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8aefdf8eb386b26fec045e27de5c55f08faed96e
+--- /dev/null
++++ b/backend/apps/api/src/reservation/reservation-completion.pg17.spec.ts
+@@ -0,0 +1,78 @@
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import test from "node:test";
++import { PrismaClient, Prisma } from "@prisma/client";
++import { ReservationService } from "./reservation.service";
++import { AccountingService } from "../finance/accounting.service";
++import { SequenceService } from "../common/sequence.service";
++import { AuditService } from "../common/audit.service";
++import type { AuthUser } from "../auth/auth.types";
++const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++test("PG17: reservation split, occupancy and cancellation remain atomic", { skip: !url }, async t => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4300", "REVENUE"], ["5100", "EXPENSE"]] as const) {
++      await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: "Synthetic reservation account", type } });
++    }
++    const branch = await db.branch.create({ data: { code: randomUUID(), name: "Synthetic hotel branch" } });
++    const staff = await db.user.create({ data: { email: `${randomUUID()}@example.test`, username: randomUUID(), fullName: "Synthetic hotel staff", passwordHash: "invalid" } });
++    const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic hotel traveler", branchId: branch.id } });
++    const hotel = await db.hotel.create({ data: { hotelNumber: randomUUID(), name: "Synthetic hotel", city: "Makkah", country: "Saudi Arabia" } });
++    const actor = { id: staff.id, branchIds: [branch.id], defaultBranchId: null, isSuperAdmin: true } as AuthUser;
++    const seq = new SequenceService(db as never), audit = new AuditService(db as never);
++    const accounting = new AccountingService(db as never, seq, audit);
++    const service = new ReservationService(db as never, seq, audit, accounting);
++    const input = (rooms: { roomNumber?: string; sellingPrice?: number; supplierCost?: number }[]) => ({ branchId: branch.id, customerId: customer.id, segments: [{ hotelId: hotel.id, confirmationNo: "Synthetic confirmation", checkIn: "2051-01-01", checkOut: "2051-01-03", rooms }] });
++    await t.test("split preserves branch, confirmation and exactly one physical room per booking", async () => {
++      const original = await service.save(actor, input([{ roomNumber: "A" }, { roomNumber: "B" }]));
++      const moved = original.staySegments[0].rooms.find(r => r.roomNumber === "B")!;
++      const split = await service.split(actor, original.id, [moved.id]);
++      const parent = await service.get(actor, original.id);
++      assert.equal(parent.rooms, 1); assert.equal(parent.staySegments[0].rooms.length, 1);
++      assert.equal(split.child.branchId, branch.id);
++      assert.equal(split.child.parentBookingId, original.id);
++      assert.equal(split.child.staySegments[0].rooms[0].roomNumber, "B");
++      assert.equal(split.child.staySegments[0].confirmationNo, "Synthetic confirmation");
++      assert.equal(await db.hotelBooking.count({ where: { parentBookingId: original.id } }), 1);
++    });
++    await t.test("late split audit failure restores original rooms and leaves no child", async () => {
++      const original = await service.save(actor, input([{}, {}]));
++      const failing = new ReservationService(db as never, seq, { log: async (event: Parameters<typeof audit.log>[0]) => { if (event.action === "split") throw Error("synthetic split audit failure"); await audit.log(event); } } as never, accounting);
++      await assert.rejects(failing.split(actor, original.id, [original.staySegments[0].rooms[0].id]), /synthetic split audit failure/);
++      assert.equal((await service.get(actor, original.id)).staySegments[0].rooms.length, 2);
++      assert.equal(await db.hotelBooking.count({ where: { parentBookingId: original.id } }), 0);
++    });
++    await t.test("duplicate concurrent split commits once; moving all rooms and foreign branch access are denied", async () => {
++      const original = await service.save(actor, input([{}, {}]));
++      await assert.rejects(service.split(actor, original.id, original.staySegments[0].rooms.map(r => r.id)));
++      const room = original.staySegments[0].rooms[0].id;
++      const foreign = { ...actor, isSuperAdmin: false, permissions: ["reservation.split", "hotel.booking"], branchIds: [], defaultBranchId: null } as AuthUser;
++      await assert.rejects(service.split(foreign, original.id, [room]));
++      const results = await Promise.allSettled([service.split(actor, original.id, [room]), service.split(actor, original.id, [room])]);
++      assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
++      assert.equal(await db.hotelBooking.count({ where: { parentBookingId: original.id } }), 1);
++    });
++    await t.test("simultaneous physical-room reservations cannot double allocate", async () => {
++      const room = "concurrent-" + randomUUID();
++      const results = await Promise.allSettled([service.save(actor, input([{ roomNumber: room }])), service.save(actor, input([{ roomNumber: room }]))]);
++      assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
++    });
++    await t.test("cancellation reverses sale/cost once and preserves the customer's credit", async () => {
++      const booking = await service.save(actor, { ...input([{ sellingPrice: 100, supplierCost: 60 }]), paid: 30 });
++      await accounting.postReceipt({ userId: staff.id, amount: 30, method: "CASH", module: "reservation", sourceId: booking.id, customerId: customer.id, branchId: branch.id });
++      const results = await Promise.allSettled([service.cancel(actor, booking.id, "Synthetic cancellation"), service.cancel(actor, booking.id, "Synthetic retry")]);
++      assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
++      const cancelled = await service.get(actor, booking.id);
++      assert.equal(cancelled.balance.toFixed(2), "-30.00");
++      assert.equal(await db.journalEntry.count({ where: { sourceId: booking.id, kind: "CANCELLATION" } }), 2);
++      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === customer.id)?.balance, -30);
++      const journals = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: true } });
++      for (const journal of journals) assert.equal(journal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
++    });
++  } finally { await db.$disconnect(); }
++});
+diff --git a/backend/apps/api/src/workflows/remaining-workflows.pg17.spec.ts b/backend/apps/api/src/workflows/remaining-workflows.pg17.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1f2fb5e949632dd0fbcb463ead5e9f6ace568e97
+--- /dev/null
++++ b/backend/apps/api/src/workflows/remaining-workflows.pg17.spec.ts
+@@ -0,0 +1,84 @@
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import test from "node:test";
++import { PrismaClient, Prisma } from "@prisma/client";
++import { WorkflowsController } from "./workflows.controller";
++import { AccountingService } from "../finance/accounting.service";
++import { SequenceService } from "../common/sequence.service";
++import { AuditService } from "../common/audit.service";
++import { ReportsService } from "../reports/reports.service";
++import type { AuthUser } from "../auth/auth.types";
++
++const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
++test("PG17: ticket replacement preserves payments and reconciles customer accounting", { skip: !url }, async t => {
++  const target = new URL(url!);
++  assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(target.hostname));
++  assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
++  const db = new PrismaClient({ datasourceUrl: url });
++  try {
++    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
++    assert.ok(server.version >= 170000 && server.version < 180000);
++    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["4200", "REVENUE"]] as const) {
++      await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: "Synthetic workflow account", type } });
++    }
++    const branch = await db.branch.create({ data: { code: randomUUID(), name: "Synthetic replacement branch" } });
++    const staff = await db.user.create({ data: { email: `${randomUUID()}@example.test`, username: randomUUID(), fullName: "Synthetic replacement staff", passwordHash: "invalid", defaultBranchId: branch.id } });
++    const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic replacement traveler", branchId: branch.id } });
++    const supplier = await db.supplier.create({ data: { name: "Synthetic airline supplier" } });
++    const actor = { id: staff.id, branchIds: [branch.id], defaultBranchId: branch.id, isSuperAdmin: true } as AuthUser;
++    const req = { user: actor } as never;
++    const seq = new SequenceService(db as never), audit = new AuditService(db as never);
++    const accounting = new AccountingService(db as never, seq, audit);
++    const workflow = new WorkflowsController(db as never, seq, audit, accounting, {} as never);
++    const ticket = await db.ticketSale.create({ data: { ticketNumber: randomUUID(), customerId: customer.id, supplierId: supplier.id, branchId: branch.id, fare: "100.03", net: "100.03", cost: "60", profit: "40.03", paidAmount: "40.01", status: "ISSUED", paymentStatus: "PARTIAL", sector: "ISB-JED", departureAt: new Date("2050-01-01"), exchangeRate: "1.5", baggage: "20kg" } });
++    await accounting.postSale({ userId: staff.id, module: "ticket", sourceId: ticket.id, customerId: customer.id, branchId: branch.id, amount: 100.03 });
++    await accounting.postReceipt({ userId: staff.id, module: "ticket", sourceId: ticket.id, customerId: customer.id, branchId: branch.id, amount: 40.01, method: "CASH" });
++    let replacement: Awaited<ReturnType<typeof workflow.reissue>>;
++    await t.test("reissue retains paid amount, itinerary context and decimal fees with customer-tagged AR", async () => {
++      replacement = await workflow.reissue(ticket.id, { newTicketNumber: randomUUID(), newItinerary: "ISB-MED", airlineChangeFee: 0.1, agencyFee: 0.2, fareDifference: 0.3 }, req);
++      assert.equal(replacement.newTicket.paidAmount.toFixed(2), "40.01");
++      assert.equal(replacement.newTicket.net.toFixed(2), "100.63");
++      assert.equal(replacement.newTicket.paymentStatus, "PARTIAL");
++      assert.equal(replacement.newTicket.supplierId, supplier.id);
++      assert.equal(replacement.newTicket.departureAt?.toISOString(), ticket.departureAt?.toISOString());
++      assert.equal(replacement.newTicket.sector, "ISB-MED");
++      assert.equal(replacement.newTicket.exchangeRate.toString(), "1.5");
++      const rows = await accounting.arAp("customer");
++      assert.equal(rows.find(r => r.partyId === customer.id)?.balance, 60.62);
++    });
++    await t.test("replaced ticket cannot be refunded again and a refunded replacement cannot be reissued blindly", async () => {
++      await assert.rejects(workflow.refund(ticket.id, { refundAmount: 5, reason: "Synthetic" }, req));
++      await workflow.refund(replacement!.newTicket.id, { refundAmount: 5, reason: "Synthetic credit" }, req);
++      await assert.rejects(workflow.reissue(replacement!.newTicket.id, { agencyFee: 1 }, req), { status: 409 });
++      const report = await new ReportsService(db as never, accounting).run("receivables", {});
++      assert.equal(report.rows.find(r => r.clientId === customer.id)?.debit, 55.62);
++    });
++    await t.test("concurrent reissues create only one replacement and unpaid originals stay unpaid", async () => {
++      const original = await db.ticketSale.create({ data: { customerId: customer.id, branchId: branch.id, fare: 5, net: 5, cost: 0, profit: 5, status: "ISSUED" } });
++      const results = await Promise.allSettled([workflow.reissue(original.id, { agencyFee: 1 }, req), workflow.reissue(original.id, { agencyFee: 1 }, req)]);
++      assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
++      assert.equal(await db.ticketReissue.count({ where: { originalTicketId: original.id } }), 1);
++      const success = results.find(r => r.status === "fulfilled");
++      if (success?.status === "fulfilled") assert.equal(success.value.newTicket.paymentStatus, "UNPAID");
++    });
++    await t.test("failed audit rolls back replacement, fee journal and original status", async () => {
++      const original = await db.ticketSale.create({ data: { customerId: customer.id, branchId: branch.id, fare: 7, net: 7, cost: 0, profit: 7, status: "ISSUED" } });
++      const before = await db.journalEntry.count();
++      const failing = new WorkflowsController(db as never, seq, { log: async () => { throw Error("synthetic audit failure"); } } as never, accounting, {} as never);
++      await assert.rejects(failing.reissue(original.id, { agencyFee: 1 }, req), /synthetic audit failure/);
++      assert.equal(await db.ticketReissue.count({ where: { originalTicketId: original.id } }), 0);
++      assert.equal((await db.ticketSale.findUniqueOrThrow({ where: { id: original.id } })).status, "ISSUED");
++      assert.equal(await db.journalEntry.count(), before);
++    });
++    await t.test("foreign branch reissue is denied without creating another ticket", async () => {
++      const original = await db.ticketSale.create({ data: { customerId: customer.id, branchId: branch.id, net: 2, status: "ISSUED" } });
++      const foreign = { user: { ...actor, isSuperAdmin: false, branchIds: [], defaultBranchId: null } } as never;
++      await assert.rejects(workflow.reissue(original.id, { agencyFee: 1 }, foreign));
++      assert.equal(await db.ticketReissue.count({ where: { originalTicketId: original.id } }), 0);
++    });
++    await t.test("all workflow journals remain balanced", async () => {
++      const journals = await db.journalEntry.findMany({ where: { branchId: branch.id }, include: { lines: true } });
++      for (const journal of journals) assert.equal(journal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
++    });
++  } finally { await db.$disconnect(); }
++});

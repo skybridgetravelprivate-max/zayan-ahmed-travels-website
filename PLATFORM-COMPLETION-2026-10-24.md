@@ -1,0 +1,58 @@
+# Platform completion matrix — 24 October 2026
+
+This compares the supplied target diagram with the existing application and scoped acceptance evidence. “Verified” applies to the named behavior, not an entire business domain. No real customer transaction was used as a test. Existing approvals, initialization and test work were reused; old report statements are superseded where this report provides newer evidence.
+
+## Actual architecture
+
+Next.js 16.4.3 public/customer/staff UI and NestJS 11 modular monolith run behind the combined Hostinger Node gateway. Customer SQL and Prisma CRM use the same Supabase PostgreSQL database. The recorded live baseline is commit `34fc72c6b4b04de76ff3861e02f545cb2b584f50`, Hostinger deployment `01a16cf4-ae24-70d5-9bc8-5ea2ff183508`. The final deployment for this candidate is recorded separately.
+
+Do not recreate the diagram's SQLite/Redis boxes or split services solely for visual similarity. No measured need or separately verified Redis/worker runtime was established. Supabase Free and existing hosting remain the cost boundary.
+
+## Completion matrix
+
+| Area | Actual status and evidence | Remaining work / dependency |
+|---|---|---|
+| Hosting, routing and TLS | Verified selected live behavior: `backend/scripts/hostinger-start.cjs`, `hostinger-api-path.cjs`; prior deployment proof, runtime process/database mapping and public health checks. | Final candidate smoke checks; no multi-instance/load-capacity certification. |
+| Edge security | HTTPS/redirects and application rate/auth controls verified selectively. | Cloudflare labels in the diagram are not evidence of WAF, geo/IP rules, bot challenges or edge policies. Do not activate paid edge products. |
+| Customer identity | Synthetic HTTP/Chrome registration/login, actual cookies, revocation/link checks and account isolation: `src/server/customer-auth/*`, `src/app/api/account/*`. | Owner production onboarding; password recovery/2FA acceptance is not established. |
+| Account profile and assistance | Real signed-in identity remains displayed. Guest fake identity removed in `ProfileSummary`; `AccountHome` links assistance to the real contact page. Desktop/mobile browser checks verify no fabricated profile and working support link. | Profile editing, account inquiry history and personal document/visa lists are not implemented by this cleanup. |
+| Website inquiries | Existing `/api/inquiries`, `src/server/crm-lead.ts`, `WebsiteInquiriesController`; earlier inquiry regression coverage reused. | Full public inquiry-to-assigned-staff browser acceptance remains partial; no claim based on form filenames. |
+| Staff authorization | Existing `JwtGuard`, `GlobalFinanceGuard`, record-scope and permission guards; branch/customer denial regressions and synthetic browser checks. | Actual staff roles/assignments and any widened access require owner approval. Existing HO initialization/assignment is preserved. |
+| CRM | `CrmService`, `convertLeadToCustomer`, `convertQuotationToBooking`; prior row-lock, retry and rollback checks reused. | Complete follow-up/task/report usability acceptance and actual staff operating procedures. |
+| Quotations and Umrah bookings | Prior real-PG17/browser/HTTP checks verify whole-package quantity, edit locking, atomic conversion, sale/cost journals and customer visibility. | Full operational Umrah visa/hotel/transport orchestration and supplier confirmations remain partial. |
+| Receipts | Durable key identity, pending review, same-tab/cross-tab/closure recovery and private recovery responses are verified; current Chrome/proxy suite passes. | Initial paid values in other booking modules are not yet integrated into this flow. Owner chose a proposal for approval; see payment design. No automatic historical reconciliation. |
+| Ticketing | Manual issue/reissue/refund code exists. This candidate verifies replacement paid totals, source metadata, customer-tagged fee AR, decimal fees, concurrency, rollback and denial of refunds against replaced tickets. Evidence: `WorkflowsController.reissue/refund`, `remaining-workflows.pg17.spec.ts`. | Partially refunded tickets require accounting review before reissue. Live GDS/airline search, settlement and initial-payment integration remain unaccepted. Sales credits are not cash payout proof. |
+| Hotels and reservations | New PG17 checks verify atomic zero-value splits, branch/confirmation preservation, physical-room collision prevention, duplicate split protection and sale/cost cancellation offsets preserving customer credit. Evidence: `ReservationService.save/get/split/occupancyConflicts/cancel`, `reservation-completion.pg17.spec.ts`. | Full room/PAX/check-in/transfer visual acceptance, supplier settlement, STAR lifecycle and refund disbursement remain partial. Financially posted reservations remain unsplittable. |
+| Transport | Existing `sellTransport` atomically creates booking/voucher and sale/cost entries; earlier selected checks reused. Daily report now reads selling price rather than the profit field. | Assignment-to-completion/cancellation lifecycle and explicit receipt integration need acceptance. Do not reinterpret stored `net` as sales. |
+| Visas | Scoped resources for visa types/applications/Umrah visas exist in `resources/registry.ts`. | Jurisdiction-specific requirements, document/status/invoice/refund lifecycle and customer-facing tracking remain partial. Generic CRUD is not full workflow proof. |
+| GL accounting | Existing posting-account eligibility, balanced journals and transaction/audit safety retained. `AccountingService.arAp` now aggregates exact Decimal values. | Initial module payments, source allocations, real bank/cash identities, opening balances, reconciliation and accountant signoff require the separate design/business gates. |
+| Reports | `ReportsService.receivables` uses posted AR only, including an empty/settled ledger; no resurrection from source estimates. `dailySale` uses correct transport selling value and exact Decimal totals. Two new regression tests pass. | Daily-sale remains an operational source snapshot, not a certified journal revenue report. Ticket replacement/refund period presentation and complete cross-module financial/report acceptance remain pending accountant requirements. |
+| Generated documents | Existing quotation/receipt/voucher PDFs and ownership/private-no-store checks pass in synthetic HTTP/Chrome; previous six rendered single-page PDF checks reused. | Multipage layouts, non-PKR numerical presentation, full service voucher layouts and production owner document acceptance remain partial. |
+| Uploaded document storage | Read-only runtime/API check confirms Supabase driver and a **private** configured bucket with 8 MB size limit. `StorageService` validates names/types/signatures and fails closed. | `DOCUMENT_UPLOADS_ENABLED` is false. Do not enable until approved persistence, policy and independent object backup/restore acceptance. No object was uploaded, downloaded or deleted for this check. |
+| Email and WhatsApp | Existing adapters and failure/redaction tests; exact runtime names confirm SMTP and WhatsApp credentials absent. | Explicit provider access, free quotas/terms and activation approval; no delivery claim or live messages. |
+| Airline/hotel/Nusuk/payment/insurance APIs | No operational acceptance established. | Owner-supplied free sandbox/provider access and exact business rules. Do not fabricate live inventory, confirmations or payments. Manual operations remain separate. |
+| Workers and caching | Synchronous existing paths and PostgreSQL sessions/rate limiting retained. | Separate queue, Redis, scheduled report and sync operation not established. Add only for measured need and available free resources. |
+| Monitoring/auditing | Application health, Hostinger logs and transaction-participating audit code exist; audit-failure rollback tests pass. | Independent alert runner/destination, retention and incident runbook acceptance. No new scheduler or outbound alerts activated. |
+| Database recovery | Prior specific encrypted public-schema archive/PG17 restore proof reused. Exact current application artifact retained separately for code recovery. | A past DB archive is not a fresh full-project backup. Unattended schedule/token lifecycle, independent key custody, object bytes, nonpublic schemas and full recovery acceptance remain incomplete. |
+| Staging/security/dependencies | Local loopback synthetic PG17 and real Chrome/proxy acceptance. Current patched lockfiles reused; no dependency change in this candidate. | No isolated hosted staging inventory or full penetration/load/accessibility certification. Current npm snapshot does not guarantee absence of future advisories. |
+
+## This candidate's proof
+
+- New tests failed on the deployed baseline for the confirmed ticket/report defects, then passed with the corrections.
+- **13 PG17 checks** passed (including two parent tests) covering ticket lineage/refund safeguards, financial snapshots/rollback, branch denial, hotel split/collision/cancellation behavior.
+- **138 backend regression tests** passed, including two new report tests. Two outdated unit harnesses were adapted to Decimal serialization and transaction-scoped split; their safety assertions remain unchanged.
+- Both application builds and combined Hostinger packaging passed. Changed customer UI lint passed.
+- Real Chrome/HTTP/proxy journey passed: existing finance/customer recovery and cache assertions plus signed-in/guest account rendering at 390px and 1280px without horizontal overflow.
+- Test DB and credentials were synthetic. Production reads were metadata/configuration only. No migrations, seeds, financial production writes, credential changes, permissions, provider activation or messaging were performed.
+
+## Priorities, dependencies and exact gates
+
+1. **Release these independently verified corrections.** No schema migration. Require checked source manifest, current runtime identity, retained guarded application recovery, successful Hostinger build and live read-only smoke. Owner has already authorized this code release.
+2. **Approve payment integration locally.** `payment-receipt-integration-proposal-2026-10-24.md` specifies typed source allocations, idempotency/fingerprint/review, explicit method and preserved finance authorization. No production migration follows from local approval.
+3. **Owner/accountant decisions.** Actual cash/bank mapping, office/tax details, balances, historical reconciliation and partial-refund/reissue policy. Never invent financial rows or backfill historical money.
+4. **Document acceptance and recovery.** Approve a scoped synthetic object persistence/access/restore test, independent storage/key custody and verified free quotas. Only then separately approve upload activation. No production object changes are included here.
+5. **Operational backup and monitoring.** Identify an independent runner/destination, resolve Google token lifecycle, approve exact exports/uploads/schedules/pruning and alert recipient. Keep disabled until those gates pass.
+6. **Remaining manual lifecycles and reports.** Accept hotel/STAR/check-in/transport/visa workflows and journal-versus-operational report definitions in synthetic staging before enabling new financial behavior. Validate cancellation credit separately from cash disbursement.
+7. **External services.** Only after owner supplies approved free sandbox access and business decisions. Paid-only features remain blocked under the mandatory cost constraint.
+
+All proposed work stays on Supabase Free and existing/free tools. These gates explain why no defensible “entire platform complete” claim can be made in one deployment.

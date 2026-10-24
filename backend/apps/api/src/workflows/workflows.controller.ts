@@ -174,7 +174,7 @@ export class WorkflowsController {
       const ticket = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
       if (!ticket) throw new BadRequestException("Ticket not found");
       assertBranch(req.user, ticket.branchId);
-      if (ticket.status === "CANCELLED") throw new BadRequestException("Cancelled ticket cannot be refunded");
+      if (["CANCELLED", "REISSUED"].includes(ticket.status)) throw new BadRequestException("Cancelled or replaced ticket cannot be refunded; use its current replacement");
       if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
       const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toNumber();
       const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
@@ -237,14 +237,23 @@ export class WorkflowsController {
   ) {
     return this.prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "TicketSale" WHERE id = ${id} FOR UPDATE`;
-    const original = await tx.ticketSale.findUnique({ where: { id } });
+    const original = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
     if (!original) throw new BadRequestException();
     assertBranch(req.user, original.branchId);
     await assertPeopleLinks(tx, req.user, original);
     if (["REISSUED", "REFUNDED", "CANCELLED"].includes(original.status)) throw new ConflictException("Ticket cannot be reissued in its current state");
     const fees = [body.airlineChangeFee ?? 0, body.agencyFee ?? 0, body.fareDifference ?? 0];
     if (!fees.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Fees must be nonnegative amounts with at most two decimal places");
-    const extra = Number(body.airlineChangeFee ?? 0) + Number(body.agencyFee ?? 0) + Number(body.fareDifference ?? 0);
+    if (original.refunds?.length) throw new ConflictException("Refunded ticket requires accounting review before reissue");
+    for (const field of ["newItinerary", "newTicketNumber", "reason"] as const) {
+      if (body[field] !== undefined && (typeof body[field] !== "string" || body[field]!.length > 500)) throw new BadRequestException("Invalid reissue field");
+    }
+    const extra = fees.reduce((sum, fee) => sum.plus(fee), new Prisma.Decimal(0));
+    const net = new Prisma.Decimal(original.net).plus(extra);
+    const paid = new Prisma.Decimal(original.paidAmount ?? 0);
+    if (paid.isNegative() || paid.greaterThan(net) || (original.paymentStatus === "PAID" && !paid.equals(original.net))) {
+      throw new ConflictException("Ticket payment totals require accounting review before reissue");
+    }
     const newTicket = await tx.ticketSale.create({
       data: {
         customerId: original.customerId,
@@ -253,19 +262,32 @@ export class WorkflowsController {
         branchId: original.branchId,
         agentId: original.agentId,
         ticketNumber: body.newTicketNumber,
-        sector: original.sector,
-        fare: Number(original.fare) + Number(body.fareDifference ?? 0),
+        sector: body.newItinerary?.trim() || original.sector,
+        supplierId: original.supplierId,
+        pnrId: original.pnrId,
+        flightNumber: original.flightNumber,
+        departureAt: original.departureAt,
+        arrivalAt: original.arrivalAt,
+        cabin: original.cabin,
+        baggage: original.baggage,
+        sectors: original.sectors ?? undefined,
+        groupId: original.groupId,
+        exchangeRate: original.exchangeRate,
+        discount: original.discount,
+        commission: original.commission,
+        fare: new Prisma.Decimal(original.fare).plus(body.fareDifference ?? 0),
         tax: original.tax,
-        net: Number(original.net) + extra,
+        net,
+        paidAmount: paid,
         cost: original.cost,
-        profit: Number(original.profit) + extra,
+        profit: new Prisma.Decimal(original.profit).plus(extra),
         currency: original.currency,
         status: "ISSUED",
-        paymentStatus: extra > 0 ? "PARTIAL" : original.paymentStatus,
+        paymentStatus: paid.greaterThanOrEqualTo(net) && net.greaterThan(0) ? "PAID" : paid.greaterThan(0) ? "PARTIAL" : "UNPAID",
       },
     });
     let journalId: string | undefined;
-    if (extra > 0) {
+    if (extra.greaterThan(0)) {
       const ar = await this.accounting.accountByCode("1300", tx);
       const rev = await this.accounting.accountByCode("4200", tx);
       const journal = await this.accounting.postJournal({
@@ -278,8 +300,8 @@ export class WorkflowsController {
         branchId: original.branchId,
         userId: req.user.id,
         lines: [
-          { accountId: ar.id, debit: extra, credit: 0 },
-          { accountId: rev.id, debit: 0, credit: extra },
+          { accountId: ar.id, debit: extra.toNumber(), credit: 0, partyType: "customer", partyId: original.customerId ?? undefined },
+          { accountId: rev.id, debit: 0, credit: extra.toNumber() },
         ],
       });
       journalId = journal.id;

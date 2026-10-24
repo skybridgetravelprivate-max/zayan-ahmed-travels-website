@@ -112,7 +112,8 @@ test("reservation get, cancellation and room mutations reject foreign bookings b
 });
 
 test("priced reservation split cannot duplicate posted accounting", async () => {
-  const svc = new ReservationService({ hotelBooking: { findUnique: async () => ({ branchId: "a", net: 100, cost: 50, paid: 0, staySegments: [] }) } } as never, {} as never, audit as never, {} as never);
+  const tx = { $queryRaw: async () => [], hotelBooking: { findUnique: async () => ({ branchId: "a", net: 100, cost: 50, paid: 0, staySegments: [] }) } };
+  const svc = new ReservationService({ $transaction: async (run: (db: typeof tx) => Promise<unknown>) => run(tx) } as never, {} as never, audit as never, {} as never);
   await assert.rejects(svc.split(user, "r", ["room"]), /cannot be split/);
 });
 

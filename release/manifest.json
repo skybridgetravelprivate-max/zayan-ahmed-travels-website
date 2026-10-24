@@ -1,32 +1,88 @@
 {
-  "base": "85f152c63909a7c4b737a75ef4d3ee3deaa0dffe",
-  "generatedAt": "2026-10-24T08:08:21.639036+00:00",
-  "patchSha256": "941776679c91866bbb81d1be52dfc4d93650081d2ddb442942219a40e654c2c5",
+  "base": "34fc72c6b4b04de76ff3861e02f545cb2b584f50",
+  "generatedAt": "2026-10-24T09:02:05.779001+00:00",
+  "patchSha256": "211cc600ed27b3b9d111c6a5397b0f77c5982156b1f9786cb7de4c83c7504f84",
   "reverseCheck": "passed; read-only, no patch applied",
   "files": [
     {
-      "path": "SECURITY-RELEASE-2026-10-24.md",
-      "sha256": "a0e15357e40c7cbd0af43b54e3ad69b47677d2f8d940e4f02070e6074d4ea688"
+      "path": "PAYMENT-INTEGRATION-PROPOSAL.md",
+      "sha256": "c1d0498c0d1862a71d2fab4a8e4e8f600096f920f3ca2ea9dfcab9d9719846d6"
     },
     {
-      "path": "backend/apps/api/package.json",
-      "sha256": "002bac2226075bc502bf9e5e21d66985cb5d0b711a00d0e5e446cf7963ccd3ae"
+      "path": "PLATFORM-COMPLETION-2026-10-24.md",
+      "sha256": "622f2d3728a222a63cfae57ee3d9f75cdf81508a19b81ee24881b4902ebcae86"
     },
     {
-      "path": "backend/package-lock.json",
-      "sha256": "80e486f387d24cf6749a58d1991b856830623b24b0b0a9d7bdb625dd7eb9d27a"
+      "path": "PLATFORM-RELEASE-REVIEW.md",
+      "sha256": "b9f5e473a2cd3d82baba19655793d40eb9763d9d1c7e1e064be2f131fdec8706"
+    },
+    {
+      "path": "backend/apps/api/src/common/p0-remediation.spec.ts",
+      "sha256": "f98f6dc338fdad25823254d53f48f45c45f4aec963059b03c26edb7dc6d4dcb2"
+    },
+    {
+      "path": "backend/apps/api/src/common/pr16-review.spec.ts",
+      "sha256": "ddafaea752a75cfc8fa7ab1d094584229ab0f141063b0e6600170a934912e31b"
+    },
+    {
+      "path": "backend/apps/api/src/finance/accounting.service.ts",
+      "sha256": "6de8505caa39af34d3867d4989bc72218f49a94eca889e2ae84f35616af5f316"
+    },
+    {
+      "path": "backend/apps/api/src/reports/reports-completion.spec.ts",
+      "sha256": "820998b57f220422c20e71bfe813cafd5e8fba31e2f18d4e9b6c8a00d727ed23"
+    },
+    {
+      "path": "backend/apps/api/src/reports/reports.service.ts",
+      "sha256": "f090ef384bd07a8551023c747e7132c456695e416951261647d31f3b768f5319"
+    },
+    {
+      "path": "backend/apps/api/src/reservation/reservation-completion.pg17.spec.ts",
+      "sha256": "7cae8524b92d167f3ca94cd28739533cca4c409991270de08cac7be23df87af4"
+    },
+    {
+      "path": "backend/apps/api/src/reservation/reservation.service.ts",
+      "sha256": "349d1e8e74f8b152ca4f464b00931eff2259ea9909bd7739bf8d4d3952e99213"
+    },
+    {
+      "path": "backend/apps/api/src/workflows/remaining-workflows.pg17.spec.ts",
+      "sha256": "99727cbdaa62cb56c0df60d8b7784d74b2408542d0ca04f0abf27ab87903ba85"
+    },
+    {
+      "path": "backend/apps/api/src/workflows/workflows.controller.ts",
+      "sha256": "8b5c9863e62bea04cd00a9990268d0d34e9395a44f3856fdc0e0e6440c3f265c"
     },
     {
       "path": "backend/package.json",
-      "sha256": "5feddfb8fe9b27a1f2e9a5d32cc06e5b52fb58548d8aacd05782529e8aac63d8"
+      "sha256": "67193fada9858beee296a40648155144b35a607d886f7a8abd141df51af8cc89"
     },
     {
-      "path": "package-lock.json",
-      "sha256": "01fc370cfb69b8686276a60072745a04e961ae393f6b2bd8e909e91425d88143"
+      "path": "backend/scripts/receipt-browser-checks.cjs",
+      "sha256": "d2837831b7c94ba6cc31e80b54975cf6cd1944afd69a6ab432351f41b66ae024"
     },
     {
-      "path": "package.json",
-      "sha256": "37e1aff734a6f492f141f0fe7a003a3754d5447a5c6dfbe1fa526743353671ba"
+      "path": "src/app/account/page.tsx",
+      "sha256": "a1598892c30500c1fa59c31539489f0f821caf2292f662cf02d4b6d781e6ce9d"
+    },
+    {
+      "path": "src/app/my-bookings/page.tsx",
+      "sha256": "23bbedd7a9dfff7402b0cb7d464d299d15d0f06295d0bf82b5ccbbc3a183f66f"
+    },
+    {
+      "path": "src/components/account/AccountHome.tsx",
+      "sha256": "91a075af676913ce4e072356787a681a6b8d3151492738d8006dbeb63f2b9a2f"
+    },
+    {
+      "path": "src/components/account/BookingList.tsx",
+      "sha256": "793c859df9cf3f6d5100be34591f5ccc91705306596e130b93c04bcc03a60924"
+    },
+    {
+      "path": "src/components/account/ProfileSummary.tsx",
+      "sha256": "e89f08b05b294935e62ed67a4d3bcf3c13b09704fb9c286ad098c80243438b70"
+    },
+    {
+      "path": "src/config/account.ts",
+      "sha256": "724ee20176e5baef281c4e9a918b7d39b751138f830bd59bcbd079dc732a8616"
     }
   ],
   "excludes": [

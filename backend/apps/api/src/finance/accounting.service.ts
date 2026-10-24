@@ -487,13 +487,13 @@ export class AccountingService {
     const lines = await this.prisma.journalLine.findMany({
       where: { accountId: acc.id, partyType, journal: { status: { in: ["POSTED", "REVERSED"] } } },
     });
-    const map: Record<string, number> = {};
+    const map: Record<string, Prisma.Decimal> = {};
     for (const l of lines) {
       const id = l.partyId || "unknown";
-      map[id] = (map[id] || 0) + Number(l.debit) - Number(l.credit);
+      map[id] = (map[id] ?? new Prisma.Decimal(0)).plus(l.debit).minus(l.credit);
     }
     return Object.entries(map)
-      .map(([partyId, balance]) => ({ partyId, balance: partyType === "supplier" ? -balance : balance }))
+      .map(([partyId, balance]) => ({ partyId, balance: (partyType === "supplier" ? balance.negated() : balance).toNumber() }))
       .filter((r) => Math.abs(r.balance) > 0.009);
   }
 }

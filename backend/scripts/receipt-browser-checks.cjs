@@ -150,6 +150,24 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
     const foreignPdf = await staffOtherPage.goto(origin + `/api/v1/pdf/umrah-voucher/${booking.id}`);
     assert.equal(foreignPdf.status(), 404);
     assert.equal((await staffOther.request.post(origin + `/api/v1/finance/receipts/${receipt.id}/review`, { data: { reviewed: true } })).status(), 403);
+    await ownerPage.goto(origin + "/account");
+    await ownerPage.getByRole("heading", { name: "Need help with an inquiry?", exact: true }).waitFor();
+    assert.ok(!(await ownerPage.locator("body").innerText()).includes("Demo Traveller"));
+    for (const width of [390, 1280]) {
+      await ownerPage.setViewportSize({ width, height: 844 });
+      await ownerPage.getByRole("button", { name: "Support", exact: true }).click();
+      assert.equal(await ownerPage.getByRole("link", { name: "Contact agency", exact: true }).getAttribute("href"), "/contact");
+      assert.ok(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Account layout must fit mobile and desktop");
+      await ownerPage.screenshot({ path: path.join(outputDir, `account-${width}.png`), fullPage: true });
+      await ownerPage.getByRole("button", { name: "Support", exact: true }).click();
+    }
+    const guest = await browser.newContext();
+    const guestPage = await guest.newPage();
+    await guestPage.goto(origin + "/account");
+    assert.ok(!(await guestPage.locator("body").innerText()).includes("Demo Traveller"));
+    await guestPage.getByRole("heading", { name: "Create an account", exact: true }).waitFor();
+    await guest.close();
+    results.push("real account identity and support link render at mobile/desktop sizes; signed-out account has no fabricated profile");
     await owner.close(); await other.close(); await staffOther.close();
     results.push("two verified customer logins display only their own bookings; forged selectors ignored; owner sees the pending date; customer/foreign staff document requests return 401/404; foreign receipt review denied (403)");
     const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, paid: "350.35", balance: "659.65", syntheticOnly: true };
