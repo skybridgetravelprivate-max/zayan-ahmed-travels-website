@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ReportsService } from "./reports.service";
+import { AccountingService } from "../finance/accounting.service";
 
 test("settled posted receivables never fall back to unposted booking estimates", async () => {
   const service = new ReportsService({} as never, { arAp: async () => [] } as never);
@@ -21,4 +22,11 @@ test("transport daily sales use selling value and exact decimal daily/report tot
   assert.equal(result.rows[0].profit, 0.07);
   assert.equal(result.totals.sale, 0.3);
   assert.equal(result.rows[1].profit, 0.16);
+});
+
+test("party ledger running totals preserve exact cents across receipt and credit entries", async () => {
+  const rows = [{ debit: "0.10", credit: "0" }, { debit: "0.20", credit: "0" }, { debit: "0", credit: "0.30" }].map(row => ({ ...row, journal: { date: new Date("2050-01-01"), entryNumber: "SYN", memo: "Synthetic" }, account: { code: "1300" } }));
+  const db = { journalLine: { findMany: async () => rows } };
+  const ledger = await new AccountingService(db as never, {} as never, {} as never).partyLedger("customer", "synthetic");
+  assert.deepEqual(ledger.map(row => row.running), [0.1, 0.3, 0]);
 });

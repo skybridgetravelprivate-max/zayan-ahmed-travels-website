@@ -87,7 +87,7 @@ async function journey() {
     }
     const admin = await db.user.create({ data: { email: `${tag}@example.test`, username: tag, fullName: "Synthetic HTTP administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: adminRole.id } } } });
     const outsider = await db.user.create({ data: { email: `${tag}-staff@example.test`, username: `${tag}-staff`, fullName: "Synthetic foreign staff", passwordHash: hash, defaultBranchId: otherBranch.id, roles: { create: { roleId: scopedRole.id } } } });
-    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
+    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["4200", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
     const lead = await db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic HTTP traveler", mobile: "+923000000000", email: `${tag}-customer@example.test`, adults: 3, budget: 1000.03, branchId: branch.id } });
     const environment = {};
     for (const key of ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "USERPROFILE", "LOCALAPPDATA"]) if (process.env[key]) environment[key] = process.env[key];

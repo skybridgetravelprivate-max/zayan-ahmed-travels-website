@@ -19,3 +19,10 @@ export function formPayload(fields: ManagementField[], form: FormData, create: b
   }
   return data;
 }
+export function staffConflictMessage(body: unknown): string {
+  if (body && typeof body === "object" && !Array.isArray(body) && (body as Record<string, unknown>).code === "UMRAH_CANCELLATION_REVIEW_REQUIRED") {
+    return "Cancellation requires accounting review. No credit or payout has been recorded.";
+  }
+  return "The record changed or conflicts with an existing record. Reload and review before saving.";
+}
+

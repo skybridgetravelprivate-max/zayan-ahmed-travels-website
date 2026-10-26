@@ -1,5 +1,5 @@
 import { ReceiptOperations } from "../finance/receipt-operations";
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -63,8 +63,14 @@ export class UmrahOpsService {
     if (!body.id) assertCan(user, "umrah.create");
     const existing = body.id ? await db.umrahBooking.findUnique({ where: { id: String(body.id) } }) : null;
     if (body.id && !existing) throw new NotFoundException();
+    if (body.workflowStep === "Cancelled" && existing?.workflowStep !== "Cancelled") {
+      throw new ForbiddenException("Use the booking lifecycle workflow to request cancellation");
+    }
     if (existing) {
       assertBranch(user, existing.branchId);
+      if (existing.status === "CANCELLED" && body.workflowStep !== undefined && body.workflowStep !== existing.workflowStep) {
+        throw new ForbiddenException("Cancelled bookings cannot change lifecycle through booking edits");
+      }
       body = { ...existing, ...body };
       if (existing.iataLocked && body.iataCode !== existing.iataCode) throw new ForbiddenException("IATA is locked");
     }
@@ -157,16 +163,26 @@ export class UmrahOpsService {
   async lifecycle(user: AuthUser, id: string, step: string, ip?: string) {
     assertCan(user, "umrah.edit");
     if (!UMRAH_LIFECYCLE.includes(step)) throw new BadRequestException("Unknown lifecycle status.");
-    const existing = await this.prisma.umrahBooking.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException();
-    assertBranch(user, existing.branchId);
-    if (existing.status === "CANCELLED" && step !== "Cancelled") throw new BadRequestException("Cancelled bookings cannot change status.");
-    const row = await this.prisma.umrahBooking.update({
-      where: { id },
-      data: { workflowStep: step, status: step === "Cancelled" ? "CANCELLED" : step === "Completed" ? "COMPLETED" : existing.status },
+    return this.prisma.$transaction(async tx => {
+      // Share the booking lock with receipt operations; re-read after acquiring it.
+      await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${id} FOR UPDATE`;
+      const existing = await tx.umrahBooking.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException();
+      assertBranch(user, existing.branchId);
+      if (existing.status === "CANCELLED" && step !== "Cancelled") throw new BadRequestException("Cancelled bookings cannot change status.");
+      const status = step === "Cancelled" ? "CANCELLED" : step === "Completed" ? "COMPLETED" : existing.status;
+      if (existing.workflowStep === step && existing.status === status) return existing;
+      if (step === "Cancelled") {
+        const posted = await tx.journalEntry.findFirst({ where: { module: "umrah", sourceId: id, status: "POSTED" }, select: { id: true } });
+        const receipt = await tx.receipt.findFirst({ where: { bookingId: id }, select: { id: true } });
+        if (existing.paid.greaterThan(0) || posted || receipt) {
+          throw new ConflictException({ code: "UMRAH_CANCELLATION_REVIEW_REQUIRED", message: "Cancellation requires accounting review of posted amounts and receipts; no credit or payout has been recorded." });
+        }
+      }
+      const row = await tx.umrahBooking.update({ where: { id }, data: { workflowStep: step, status } });
+      await this.audit.log({ userId: user.id, action: "lifecycle", entity: "UmrahBooking", entityId: id, before: existing, after: row, ipAddress: ip, db: tx });
+      return row;
     });
-    await this.audit.log({ userId: user.id, action: "lifecycle", entity: "UmrahBooking", entityId: id, after: row, ipAddress: ip });
-    return row;
   }
 
   async lockIata(user: AuthUser, id: string, iataCode: string, ip?: string) {

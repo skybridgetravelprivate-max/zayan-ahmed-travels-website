@@ -466,9 +466,9 @@ export class AccountingService {
       include: { journal: true, account: true },
       orderBy: { journal: { date: "asc" } },
     });
-    let run = 0;
+    let run = new Prisma.Decimal(0);
     return lines.map((l) => {
-      run += Number(l.debit) - Number(l.credit);
+      run = run.plus(l.debit).minus(l.credit);
       return {
         date: l.journal.date,
         entryNumber: l.journal.entryNumber,
@@ -476,7 +476,7 @@ export class AccountingService {
         account: l.account.code,
         debit: Number(l.debit),
         credit: Number(l.credit),
-        running: run,
+        running: run.toNumber(),
       };
     });
   }

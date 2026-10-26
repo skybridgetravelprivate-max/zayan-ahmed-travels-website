@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formPayload, displayValue, rowLabel } from "./staff-management";
+import { formPayload, displayValue, rowLabel, staffConflictMessage } from "./staff-management";
 import { workflowsFor, STAFF_WORKFLOWS } from "./staff-workflows";
+
+test("accounting-review conflict has a fixed safe message; arbitrary server details are withheld", () => {
+  assert.match(staffConflictMessage({ code: "UMRAH_CANCELLATION_REVIEW_REQUIRED", message: "private fixture" }), /Cancellation requires accounting review/);
+  for (const body of [null, [], "private fixture", { message: "private fixture" }, { code: "UNKNOWN", message: "private fixture" }]) {
+    assert.equal(staffConflictMessage(body), "The record changed or conflicts with an existing record. Reload and review before saving.");
+  }
+});
 
 test("form serialization sends only declared fields and preserves explicit clearing", () => {
   const form = new FormData();

@@ -1,0 +1,96 @@
+{
+  "baseline": "2966b1eb028c4831f56b01c5d165f67df80a5f5a",
+  "localOnly": false,
+  "productionApproved": true,
+  "patchSha256": "4d6367d5c3154aa383fb890b07f1104a2e1d6de58599df5e10d771e2d9337ac3",
+  "files": [
+    {
+      "path": "backend/apps/api/src/documents/persistence.pg17.spec.ts",
+      "sha256": "b7cf80e9b7158cac3f3ddd4d306da3d4b7e08d1025ece937d67b914131b49e07",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/apps/api/src/finance/accounting.service.ts",
+      "sha256": "bc83120faa8b0e08134e9c11adafe1314cc7b780f2d32443e1cf4bc7fc1e8e6c",
+      "baselineSha256": "6de8505caa39af34d3867d4989bc72218f49a94eca889e2ae84f35616af5f316"
+    },
+    {
+      "path": "backend/apps/api/src/reports/reports-completion.spec.ts",
+      "sha256": "8ab5274954fe329fda6c809728de9548c956fcce891b6e70d9be90cb1fed5c14",
+      "baselineSha256": "e2400deb56d9a011d2a501801a4179c020aa9cc9a29ef89dbf466a669004d5d8"
+    },
+    {
+      "path": "backend/apps/api/src/reservation/reservation-completion.pg17.spec.ts",
+      "sha256": "f2b075f8345dde0adb3bfd30d6a8783f9d885cd856e82acc06160d347499b20d",
+      "baselineSha256": "7cae8524b92d167f3ca94cd28739533cca4c409991270de08cac7be23df87af4"
+    },
+    {
+      "path": "backend/apps/api/src/umrah/lifecycle.pg17.spec.ts",
+      "sha256": "73eeba3f40417b644b65914accefb954b6dc992580a11b775daebe5302fb08bd",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/apps/api/src/umrah/umrah-ops.service.ts",
+      "sha256": "914c1ffd90fdef63d3446f4f029d7a266b45e05066e7eb9965200cfd67bb5b58",
+      "baselineSha256": "c93bd32cdbbd4a24d4de60d7dbc5e24a8e1d9ee46a9e9e4dc4e5c6fa8b660a38"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "3c651fc6de3390f53a80cc20a9c31c7f395888d24c97eea4ac6e2db2426769d8",
+      "baselineSha256": "67193fada9858beee296a40648155144b35a607d886f7a8abd141df51af8cc89"
+    },
+    {
+      "path": "backend/scripts/manual-workflow-browser-checks.cjs",
+      "sha256": "e3b13a58e0c7753868add6d1551f94e1c6675658455394f381540e2f928ce6a6",
+      "baselineSha256": null
+    },
+    {
+      "path": "backend/scripts/quotation-http-journey.cjs",
+      "sha256": "575812927eadb6f7231af2d240c2691c3443aba766c736e1c50787924370ac99",
+      "baselineSha256": "333ad8080471a1bac64d6ef722a6ca4c383e2a972e608091fa8220005f19100e"
+    },
+    {
+      "path": "backend/scripts/receipt-browser-checks.cjs",
+      "sha256": "5660e07172752dd6e2627c59998129004b120fae9e76535f79fb4a502b813b91",
+      "baselineSha256": "f19b795767994d628111846c96d4164c2473cb00259ddad6c5f0def61914ef04"
+    },
+    {
+      "path": "src/components/admin/ManagementWorkspace.tsx",
+      "sha256": "c08270ac2df1553ff724ff42f4f0624eb18f853a19da093da5964b9081c5fd87",
+      "baselineSha256": "2424f5c0d2812b806fde0aaad84df31b46abcbc5f86cb1ea9b1a2cb14112e6e4"
+    },
+    {
+      "path": "src/lib/staff-management.test.ts",
+      "sha256": "6152fc5fd3cc777929db8d3ed8c23d6dc46f88b9b6ab130d30d1aa97bbd03a10",
+      "baselineSha256": "00f835a639cb567857ec427e8a564a9e1078d0e4ea8d2581c9e884e0f79fa0d7"
+    },
+    {
+      "path": "src/lib/staff-management.ts",
+      "sha256": "c0e203637ac35d0ab0d5104e322460df6f55058644b8acfa2477afb0e56d231a",
+      "baselineSha256": "814e97444dec2489dbe280cf4e4d06d605b00d21a754e2f6d8b08c2946467710"
+    }
+  ],
+  "bundleSha256": "c80a03b7d253ee04ff29e13a90c391c92a0607b358636eea5e8e2796fabfd6fc",
+  "schemaChanges": false,
+  "tests": {
+    "newPg17": 12,
+    "existingRelevantPg17": 13,
+    "backendRegressions": 139,
+    "staffRegressions": 8,
+    "apiBuild": "passed",
+    "websiteBuildAndPackaging": "passed",
+    "changedUiLint": "passed",
+    "httpChromeJourney": "passed"
+  },
+  "releaseScope": "Code-only; no schema or data changes",
+  "approvalEvidence": "User requested separate code-only release on 2026-10-26",
+  "recovery": {
+    "baseCommit": "2966b1eb028c4831f56b01c5d165f67df80a5f5a",
+    "deployment": "01a16de2-74e2-7352-849f-58bc9d99abd6",
+    "originalSha256": "2009e4d27fc5a9efc85d90feb17d8080efe2e46d6fe5cfaa1db2a24b8abf505a",
+    "guardedSha256": "f030adde22fcc3b1618f38c14ca29fb8fd6a7fd8a80c9e55d62a487cc46c2d62",
+    "guard": "All /api/v1 mutations forced closed; authentication and reads retained",
+    "databaseRestoreRequired": false,
+    "fullLinuxBundleExecuted": false
+  }
+}

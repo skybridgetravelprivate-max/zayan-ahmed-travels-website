@@ -6,7 +6,7 @@ import { bookingDocumentUrl, bookingFieldSection } from "@/lib/booking-presentat
 import { workflowsFor, type StaffWorkflow } from "@/lib/staff-workflows";
 import { clearReceiptRetry, hasPendingReceipt, receiptRetryKey, savedReceiptRetryKey } from "@/lib/receipt-retry";
 import { useEffect, useRef, useState } from "react";
-import { displayValue, formPayload, rowLabel, type ManagementField, type ManagementModule, type ManagementRow } from "@/lib/staff-management";
+import { displayValue, formPayload, rowLabel, staffConflictMessage, type ManagementField, type ManagementModule, type ManagementRow } from "@/lib/staff-management";
 
 const control = "mt-1 w-full min-w-0 rounded-lg border border-line bg-white px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue";
 const button = "rounded-xl border border-line px-4 py-2 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue disabled:cursor-not-allowed disabled:opacity-50";
@@ -17,7 +17,7 @@ async function request(path: string, method = "GET", body?: unknown, requestKey?
   if (response.status === 401) throw new Error("Your staff session expired. Sign in again.");
   if (response.status === 403) throw new Error("You do not have permission for this operation.");
   if (response.status === 404) throw new Error("This record is unavailable or outside your authorized scope.");
-  if (response.status === 409) throw new Error("The record changed or conflicts with an existing record. Reload and review before saving.");
+  if (response.status === 409) throw new Error(staffConflictMessage(await response.json().catch(() => null)));
   if (!response.ok) throw new Error(method === "GET" ? "Records could not be loaded. Please retry." : "Save was not confirmed. Check required fields and reload the record before retrying.");
   return response.json();
 }

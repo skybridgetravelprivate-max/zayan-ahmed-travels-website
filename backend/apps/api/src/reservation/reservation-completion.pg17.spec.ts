@@ -63,8 +63,7 @@ test("PG17: reservation split, occupancy and cancellation remain atomic", { skip
       assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
     });
     await t.test("cancellation reverses sale/cost once and preserves the customer's credit", async () => {
-      const booking = await service.save(actor, { ...input([{ sellingPrice: 100, supplierCost: 60 }]), paid: 30 });
-      await accounting.postReceipt({ userId: staff.id, amount: 30, method: "CASH", module: "reservation", sourceId: booking.id, customerId: customer.id, branchId: branch.id });
+      const booking = await service.save(actor, { ...input([{ sellingPrice: 100, supplierCost: 60 }]), paid: 30, paymentMethod: "CASH" }, undefined, undefined, randomUUID());
       const results = await Promise.allSettled([service.cancel(actor, booking.id, "Synthetic cancellation"), service.cancel(actor, booking.id, "Synthetic retry")]);
       assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
       const cancelled = await service.get(actor, booking.id);
