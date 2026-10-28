@@ -1,11 +1,23 @@
 import { ReceiptOperations } from "../finance/receipt-operations";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { AuthUser, assertCan } from "../auth/auth.types";
-import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchWhere } from "../auth/record-scope";
+import {
+  assertBranch,
+  assertPeopleLinks,
+  assertPeopleLinksInBranch,
+  assertRecordBranch,
+  branchWhere,
+} from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
 import { assertBookablePackage } from "./package-catalog";
 
@@ -38,48 +50,149 @@ export class UmrahOpsService {
     private accounting: AccountingService,
   ) {}
 
-  private totals(input: { cost?: number; sellingPrice?: number; discount?: number; tax?: number; commission?: number; paid?: number }) {
+  private totals(input: {
+    cost?: number;
+    sellingPrice?: number;
+    discount?: number;
+    tax?: number;
+    commission?: number;
+    paid?: number;
+  }) {
     const cost = Number(input.cost || 0);
     const selling = Number(input.sellingPrice || 0);
     const discount = Number(input.discount || 0);
     const tax = Number(input.tax || 0);
     const commission = Number(input.commission || 0);
     const paid = Number(input.paid || 0);
-    if (![cost, selling, discount, tax, commission, paid].every(n => Number.isFinite(n) && n >= 0)) throw new BadRequestException("Invalid financial amounts");
+    if (
+      ![cost, selling, discount, tax, commission, paid].every(
+        (n) => Number.isFinite(n) && n >= 0,
+      )
+    )
+      throw new BadRequestException("Invalid financial amounts");
     const net = selling - discount + tax;
-    if (cost < 0 || net < 0) throw new BadRequestException("Financial totals cannot be negative.");
-    if (paid - net > 0.5) throw new BadRequestException("Paid amount exceeds selling total.");
-    return { cost, selling, discount, tax, commission, paid, net, profit: net - cost - commission, balance: Math.max(net - paid, 0) };
+    if (cost < 0 || net < 0)
+      throw new BadRequestException("Financial totals cannot be negative.");
+    if (paid - net > 0.5)
+      throw new BadRequestException("Paid amount exceeds selling total.");
+    return {
+      cost,
+      selling,
+      discount,
+      tax,
+      commission,
+      paid,
+      net,
+      profit: net - cost - commission,
+      balance: Math.max(net - paid, 0),
+    };
   }
 
-  async save(user: AuthUser, body: Record<string, unknown>, ip?: string, requestKey?: string) {
-    if (body.id) return this.prisma.$transaction(tx => this.saveWithDb(user, body, tx, ip), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(user, body, requestKey, "bookingId", body.paid,
-      tx => this.saveWithDb(user, { ...body, paid: 0, paymentMethod: undefined }, tx, ip));
-    return this.prisma.umrahBooking.findUniqueOrThrow({ where: { id: result.id }, include: { passengers: true, customer: true } });
+  async save(
+    user: AuthUser,
+    body: Record<string, unknown>,
+    ip?: string,
+    requestKey?: string,
+  ) {
+    if (body.id)
+      return this.prisma.$transaction(
+        (tx) => this.saveWithDb(user, body, tx, ip),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    const result = await new ReceiptOperations(
+      this.prisma,
+      this.seq,
+      this.audit,
+      this.accounting,
+    ).initial(user, body, requestKey, "bookingId", body.paid, (tx) =>
+      this.saveWithDb(
+        user,
+        { ...body, paid: 0, paymentMethod: undefined },
+        tx,
+        ip,
+      ),
+    );
+    return this.prisma.umrahBooking.findUniqueOrThrow({
+      where: { id: result.id },
+      include: { passengers: true, customer: true },
+    });
   }
 
-  private async saveWithDb(user: AuthUser, body: Record<string, unknown>, db: Prisma.TransactionClient, ip?: string) {
+  private async saveWithDb(
+    user: AuthUser,
+    body: Record<string, unknown>,
+    db: Prisma.TransactionClient,
+    ip?: string,
+  ) {
     if (!body.id) assertCan(user, "umrah.create");
-    const existing = body.id ? await db.umrahBooking.findUnique({ where: { id: String(body.id) } }) : null;
+    const existing = body.id
+      ? await db.umrahBooking.findUnique({ where: { id: String(body.id) } })
+      : null;
     if (body.id && !existing) throw new NotFoundException();
-    if (body.workflowStep === "Cancelled" && existing?.workflowStep !== "Cancelled") {
-      throw new ForbiddenException("Use the booking lifecycle workflow to request cancellation");
+    if (
+      body.workflowStep === "Cancelled" &&
+      existing?.workflowStep !== "Cancelled"
+    ) {
+      throw new ForbiddenException(
+        "Use the booking lifecycle workflow to request cancellation",
+      );
     }
     if (existing) {
       assertBranch(user, existing.branchId);
-      if (existing.status === "CANCELLED" && body.workflowStep !== undefined && body.workflowStep !== existing.workflowStep) {
-        throw new ForbiddenException("Cancelled bookings cannot change lifecycle through booking edits");
+      if (
+        existing.status === "CANCELLED" &&
+        body.workflowStep !== undefined &&
+        body.workflowStep !== existing.workflowStep
+      ) {
+        throw new ForbiddenException(
+          "Cancelled bookings cannot change lifecycle through booking edits",
+        );
       }
       body = { ...existing, ...body };
-      if (existing.iataLocked && body.iataCode !== existing.iataCode) throw new ForbiddenException("IATA is locked");
+      if (existing.iataLocked && body.iataCode !== existing.iataCode)
+        throw new ForbiddenException("IATA is locked");
     }
-    const tot = this.totals(body as { cost?: number; sellingPrice?: number; discount?: number; tax?: number; commission?: number; paid?: number });
-    if (tot.paid !== Number(existing?.paid ?? 0)) throw new ForbiddenException("Use the receipt workflow to record payments");
-    const posted = existing && await db.journalEntry.findFirst({ where: { module: "umrah", sourceId: existing.id, status: { in: ["POSTED", "REVERSED"] } } });
+    const tot = this.totals(
+      body as {
+        cost?: number;
+        sellingPrice?: number;
+        discount?: number;
+        tax?: number;
+        commission?: number;
+        paid?: number;
+      },
+    );
+    if (tot.paid !== Number(existing?.paid ?? 0))
+      throw new ForbiddenException(
+        "Use the receipt workflow to record payments",
+      );
+    const posted =
+      existing &&
+      (await db.journalEntry.findFirst({
+        where: {
+          module: "umrah",
+          sourceId: existing.id,
+          status: { in: ["POSTED", "REVERSED"] },
+        },
+      }));
     if (posted && existing) {
-      const amounts = ["cost", "sellingPrice", "discount", "tax", "commission"] as const;
-      if (amounts.some(key => !new Prisma.Decimal(String(body[key] ?? 0)).equals(existing[key])) || body.customerId !== existing.customerId) throw new ForbiddenException("Posted amounts and customer are immutable; use financial adjustments");
+      const amounts = [
+        "cost",
+        "sellingPrice",
+        "discount",
+        "tax",
+        "commission",
+      ] as const;
+      if (
+        amounts.some(
+          (key) =>
+            !new Prisma.Decimal(String(body[key] ?? 0)).equals(existing[key]),
+        ) ||
+        body.customerId !== existing.customerId
+      )
+        throw new ForbiddenException(
+          "Posted amounts and customer are immutable; use financial adjustments",
+        );
     }
     const customerId = String(body.customerId || "");
     if (!customerId) throw new BadRequestException("Customer is required.");
@@ -88,16 +201,26 @@ export class UmrahOpsService {
     if (body.id) await assertRecordBranch(db, user, "umrahBooking", body.id);
     else {
       assertBranch(user, body.branchId || user.defaultBranchId);
-      await assertPeopleLinksInBranch(db, body, body.branchId || user.defaultBranchId);
+      await assertPeopleLinksInBranch(
+        db,
+        body,
+        body.branchId || user.defaultBranchId,
+      );
     }
-    const passengers = Array.isArray(body.passengerIds) ? (body.passengerIds as string[]) : [];
-    const bookingNumber = body.id ? undefined : await this.seq.next("umr-bk", "UMR", db);
+    const passengers = Array.isArray(body.passengerIds)
+      ? (body.passengerIds as string[])
+      : [];
+    const bookingNumber = body.id
+      ? undefined
+      : await this.seq.next("umr-bk", "UMR", db);
     const data = {
       customerId,
       packageId: (body.packageId as string) || null,
       groupId: (body.groupId as string) || null,
       groupName: (body.groupName as string) || null,
-      departureDate: body.departureDate ? new Date(String(body.departureDate)) : null,
+      departureDate: body.departureDate
+        ? new Date(String(body.departureDate))
+        : null,
       returnDate: body.returnDate ? new Date(String(body.returnDate)) : null,
       cost: money(tot.cost),
       sellingPrice: money(tot.selling),
@@ -116,23 +239,40 @@ export class UmrahOpsService {
       ticketSaleId: (body.ticketSaleId as string) || null,
       transportId: (body.transportId as string) || null,
     };
-    if (data.departureDate && data.returnDate && data.returnDate < data.departureDate) {
+    if (
+      data.departureDate &&
+      data.returnDate &&
+      data.returnDate < data.departureDate
+    ) {
       throw new BadRequestException("Return date cannot be before departure.");
     }
     let row;
     if (body.id) {
       assertCan(user, "umrah.edit");
-      row = await db.umrahBooking.update({ where: { id: String(body.id) }, data });
+      row = await db.umrahBooking.update({
+        where: { id: String(body.id) },
+        data,
+      });
     } else {
       assertCan(user, "umrah.create");
       row = await db.umrahBooking.create({
-        data: { ...data, branchId: (body.branchId as string) || user.defaultBranchId, bookingNumber: bookingNumber as string, status: "DRAFT" },
+        data: {
+          ...data,
+          branchId: (body.branchId as string) || user.defaultBranchId,
+          bookingNumber: bookingNumber as string,
+          status: "DRAFT",
+        },
       });
     }
     if (passengers.length) {
-      await db.umrahBookingPassenger.deleteMany({ where: { bookingId: row.id } });
+      await db.umrahBookingPassenger.deleteMany({
+        where: { bookingId: row.id },
+      });
       await db.umrahBookingPassenger.createMany({
-        data: passengers.map((passengerId) => ({ bookingId: row.id, passengerId })),
+        data: passengers.map((passengerId) => ({
+          bookingId: row.id,
+          passengerId,
+        })),
       });
     }
     if (!body.id) {
@@ -156,53 +296,116 @@ export class UmrahOpsService {
         memo: `Umrah cost ${row.bookingNumber}`,
       });
     }
-    await this.audit.log({ db, userId: user.id, action: body.id ? "update" : "create", entity: "UmrahBooking", entityId: row.id, after: row, ipAddress: ip });
-    return db.umrahBooking.findUniqueOrThrow({ where: { id: row.id }, include: { passengers: true, customer: true } });
+    await this.audit.log({
+      db,
+      userId: user.id,
+      action: body.id ? "update" : "create",
+      entity: "UmrahBooking",
+      entityId: row.id,
+      after: row,
+      ipAddress: ip,
+    });
+    return db.umrahBooking.findUniqueOrThrow({
+      where: { id: row.id },
+      include: { passengers: true, customer: true },
+    });
   }
 
-  async lifecycle(user: AuthUser, id: string, step: string, ip?: string) {
+  async lifecycle(
+    user: AuthUser,
+    id: string,
+    step: string,
+    ip?: string,
+    reason?: string,
+  ) {
     assertCan(user, "umrah.edit");
-    if (!UMRAH_LIFECYCLE.includes(step)) throw new BadRequestException("Unknown lifecycle status.");
-    return this.prisma.$transaction(async tx => {
+    if (!UMRAH_LIFECYCLE.includes(step))
+      throw new BadRequestException("Unknown lifecycle status.");
+    return this.prisma.$transaction(async (tx) => {
       // Share the booking lock with receipt operations; re-read after acquiring it.
       await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${id} FOR UPDATE`;
       const existing = await tx.umrahBooking.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException();
       assertBranch(user, existing.branchId);
-      if (existing.status === "CANCELLED" && step !== "Cancelled") throw new BadRequestException("Cancelled bookings cannot change status.");
-      const status = step === "Cancelled" ? "CANCELLED" : step === "Completed" ? "COMPLETED" : existing.status;
-      if (existing.workflowStep === step && existing.status === status) return existing;
+      if (existing.status === "CANCELLED" && step !== "Cancelled")
+        throw new BadRequestException(
+          "Cancelled bookings cannot change status.",
+        );
+      const status =
+        step === "Cancelled"
+          ? "CANCELLED"
+          : step === "Completed"
+            ? "COMPLETED"
+            : existing.status;
+      if (existing.workflowStep === step && existing.status === status)
+        return existing;
       if (step === "Cancelled") {
-        const posted = await tx.journalEntry.findFirst({ where: { module: "umrah", sourceId: id, status: "POSTED" }, select: { id: true } });
-        const receipt = await tx.receipt.findFirst({ where: { bookingId: id }, select: { id: true } });
+        const posted = await tx.journalEntry.findFirst({
+          where: { module: "umrah", sourceId: id, status: "POSTED" },
+          select: { id: true },
+        });
+        const receipt = await tx.receipt.findFirst({
+          where: { bookingId: id },
+          select: { id: true },
+        });
         if (existing.paid.greaterThan(0) || posted || receipt) {
-          throw new ConflictException({ code: "UMRAH_CANCELLATION_REVIEW_REQUIRED", message: "Cancellation requires accounting review of posted amounts and receipts; no credit or payout has been recorded." });
+          throw new ConflictException({
+            code: "UMRAH_CANCELLATION_REVIEW_REQUIRED",
+            message:
+              "Cancellation requires accounting review of posted amounts and receipts; no credit or payout has been recorded.",
+          });
         }
       }
-      const row = await tx.umrahBooking.update({ where: { id }, data: { workflowStep: step, status } });
-      await this.audit.log({ userId: user.id, action: "lifecycle", entity: "UmrahBooking", entityId: id, before: existing, after: row, ipAddress: ip, db: tx });
+      const row = await tx.umrahBooking.update({
+        where: { id },
+        data: { workflowStep: step, status },
+      });
+      await this.audit.log({
+        userId: user.id,
+        action: "lifecycle",
+        reason,
+        entity: "UmrahBooking",
+        entityId: id,
+        before: existing,
+        after: row,
+        ipAddress: ip,
+        db: tx,
+      });
       return row;
     });
   }
 
   async lockIata(user: AuthUser, id: string, iataCode: string, ip?: string) {
     assertCan(user, "umrah.edit");
-    const existing = await this.prisma.umrahBooking.findUnique({ where: { id } });
+    const existing = await this.prisma.umrahBooking.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException();
     assertBranch(user, existing.branchId);
     if (existing.iataLocked) throw new BadRequestException("IATA is locked.");
-    if (!String(iataCode || "").trim()) throw new BadRequestException("IATA code is required.");
+    if (!String(iataCode || "").trim())
+      throw new BadRequestException("IATA code is required.");
     const row = await this.prisma.umrahBooking.update({
       where: { id },
       data: { iataCode: iataCode.trim().toUpperCase(), iataLocked: true },
     });
-    await this.audit.log({ userId: user.id, action: "iata", entity: "UmrahBooking", entityId: id, after: row, ipAddress: ip });
+    await this.audit.log({
+      userId: user.id,
+      action: "iata",
+      entity: "UmrahBooking",
+      entityId: id,
+      after: row,
+      ipAddress: ip,
+    });
     return row;
   }
 
   async dashboards(user: AuthUser) {
     assertCan(user, "umrah.view");
-    const rows = await this.prisma.umrahBooking.findMany({ where: branchWhere(user), include: { passengers: true } });
+    const rows = await this.prisma.umrahBooking.findMany({
+      where: branchWhere(user),
+      include: { passengers: true },
+    });
     return {
       total: rows.length,
       pax: rows.reduce((n, r) => n + r.passengers.length, 0),

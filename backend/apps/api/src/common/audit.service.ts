@@ -10,6 +10,7 @@ export class AuditService {
   async log(params: {
     userId?: string;
     action: string;
+    reason?: string;
     entity: string;
     entityId?: string;
     before?: unknown;
@@ -22,6 +23,7 @@ export class AuditService {
       data: {
         userId: params.userId,
         action: params.action,
+        reason: params.reason,
         entity: params.entity,
         entityId: params.entityId,
         before: params.before as object | undefined,
