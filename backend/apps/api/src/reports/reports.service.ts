@@ -123,7 +123,7 @@ export class ReportsService {
         rooms: s.rooms.length || 1,
         pax: s.rooms.reduce((n, r) => n + r.pax.length, 0),
         roomTypes: s.rooms.map((r) => r.roomTypeId || "Room"),
-        sale: s.rooms.reduce((n, r) => n + Number(r.sellingPrice), 0),
+        sale: s.rooms.reduce((n, r) => n.plus(r.sellingPrice), new Prisma.Decimal(0)).toNumber(),
         ref: s.booking.bookingNumber,
         customer: s.booking.customer?.fullName || "",
         customerId: s.booking.customerId,
@@ -248,7 +248,7 @@ export class ReportsService {
         if (!by[k]) by[k] = { hotel: s.hotel, room_type: type, rooms: 0, pax: 0, sale: 0 };
         by[k].rooms += s.rooms;
         by[k].pax += s.pax;
-        by[k].sale += s.sale;
+        by[k].sale = new Prisma.Decimal(by[k].sale).plus(s.sale).toNumber();
       });
       return Object.values(by);
     }
@@ -274,7 +274,7 @@ export class ReportsService {
       const k = module + status;
       if (!map[k]) map[k] = { module, status, count: 0, sale: 0 };
       map[k].count += 1;
-      map[k].sale += sale;
+      map[k].sale = new Prisma.Decimal(map[k].sale).plus(sale).toNumber();
     };
     const umrah = await this.prisma.umrahBooking.findMany();
     umrah.forEach((u) => bump("UMRAH", u.status, Number(u.net)));

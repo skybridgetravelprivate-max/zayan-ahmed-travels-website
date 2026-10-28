@@ -39,6 +39,7 @@ test("PG17 quotation journey", { skip: !url }, async t => {
     const actor: AuthUser = { id: user.id, email: user.email, username: user.username, fullName: user.fullName, permissions: ["quotation.view", "booking.view", "account.view"], roleNames: [], branchIds: [branch.id], defaultBranchId: branch.id, isSuperAdmin: false };
     const outsider = { ...actor, branchIds: [foreign.id], defaultBranchId: foreign.id };
     const req = { user: actor } as never;
+    const financeReq = { user: { ...actor, isSuperAdmin: true, roleNames: ["SUPER_ADMIN"] } } as never;
     const seq = new SequenceService(db as never), audit = new AuditService(db as never);
     const accounting = new AccountingService(db as never, seq, audit);
     const crm = new CrmService(db as never, seq, audit, {} as never, {} as never, {} as never, accounting);
@@ -124,34 +125,36 @@ test("PG17 quotation journey", { skip: !url }, async t => {
     await t.test("keyed duplicate receipts post once; conflicting replay and overpayment are rejected", async () => {
       const body = { bookingId: booking.id, amount: 10000.1, method: "CASH" };
       const key = randomUUID();
-      const results = await Promise.all([finance.createReceipt(body, req, key), finance.createReceipt(body, req, key)]);
+      await assert.rejects(finance.createReceipt(body, req, key), { status: 403 });
+
+      const results = await Promise.all([finance.createReceipt(body, financeReq, key), finance.createReceipt(body, financeReq, key)]);
       receipt = results[0]; assert.equal(results[0].id, results[1].id);
-      assert.equal((await finance.createReceipt(body, req, key)).id, receipt.id);
-      await assert.rejects(finance.createReceipt({ ...body, amount: 1 }, req, key), { status: 409 });
+      assert.equal((await finance.createReceipt(body, financeReq, key)).id, receipt.id);
+      await assert.rejects(finance.createReceipt({ ...body, amount: 1 }, financeReq, key), { status: 409 });
       const current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
       assert.equal(current.paid.toFixed(2), "10000.10"); assert.equal(current.balance.toFixed(2), "109950.20");
       assert.equal(await db.receipt.count({ where: { bookingId: booking.id } }), 1);
       const j = await db.journalEntry.findUniqueOrThrow({ where: { id: receipt.journalId! }, include: { lines: true } });
       assert.equal(j.lines.reduce((sum, l) => sum.plus(l.debit).minus(l.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
       const before = await counts();
-      await assert.rejects(finance.createReceipt({ ...body, amount: 200000 }, req, randomUUID()));
-      await assert.rejects(finance.createReceipt({ ...body, customerId: "other-customer" }, req, randomUUID()));
+      await assert.rejects(finance.createReceipt({ ...body, amount: 200000 }, financeReq, randomUUID()));
+      await assert.rejects(finance.createReceipt({ ...body, customerId: "other-customer" }, financeReq, randomUUID()));
       await assert.rejects(finance.createReceipt(body, { user: outsider } as never, randomUUID()));
       assert.deepEqual(await counts(), before);
     });
     await t.test("receipt failure rolls back journals, paid/balance, sequences and audit", async () => {
-      await finance.reviewReceipt(receipt.id, { reviewed: true }, req);
+      await finance.reviewReceipt(receipt.id, { reviewed: true }, financeReq);
       const broken = new FinanceController(db as never, seq, { log: async () => { throw Error("synthetic receipt audit failure"); } } as never, accounting);
       const before = await counts(), current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
-      await assert.rejects(broken.createReceipt({ bookingId: booking.id, amount: 1, method: "CASH" }, req, randomUUID()), /synthetic receipt audit failure/);
+      await assert.rejects(broken.createReceipt({ bookingId: booking.id, amount: 1, method: "CASH" }, financeReq, randomUUID()), /synthetic receipt audit failure/);
       assert.deepEqual(await counts(), before);
       assert.deepEqual(await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } }), current);
     });
     await t.test("reviewed payments retain both amounts without regressing voucher workflow", async () => {
       await db.umrahBooking.update({ where: { id: booking.id }, data: { workflowStep: "VOUCHERS", status: "READY" } });
-      const first = await finance.createReceipt({ bookingId: booking.id, amount: 1, method: "CASH" }, req, randomUUID());
-      await finance.reviewReceipt(first.id, { reviewed: true }, req);
-      await finance.createReceipt({ bookingId: booking.id, amount: 2, method: "CASH" }, req, randomUUID());
+      const first = await finance.createReceipt({ bookingId: booking.id, amount: 1, method: "CASH" }, financeReq, randomUUID());
+      await finance.reviewReceipt(first.id, { reviewed: true }, financeReq);
+      await finance.createReceipt({ bookingId: booking.id, amount: 2, method: "CASH" }, financeReq, randomUUID());
       const current = await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } });
       assert.equal(current.paid.toFixed(2), "10003.10");
       assert.equal(current.balance.toFixed(2), "109947.20");
