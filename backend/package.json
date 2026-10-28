@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "main": "server.js",
-  "description": "Zayan Ahmed Travels (Pvt.) Ltd. \u00e2\u20ac\u201d Travel + Umrah ERP/CRM",
+  "description": "Zayan Ahmed Travels (Pvt.) Ltd. â€” Travel + Umrah ERP/CRM",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -30,7 +30,9 @@
     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs",
     "test:document-backup": "node --test scripts/document-backup.spec.mjs",
     "test:operations:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/workflows/remaining-workflows.pg17.spec.ts apps/api/src/reservation/reservation-completion.pg17.spec.ts",
-    "test:manual:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/umrah/lifecycle.pg17.spec.ts apps/api/src/documents/persistence.pg17.spec.ts"
+    "test:manual:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/umrah/lifecycle.pg17.spec.ts apps/api/src/documents/persistence.pg17.spec.ts",
+    "test:cms:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/website/website-cms.pg17.spec.ts",
+    "test:cms:browser": "node scripts/website-cms-journey.cjs"
   },
   "engines": {
     "node": ">=20"

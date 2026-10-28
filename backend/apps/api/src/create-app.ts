@@ -31,6 +31,7 @@ export async function createNestApp(): Promise<INestApplication> {
     credentials: true,
   });
   app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "same-origin");

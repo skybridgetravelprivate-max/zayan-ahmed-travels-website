@@ -9,16 +9,25 @@ import * as path from "path";
 import { randomUUID } from "crypto";
 import { resolveSafeStoragePath } from "./storage-path";
 
-const ACCEPTED_FILES: Record<string, { extension: string; signature: (data: Buffer) => boolean }> = {
+const ACCEPTED_FILES: Record<
+  string,
+  { extension: string; signature: (data: Buffer) => boolean }
+> = {
   "image/jpeg": {
     extension: ".jpg",
-    signature: (data) => data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff,
+    signature: (data) =>
+      data.length >= 3 &&
+      data[0] === 0xff &&
+      data[1] === 0xd8 &&
+      data[2] === 0xff,
   },
   "image/png": {
     extension: ".png",
     signature: (data) =>
       data.length >= 8 &&
-      data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+      data
+        .subarray(0, 8)
+        .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
   },
   "image/webp": {
     extension: ".webp",
@@ -29,7 +38,8 @@ const ACCEPTED_FILES: Record<string, { extension: string; signature: (data: Buff
   },
   "application/pdf": {
     extension: ".pdf",
-    signature: (data) => data.length >= 5 && data.toString("ascii", 0, 5) === "%PDF-",
+    signature: (data) =>
+      data.length >= 5 && data.toString("ascii", 0, 5) === "%PDF-",
   },
   "text/plain": {
     extension: ".txt",
@@ -58,11 +68,7 @@ function validateKey(key: string) {
       if (!part || part === "." || part === "..") return true;
       try {
         const decoded = decodeURIComponent(part);
-        return (
-          decoded === "." ||
-          decoded === ".." ||
-          /[\/\\\0]/.test(decoded)
-        );
+        return decoded === "." || decoded === ".." || /[\/\\\0]/.test(decoded);
       } catch {
         return true;
       }
@@ -81,11 +87,19 @@ export class StorageService {
     const normalized = String(originalName || "file").replace(/\\/g, "/");
     const base = path.posix.basename(normalized).replace(/[^\w.\-]+/g, "_");
     const originalExtension = path.posix.extname(base).toLowerCase();
-    if (originalExtension !== extension && !(extension === ".jpg" && originalExtension === ".jpeg")) {
-      throw new BadRequestException("File extension does not match file content");
+    if (
+      originalExtension !== extension &&
+      !(extension === ".jpg" && originalExtension === ".jpeg")
+    ) {
+      throw new BadRequestException(
+        "File extension does not match file content",
+      );
     }
-    const stem = (originalExtension ? base.slice(0, -originalExtension.length) : base)
-      .slice(0, 80) || "file";
+    const stem =
+      (originalExtension
+        ? base.slice(0, -originalExtension.length)
+        : base
+      ).slice(0, 80) || "file";
     return `${stem}${extension}`;
   }
 
@@ -102,13 +116,17 @@ export class StorageService {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const bucket = process.env.SUPABASE_STORAGE_BUCKET;
     if (!rawUrl || !serviceKey || !bucket || !BUCKET_NAME.test(bucket)) {
-      throw new ServiceUnavailableException("Private document storage is not configured.");
+      throw new ServiceUnavailableException(
+        "Private document storage is not configured.",
+      );
     }
     let url: URL;
     try {
       url = new URL(rawUrl);
     } catch {
-      throw new ServiceUnavailableException("Private document storage is not configured.");
+      throw new ServiceUnavailableException(
+        "Private document storage is not configured.",
+      );
     }
     const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
     if (
@@ -119,7 +137,9 @@ export class StorageService {
       url.hash ||
       url.pathname !== "/"
     ) {
-      throw new ServiceUnavailableException("Private document storage is not configured.");
+      throw new ServiceUnavailableException(
+        "Private document storage is not configured.",
+      );
     }
     return { origin: url.origin, serviceKey, bucket };
   }
@@ -172,7 +192,10 @@ export class StorageService {
     return config;
   }
 
-  private supabasePath(key: string, config: ReturnType<StorageService["supabaseConfig"]>) {
+  private supabasePath(
+    key: string,
+    config: ReturnType<StorageService["supabaseConfig"]>,
+  ) {
     validateKey(key);
     const objectPath = key
       .slice(PRIVATE_KEY_PREFIX.length)
@@ -194,33 +217,41 @@ export class StorageService {
     mimeType?: string,
     config?: ReturnType<StorageService["supabaseConfig"]>,
   ) {
-    const target = this.supabasePath(key, config ?? await this.assertPrivateBucket());
-    const response = await fetch(method === "DELETE" ? target.bucketUrl : target.url, {
-      method,
-      headers: {
-        apikey: target.serviceKey,
-        Authorization: `Bearer ${target.serviceKey}`,
-        ...(body
+    const target = this.supabasePath(
+      key,
+      config ?? (await this.assertPrivateBucket()),
+    );
+    const response = await fetch(
+      method === "DELETE" ? target.bucketUrl : target.url,
+      {
+        method,
+        headers: {
+          apikey: target.serviceKey,
+          Authorization: `Bearer ${target.serviceKey}`,
+          ...(body
+            ? {
+                "Content-Type": mimeType ?? "application/octet-stream",
+                "Cache-Control": "no-store",
+                "x-upsert": "false",
+              }
+            : {}),
+          ...(method === "DELETE"
+            ? { "Content-Type": "application/json" }
+            : {}),
+        },
+        ...(body ? { body } : {}),
+        ...(method === "DELETE"
           ? {
-              "Content-Type": mimeType ?? "application/octet-stream",
-              "Cache-Control": "no-store",
-              "x-upsert": "false",
+              body: JSON.stringify({
+                prefixes: [key.slice(PRIVATE_KEY_PREFIX.length)],
+              }),
             }
           : {}),
-        ...(method === "DELETE" ? { "Content-Type": "application/json" } : {}),
+        signal: AbortSignal.timeout(15000),
+        cache: "no-store",
+        redirect: "error",
       },
-      ...(body ? { body } : {}),
-      ...(method === "DELETE"
-        ? {
-            body: JSON.stringify({
-              prefixes: [key.slice(PRIVATE_KEY_PREFIX.length)],
-            }),
-          }
-        : {}),
-      signal: AbortSignal.timeout(15000),
-      cache: "no-store",
-      redirect: "error",
-    });
+    );
     if (!response.ok) {
       throw new ServiceUnavailableException(
         `Private document storage request failed (HTTP ${response.status}).`,
@@ -229,20 +260,26 @@ export class StorageService {
     return response;
   }
 
-  private async assertUploadsEnabled() {
+  async assertUploadsEnabled() {
     if (process.env.DOCUMENT_UPLOADS_ENABLED !== "true") {
-      throw new ServiceUnavailableException("Document uploads are temporarily unavailable.");
+      throw new ServiceUnavailableException(
+        "Document uploads are temporarily unavailable.",
+      );
     }
     const driver = process.env.STORAGE_DRIVER ?? "local";
     if (process.env.NODE_ENV === "production" && driver !== "supabase") {
-      throw new ServiceUnavailableException("Private document storage is not configured.");
+      throw new ServiceUnavailableException(
+        "Private document storage is not configured.",
+      );
     }
     if (driver === "supabase") {
       this.supabaseConfig();
       return driver;
     }
     if (driver !== "local" || process.env.NODE_ENV === "production") {
-      throw new ServiceUnavailableException("Private document storage is not configured.");
+      throw new ServiceUnavailableException(
+        "Private document storage is not configured.",
+      );
     }
     return driver;
   }
@@ -258,12 +295,15 @@ export class StorageService {
     const mime = String(mimeType || "").toLowerCase();
     const file = ACCEPTED_FILES[mime];
     if (!file || !file.signature(buffer)) {
-      throw new BadRequestException("File content type is not allowed or does not match.");
+      throw new BadRequestException(
+        "File content type is not allowed or does not match.",
+      );
     }
     const fileName = this.safeName(originalName, file.extension);
-    const key = driver === "supabase"
-      ? `${PRIVATE_KEY_PREFIX}${new Date().getUTCFullYear()}/${randomUUID()}${file.extension}`
-      : `${new Date().getUTCFullYear()}/${randomUUID()}${file.extension}`;
+    const key =
+      driver === "supabase"
+        ? `${PRIVATE_KEY_PREFIX}${new Date().getUTCFullYear()}/${randomUUID()}${file.extension}`
+        : `${new Date().getUTCFullYear()}/${randomUUID()}${file.extension}`;
 
     if (driver === "supabase") {
       const config = await this.assertPrivateBucket();
@@ -271,7 +311,13 @@ export class StorageService {
         await this.supabaseRequest("POST", key, buffer, mime, config);
       } catch (uploadError) {
         try {
-          await this.supabaseRequest("DELETE", key, undefined, undefined, config);
+          await this.supabaseRequest(
+            "DELETE",
+            key,
+            undefined,
+            undefined,
+            config,
+          );
         } catch (cleanupError) {
           this.logCleanupFailure(key, cleanupError);
           throw new ServiceUnavailableException(
@@ -306,7 +352,9 @@ export class StorageService {
 
   logCleanupFailure(key: string, error: unknown) {
     const reason = error instanceof Error ? error.name : "UnknownError";
-    this.logger.error(`Storage object cleanup is pending for key ${key} (${reason}).`);
+    this.logger.error(
+      `Storage object cleanup is pending for key ${key} (${reason}).`,
+    );
   }
 
   private async putLocal(key: string, buffer: Buffer) {

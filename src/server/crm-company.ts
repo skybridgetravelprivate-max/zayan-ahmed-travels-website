@@ -1,3 +1,5 @@
+import { defaultWebsiteSettings } from "@/config/website";
+import { getWebsitePage } from "@/server/website-content";
 import { connection } from "next/server";
 import { companyContact, site } from "@/config/site";
 import { crmPublicOrigin } from "@/server/crm-public";
@@ -5,6 +7,7 @@ import { crmPublicOrigin } from "@/server/crm-public";
 export type PublicCompanyProfile = {
   companyName: string;
   phone: string;
+  phones?: string[];
   email: string;
   website: string;
   address: string;
@@ -14,11 +17,12 @@ export type PublicCompanyProfile = {
 function staticProfile(): PublicCompanyProfile {
   return {
     companyName: site.legalName,
-    phone: "",
+    phone: defaultWebsiteSettings.phones[0],
+    phones: defaultWebsiteSettings.phones,
     email: companyContact.email,
     website: companyContact.website,
     address: companyContact.address,
-    whatsapp: "",
+    whatsapp: defaultWebsiteSettings.whatsapp,
   };
 }
 
@@ -45,6 +49,12 @@ function merge(remote: PublicCompanyProfile): PublicCompanyProfile {
   return {
     companyName: remote.companyName || fallback.companyName,
     phone: remote.phone || fallback.phone,
+    phones: remote.phone
+      ? [
+          remote.phone,
+          ...defaultWebsiteSettings.phones.filter((p) => p !== remote.phone),
+        ]
+      : fallback.phones,
     email: remote.email || fallback.email,
     website: remote.website || fallback.website,
     address: remote.address || fallback.address,
@@ -55,6 +65,17 @@ function merge(remote: PublicCompanyProfile): PublicCompanyProfile {
 /** Reads the public company profile. Staff credentials are not used. */
 export async function getPublicCompanyProfile(): Promise<PublicCompanyProfile> {
   await connection();
+  const settings = (await getWebsitePage("site-settings"))?.content.settings;
+  if (settings)
+    return {
+      companyName: settings.companyName,
+      phone: settings.phones[0] || "",
+      phones: settings.phones,
+      email: settings.email,
+      website: site.url,
+      address: settings.address,
+      whatsapp: settings.whatsapp,
+    };
   const origin = crmPublicOrigin();
   if (!origin) return staticProfile();
 

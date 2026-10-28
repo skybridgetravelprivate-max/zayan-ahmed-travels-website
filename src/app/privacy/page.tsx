@@ -1,13 +1,23 @@
+import { getWebsitePage } from "@/server/website-content";
+import { WebsiteView } from "@/components/website/WebsiteView";
 import type { Metadata } from "next";
-import { InfoHero, InfoSection, Placeholder } from "@/components/layout/InfoPage";
+import {
+  InfoHero,
+  InfoSection,
+  Placeholder,
+} from "@/components/layout/InfoPage";
 import { site } from "@/config/site";
 
-export const metadata: Metadata = {
+const fallbackMetadata: Metadata = {
   title: "Privacy",
   description: `Placeholder privacy notes for ${site.legalName}. Not a final privacy policy.`,
 };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const publishedWebsitePage = await getWebsitePage("privacy");
+  if (publishedWebsitePage)
+    return <WebsiteView content={publishedWebsitePage.content} />;
+
   return (
     <>
       <InfoHero
@@ -51,4 +61,11 @@ export default function PrivacyPage() {
       </InfoSection>
     </>
   );
+}
+
+export async function generateMetadata() {
+  const page = await getWebsitePage("privacy");
+  return page
+    ? { title: page.content.title, description: page.content.summary }
+    : fallbackMetadata;
 }

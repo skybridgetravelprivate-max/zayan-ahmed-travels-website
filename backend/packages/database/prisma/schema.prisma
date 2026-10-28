@@ -2057,6 +2057,24 @@ model CmsPage {
   body      String
   status    CmsPageStatus @default(DRAFT)
   updatedAt DateTime      @updatedAt
+  draft Json?
+  published Json?
+  reviewState String @default("DRAFT")
+  version Int @default(0)
+  publishedVersion Int?
+  revisions CmsPageRevision[]
+}
+
+model CmsPageRevision {
+  id String @id @default(cuid())
+  pageId String
+  page CmsPage @relation(fields: [pageId], references: [id], onDelete: Restrict)
+  version Int
+  action String
+  userId String
+  content Json
+  createdAt DateTime @default(now())
+  @@unique([pageId, version])
 }
 
 model CmsMedia {

@@ -1,56 +1,71 @@
+import { getWebsitePage } from "@/server/website-content";
+import { WebsiteView } from "@/components/website/WebsiteView";
 import type { Metadata } from "next";
-import { Breadcrumbs } from "@/components/travel-guide/Breadcrumbs";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { guideCategories } from "@/config/travel-guide";
-import { site } from "@/config/site";
-
-export const metadata: Metadata = {
-  title: "Travel Guide",
-  description: `Sample travel notes from ${site.legalName} on Umrah, visas, flights, hotels, airports, currency, and travel tips.`,
+import Link from "next/link";
+import { InfoHero, InfoSection } from "@/components/layout/InfoPage";
+import { TravelIllustration } from "@/components/home/TravelIllustration";
+const fallbackMetadata: Metadata = {
+  title: "Travel planning guide",
+  description:
+    "A practical checklist for comparing itineraries, preparing documents and confirming travel arrangements.",
 };
-
-export default function TravelGuidePage() {
+const tips = [
+  [
+    "Compare complete quotations",
+    "Check the full itinerary, baggage, room occupancy, transfers, meals and cancellation conditions. Ask which services are included and when the quotation expires.",
+  ],
+  [
+    "Check documents before booking",
+    "Verify current entry and transit requirements for your nationality, residence and dates with the appropriate official sources. Ask the desk about assistance; do not assume visa approval.",
+  ],
+  [
+    "Choose suitable accommodation",
+    "Confirm the exact property, room type, location, accessibility and shuttle arrangements. Tell the desk about children, older travellers or assistance needs.",
+  ],
+  [
+    "Keep your arrangements together",
+    "Review tickets and vouchers before departure. Keep the travel desk's contact details available and check any changes directly before travelling.",
+  ],
+];
+export default async function GuidePage() {
+  const publishedWebsitePage = await getWebsitePage("travel-guide");
+  if (publishedWebsitePage)
+    return <WebsiteView content={publishedWebsitePage.content} />;
   return (
     <>
-      <div className="border-b border-line bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
-          <Breadcrumbs
-            items={[
-              { label: "Home", href: "/" },
-              { label: "Travel Guide", href: "/travel-guide" },
-            ]}
-          />
+      <InfoHero
+        title="Prepare for your next journey"
+        intro="Use this checklist when discussing your trip with the travel desk."
+      />
+      <InfoSection title="Plan with confidence">
+        <div className="mx-auto max-w-md">
+          <TravelIllustration />
         </div>
-      </div>
-      <section className="bg-zayan-blue text-white">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-          <p className="text-sm font-semibold tracking-wide text-zayan-orange uppercase">
-            {site.legalName}
-          </p>
-          <h1 className="mt-2 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
-            Travel Guide
-          </h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">
-            Sample articles for reading the demo pages on this site. They are
-            not live briefings, bookings, or official rules.
-          </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {tips.map(([title, text]) => (
+            <section
+              key={title}
+              className="rounded-xl border border-line bg-surface p-5"
+            >
+              <h3 className="font-bold text-zayan-blue">{title}</h3>
+              <p className="mt-3">{text}</p>
+            </section>
+          ))}
         </div>
-      </section>
-      <div className="px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="sr-only">Categories</h2>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {guideCategories.map((category) => (
-              <li key={category.slug}>
-                <Card title={category.title} description={category.summary}>
-                  <Button href={`/travel-guide/${category.slug}`}>Open category</Button>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+        <Link
+          href="/contact"
+          className="inline-block font-semibold text-zayan-blue underline"
+        >
+          Ask about your travel plan
+        </Link>
+      </InfoSection>
     </>
   );
+}
+
+export async function generateMetadata() {
+  const page = await getWebsitePage("travel-guide");
+  return page
+    ? { title: page.content.title, description: page.content.summary }
+    : fallbackMetadata;
 }

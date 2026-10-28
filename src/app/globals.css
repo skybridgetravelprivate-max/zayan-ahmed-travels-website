@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --background: #f4f7fb;
+  --background: #ffffff;
   --foreground: #1c2834;
-  --color-zayan-blue: #0b3d6e;
+  --color-zayan-blue: #082746;
   --color-zayan-blue-dark: #082c50;
-  --color-zayan-orange: #e86a17;
-  --color-zayan-orange-dark: #c4550e;
+  --color-zayan-orange: #b94b0b;
+  --color-zayan-orange-dark: #963b08;
   --color-muted: #5c6b7a;
   --color-surface: #ffffff;
   --color-line: #dbe3ee;
@@ -30,4 +30,57 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
+}
+
+@layer components {
+  .website-cta {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#ff830f] px-5 py-3 text-center text-sm font-bold text-[#082746] shadow-sm transition-colors hover:bg-[#ffab58] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zayan-blue disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .website-hero {
+    background: linear-gradient(110deg, #f0f8ff 0%, #e4f2fc 48%, #fff5e9 100%);
+  }
+  .website-hero-home {
+    @apply pb-10;
+  }
+  .website-section {
+    @apply scroll-mt-40 py-8 sm:py-10;
+  }
+  .website-card-grid {
+    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3;
+  }
+  .website-services {
+    @apply grid-cols-2 lg:grid-cols-3 xl:grid-cols-6;
+  }
+  .website-destinations {
+    @apply lg:grid-cols-5;
+  }
+  .website-card {
+    @apply min-w-0 overflow-hidden rounded-xl border border-[#dce7f1] bg-white shadow-sm;
+  }
+  .website-banner {
+    @apply my-5 rounded-2xl bg-sky-50 p-6;
+  }
+}
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #bb5000;
+  outline-offset: 3px;
+}
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: #0b3d6e;
+}
+
+@media (max-width: 639px) {
+  .website-destinations {
+    display: flex;
+    overflow-x: auto;
+    gap: 1rem;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.5rem;
+  }
+  .website-destinations > article {
+    flex: 0 0 85%;
+    scroll-snap-align: start;
+  }
 }

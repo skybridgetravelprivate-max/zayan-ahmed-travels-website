@@ -1,9 +1,15 @@
+import { getWebsitePage } from "@/server/website-content";
+import { WebsiteView } from "@/components/website/WebsiteView";
 import type { Metadata } from "next";
-import { InfoHero, InfoSection, Placeholder } from "@/components/layout/InfoPage";
+import {
+  InfoHero,
+  InfoSection,
+  Placeholder,
+} from "@/components/layout/InfoPage";
 import { site } from "@/config/site";
 import { getPublishedTermsPage } from "@/server/crm-terms";
 
-export const metadata: Metadata = {
+const fallbackMetadata: Metadata = {
   title: "Terms",
   description: `Terms for ${site.legalName}`,
 };
@@ -27,9 +33,9 @@ function TermsPlaceholder() {
       <InfoSection title="Travel and service disclaimer">
         <Placeholder>
           <p>
-            Demo cards, prices, and articles on this site are not live offers and
-            do not confirm a seat, room, visa, or departure. A final disclaimer
-            will replace this note.
+            Demo cards, prices, and articles on this site are not live offers
+            and do not confirm a seat, room, visa, or departure. A final
+            disclaimer will replace this note.
           </p>
         </Placeholder>
       </InfoSection>
@@ -46,6 +52,10 @@ function TermsPlaceholder() {
 }
 
 export default async function TermsPage() {
+  const publishedWebsitePage = await getWebsitePage("terms");
+  if (publishedWebsitePage)
+    return <WebsiteView content={publishedWebsitePage.content} />;
+
   const page = await getPublishedTermsPage();
   if (!page) return <TermsPlaceholder />;
 
@@ -56,14 +66,25 @@ export default async function TermsPage() {
           <p className="text-sm font-semibold tracking-wide text-zayan-orange uppercase">
             {site.legalName}
           </p>
-          <h1 className="mt-2 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">{page.title}</h1>
+          <h1 className="mt-2 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
+            {page.title}
+          </h1>
         </div>
       </section>
       <section className="px-4 py-10 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl">
-          <p className="text-base leading-7 whitespace-pre-wrap text-foreground">{page.body}</p>
+          <p className="text-base leading-7 whitespace-pre-wrap text-foreground">
+            {page.body}
+          </p>
         </div>
       </section>
     </>
   );
+}
+
+export async function generateMetadata() {
+  const page = await getWebsitePage("terms");
+  return page
+    ? { title: page.content.title, description: page.content.summary }
+    : fallbackMetadata;
 }

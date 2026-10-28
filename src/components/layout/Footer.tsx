@@ -1,106 +1,109 @@
 import Link from "next/link";
-import { companyContact, navItems, policyLinks, site } from "@/config/site";
-
-function websiteHref(value: string) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
-    if (url.username || url.password) return "";
-    return url.href;
-  } catch {
-    return "";
-  }
-}
-
-export function Footer() {
-  const email = companyContact.email.trim();
-  const address = companyContact.address.trim();
-  const website = companyContact.website.trim();
-  const websiteLink = websiteHref(website);
-  const hasPublishedContact = Boolean(email || address || website);
-
+import { policyLinks } from "@/config/site";
+import type { WebsiteSettings } from "@/lib/website-content";
+import { defaultWebsiteSettings } from "@/config/website";
+export function Footer({
+  settings = defaultWebsiteSettings,
+}: {
+  settings?: WebsiteSettings;
+}) {
   return (
-    <footer className="border-t border-white/10 bg-zayan-blue text-white">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-2 lg:grid-cols-3 lg:px-8">
-        <div className="min-w-0">
-          <p className="text-lg font-bold leading-snug">{site.legalName}</p>
-          <p className="mt-2 max-w-sm text-sm leading-6 text-white/80">{site.tagline}</p>
+    <footer className="bg-zayan-blue text-white">
+      <div className="mx-auto grid max-w-7xl gap-8 px-5 py-12 sm:grid-cols-2 sm:px-8 lg:grid-cols-4">
+        <div>
+          <p className="text-xl font-bold">{settings.companyName}</p>
+          <p className="mt-3 text-sm leading-6 text-white/80">
+            {settings.tagline}
+          </p>
         </div>
-        <nav aria-label="Footer" className="min-w-0">
-          <p className="text-sm font-semibold text-white/90">Explore</p>
-          <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
-            {navItems.map((item) => (
-              <li key={item.label}>
+        <nav aria-label="Footer">
+          <h2 className="font-bold">Quick links</h2>
+          <ul className="mt-4 grid grid-cols-2 gap-2 text-sm">
+            {settings.nav.map((n) => (
+              <li key={n.href}>
                 <Link
-                  href={item.href}
-                  className="inline-flex rounded-md py-1 text-white/85 transition-colors hover:text-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
+                  prefetch={false}
+                  className="inline-flex min-h-9 items-center hover:underline"
+                  href={n.href}
                 >
-                  {item.label}
+                  {n.label}
                 </Link>
               </li>
             ))}
           </ul>
         </nav>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-white/90">Contact</p>
-          {hasPublishedContact ? (
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-white/80">
-              {email ? (
-                <li>
-                  <a
-                    className="break-all hover:text-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
-                    href={`mailto:${email}`}
-                  >
-                    {email}
-                  </a>
-                </li>
-              ) : null}
-              {website ? (
-                <li>
-                  {websiteLink ? (
-                    <a
-                      className="break-all hover:text-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
-                      href={websiteLink}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      {website.replace(/^https?:\/\//, "")}
-                    </a>
-                  ) : (
-                    <span className="break-all">{website}</span>
-                  )}
-                </li>
-              ) : null}
-              {address ? <li className="break-words">{address}</li> : null}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm leading-6 text-white/80">
-              <Link
-                href="/contact"
-                className="font-medium text-white underline decoration-white/40 underline-offset-2 hover:text-zayan-orange hover:decoration-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
-              >
-                View published contact details
-              </Link>
-            </p>
+        <div>
+          <h2 className="font-bold">Contact information</h2>
+          <ul className="mt-4 space-y-3 text-sm leading-6">
+            {settings.phones.map((p) => (
+              <li key={p}>
+                <a
+                  href={`tel:${p.replace(/[^+0-9]/g, "")}`}
+                  className="hover:underline"
+                >
+                  {p}
+                </a>
+              </li>
+            ))}
+            {settings.email && (
+              <li>
+                <a
+                  href={`mailto:${settings.email}`}
+                  className="break-all hover:underline"
+                >
+                  {settings.email}
+                </a>
+              </li>
+            )}
+            <li>{settings.address}</li>
+          </ul>
+        </div>
+        <div>
+          <h2 className="font-bold">Stay connected</h2>
+          {settings.whatsapp && (
+            <a
+              className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-white/40 px-4 py-2 text-sm font-bold"
+              target="_blank"
+              rel="noopener noreferrer"
+              href={`https://wa.me/${settings.whatsapp}`}
+            >
+              Chat on WhatsApp ↗
+            </a>
           )}
+          <ul className="mt-4 flex flex-wrap gap-4 text-sm">
+            {settings.social.map((s) => (
+              <li key={s.href}>
+                <a
+                  className="underline"
+                  href={s.href}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  {s.label} ↗
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-      <div className="border-t border-white/15">
-        <nav aria-label="Policies" className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
-          <ul className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
-            {policyLinks.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="rounded-sm text-white/75 hover:text-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange"
-                >
-                  {item.label}
-                </Link>
-              </li>
+      <div className="border-t border-white/20">
+        <div className="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-5 py-5 text-xs text-white/80 sm:px-8">
+          <p>
+            © {new Date().getFullYear()} {settings.companyName}
+          </p>
+          <nav aria-label="Policies" className="flex flex-wrap gap-4">
+            {policyLinks.map((n) => (
+              <Link
+                prefetch={false}
+                key={n.href}
+                href={n.href}
+                className="hover:underline"
+              >
+                {n.label}
+              </Link>
             ))}
-          </ul>
-          <p className="mt-3 text-xs text-white/70">© 2026 {site.legalName}</p>
-        </nav>
+          </nav>
+        </div>
       </div>
     </footer>
   );

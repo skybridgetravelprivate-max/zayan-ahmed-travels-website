@@ -1,0 +1,107 @@
+import type { InquiryType } from "@/lib/inquiries";
+
+export const servicePages = {
+  flights: {
+    title: "Flight planning",
+    intro:
+      "Tell us your route, travel dates, passengers and baggage needs. Our travel desk can help you compare options before you book.",
+    type: "contact",
+    points: [
+      "One-way, return and multi-city enquiries",
+      "Cabin, baggage and connection preferences",
+      "Confirm the final fare and ticket conditions before payment",
+    ],
+  },
+  tickets: {
+    title: "Air ticket enquiries",
+    intro:
+      "Request assistance with a new ticket or an existing itinerary. Share your route and dates; keep payment and identity documents out of this form.",
+    type: "contact",
+    points: [
+      "New ticket quotation requests",
+      "Questions about itinerary changes",
+      "Airline availability and fare rules require confirmation",
+    ],
+  },
+  hotels: {
+    title: "Find the right stay",
+    intro:
+      "Share your destination, dates, room count and accommodation preferences. Request a written quotation for the exact property and room arrangement.",
+    type: "contact",
+    points: [
+      "City stays and pilgrimage accommodation",
+      "Room occupancy and accessibility preferences",
+      "Confirm location, meals, cancellation terms and availability",
+    ],
+  },
+  offers: {
+    title: "Travel offers",
+    intro:
+      "No verified promotions are currently published here. Tell us what you are planning and ask the travel desk for a current quotation.",
+    type: "contact",
+    points: [
+      "Ask about travel dates and budget",
+      "Compare an itemised quotation",
+      "No advertised discount or availability is assumed",
+    ],
+  },
+  tours: {
+    title: "Your next journey starts here",
+    intro:
+      "Plan a Pakistan or international trip around your interests, dates and group. Request an itinerary tailored to you.",
+    type: "tour",
+    points: [
+      "Family, private and group travel enquiries",
+      "Accommodation, transport and itinerary preferences",
+      "Confirm departure dates, inclusions and price in writing",
+    ],
+  },
+  visa: {
+    title: "Visa assistance",
+    intro:
+      "Ask about travel-document assistance for your destination. Requirements depend on nationality, residence, purpose and dates; approval is decided by the relevant authorities.",
+    type: "visa",
+    points: [
+      "Destination and intended travel dates",
+      "Document and application-process questions",
+      "Confirm current official requirements; approval is never guaranteed",
+    ],
+  },
+  transport: {
+    title: "Travel comfortably, together",
+    intro:
+      "Request airport transfers, private transport or group travel arrangements. Share pickup, destination, dates, passengers and luggage needs.",
+    type: "transport",
+    points: [
+      "Airport and city transfer enquiries",
+      "Private and group vehicle requests",
+      "Confirm vehicle, timing, driver and price before booking",
+    ],
+  },
+  insurance: {
+    title: "Travel insurance enquiries",
+    intro:
+      "Ask the desk about arranging travel cover for your journey. No policy or premium is quoted on this page.",
+    type: "contact",
+    points: [
+      "Share destination, dates and traveller needs",
+      "Review the insurer's actual policy wording and exclusions",
+      "Cover starts only under the issued policy's terms",
+    ],
+  },
+  corporate: {
+    title: "Corporate travel",
+    intro:
+      "Coordinate company trips through one travel inquiry: flights, stays, documents and ground transport. Tell us your itinerary and business requirements.",
+    type: "corporate",
+    points: [
+      "Company flight and accommodation requests",
+      "Travel-document and transfer coordination",
+      "Agree service scope, pricing and booking terms in writing",
+    ],
+  },
+} satisfies Record<
+  string,
+  { title: string; intro: string; type: InquiryType; points: string[] }
+>;
+export type ServicePageKey = keyof typeof servicePages;

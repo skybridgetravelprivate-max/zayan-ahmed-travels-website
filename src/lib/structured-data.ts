@@ -1,3 +1,4 @@
+import type { WebsiteSettings } from "@/lib/website-content";
 import { site, siteDescription, siteOrigin } from "@/config/site";
 
 export type Crumb = {
@@ -10,14 +11,16 @@ export function absoluteUrl(path: string) {
 }
 
 /** Organization and WebSite data from the configured public identity only. */
-export function siteGraph() {
+export function siteGraph(settings?: WebsiteSettings) {
+  const name = settings?.companyName || site.legalName;
+  const description = settings?.seoDescription || siteDescription;
   const url = absoluteUrl("/");
   const organization = {
     "@type": "Organization",
-    name: site.legalName,
+    name,
     alternateName: site.shortName,
     url,
-    description: siteDescription,
+    description,
   };
 
   return {
@@ -26,13 +29,13 @@ export function siteGraph() {
       organization,
       {
         "@type": "WebSite",
-        name: site.legalName,
+        name,
         alternateName: site.shortName,
         url,
-        description: siteDescription,
+        description,
         publisher: {
           "@type": "Organization",
-          name: site.legalName,
+          name,
           url,
         },
       },

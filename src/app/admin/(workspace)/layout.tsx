@@ -32,8 +32,15 @@ export default async function StaffWorkspaceLayout({
     <div className="mx-auto grid w-full max-w-[96rem] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8">
       <StaffNavigation
         fullName={user.fullName}
-        canViewDashboard={user.isSuperAdmin || user.permissions.includes("dashboard.view")}
-        canViewLeads={user.isSuperAdmin || user.permissions.includes("lead.view")}
+        canViewWebsite={
+          user.isSuperAdmin || user.permissions.includes("cms.view")
+        }
+        canViewDashboard={
+          user.isSuperAdmin || user.permissions.includes("dashboard.view")
+        }
+        canViewLeads={
+          user.isSuperAdmin || user.permissions.includes("lead.view")
+        }
       />
       <div className="min-w-0">{children}</div>
     </div>

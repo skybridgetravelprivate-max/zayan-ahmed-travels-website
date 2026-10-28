@@ -14,7 +14,8 @@
     "test:customer-auth": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-auth/customer-auth.test.ts src/server/customer-auth/crm-link.test.ts src/server/customer-auth/rate-limit.test.ts",
     "test:account:pg17": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/customer-bookings/account-journey.pg17.test.ts",
     "test:receipt-retry": "node --import ./backend/node_modules/tsx/dist/loader.mjs --test src/lib/receipt-retry.test.ts",
-    "test:staff": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/staff-api.test.ts src/lib/staff-leads.test.ts src/lib/staff-management.test.ts"
+    "test:staff": "node --conditions=react-server --import ./backend/node_modules/tsx/dist/loader.mjs --test src/server/staff-api.test.ts src/lib/staff-leads.test.ts src/lib/staff-management.test.ts",
+    "test:website-presentation": "node --test scripts/production-presentation.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

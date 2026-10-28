@@ -1,0 +1,50 @@
+export type WebsiteCard = {
+  title: string;
+  text: string;
+  image: string;
+  imageAlt: string;
+  href: string;
+  label: string;
+};
+export type WebsiteSection = {
+  id: string;
+  title: string;
+  description: string;
+  visible: boolean;
+  layout: "cards" | "banner" | "testimonials";
+  cards: WebsiteCard[];
+};
+export type WebsiteSettings = {
+  companyName: string;
+  tagline: string;
+  email: string;
+  phones: string[];
+  address: string;
+  whatsapp: string;
+  logo: string;
+  logoAlt: string;
+  nav: { label: string; href: string }[];
+  social: { label: string; href: string }[];
+  announcement: string;
+  seoTitle: string;
+  seoDescription: string;
+};
+export type WebsiteContent = {
+  schemaVersion: 1;
+  category: string;
+  title: string;
+  summary: string;
+  body: string;
+  eyebrow: string;
+  image: string;
+  imageAlt: string;
+  actionLabel: string;
+  actionHref: string;
+  sections: WebsiteSection[];
+  settings?: WebsiteSettings;
+  searchEnabled?: boolean;
+  searchTitle?: string;
+};
+export function parseContent(value: unknown): WebsiteContent;
+export function mediaIds(value: WebsiteContent): string[];
+export const categories: string[];

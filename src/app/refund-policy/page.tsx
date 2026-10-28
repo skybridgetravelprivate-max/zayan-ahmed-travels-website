@@ -1,15 +1,25 @@
+import { getWebsitePage } from "@/server/website-content";
+import { WebsiteView } from "@/components/website/WebsiteView";
 import type { Metadata } from "next";
-import { InfoHero, InfoSection, Placeholder } from "@/components/layout/InfoPage";
+import {
+  InfoHero,
+  InfoSection,
+  Placeholder,
+} from "@/components/layout/InfoPage";
 import { site } from "@/config/site";
 
-export const metadata: Metadata = {
+const fallbackMetadata: Metadata = {
   title: "Refund policy",
   description: `Placeholder refund notes for ${site.legalName}. No fees or refund rules are published.`,
 };
 
 const services = ["Flights", "Hotels", "Tours", "Umrah", "Visas"] as const;
 
-export default function RefundPolicyPage() {
+export default async function RefundPolicyPage() {
+  const publishedWebsitePage = await getWebsitePage("refund-policy");
+  if (publishedWebsitePage)
+    return <WebsiteView content={publishedWebsitePage.content} />;
+
   return (
     <>
       <InfoHero
@@ -31,7 +41,9 @@ export default function RefundPolicyPage() {
             <li key={service}>
               <Placeholder>
                 <p>
-                  <span className="font-semibold text-foreground">{service}.</span>{" "}
+                  <span className="font-semibold text-foreground">
+                    {service}.
+                  </span>{" "}
                   Refund wording for this service is a placeholder. No fee or
                   exception is stated.
                 </p>
@@ -42,4 +54,11 @@ export default function RefundPolicyPage() {
       </InfoSection>
     </>
   );
+}
+
+export async function generateMetadata() {
+  const page = await getWebsitePage("refund-policy");
+  return page
+    ? { title: page.content.title, description: page.content.summary }
+    : fallbackMetadata;
 }

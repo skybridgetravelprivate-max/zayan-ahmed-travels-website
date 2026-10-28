@@ -1,3 +1,5 @@
+import { getWebsitePage } from "@/server/website-content";
+import { WebsiteView } from "@/components/website/WebsiteView";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -5,21 +7,51 @@ import { Section } from "@/components/ui/Section";
 import { reasons } from "@/config/home";
 import { site } from "@/config/site";
 
-export const metadata: Metadata = {
+const fallbackMetadata: Metadata = {
   title: "About",
   description: `${site.legalName} ${site.tagline}`,
 };
 
 const services = [
-  { title: "Flights", href: "/flights", description: "Sample flight search and demo fare cards." },
-  { title: "Hotels", href: "/hotels", description: "Sample stays with demo nightly prices." },
-  { title: "Umrah", href: "/umrah", description: "Sample Umrah packages for Makkah and Madinah." },
-  { title: "Visas", href: "/visa", description: "Sample visa categories. No application is filed here." },
-  { title: "Tours", href: "/tours", description: "Sample tours for Pakistan and international trips." },
-  { title: "Transport", href: "/transport", description: "Sample airport, private, and Umrah transfers." },
+  {
+    title: "Flights",
+    href: "/flights",
+    description: "Flight planning and quotation enquiries.",
+  },
+  {
+    title: "Hotels",
+    href: "/hotels",
+    description: "Hotel quotation and accommodation enquiries.",
+  },
+  {
+    title: "Umrah",
+    href: "/umrah",
+    description:
+      "Umrah planning and published packages for Makkah and Madinah.",
+  },
+  {
+    title: "Visas",
+    href: "/visa",
+    description:
+      "Visa assistance enquiries. An inquiry does not file an application.",
+  },
+  {
+    title: "Tours",
+    href: "/tours",
+    description: "Tailored Pakistan and international tour enquiries.",
+  },
+  {
+    title: "Transport",
+    href: "/transport",
+    description: "Airport, private and group transport enquiries.",
+  },
 ] as const;
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const publishedWebsitePage = await getWebsitePage("about");
+  if (publishedWebsitePage)
+    return <WebsiteView content={publishedWebsitePage.content} />;
+
   return (
     <>
       <section className="bg-zayan-blue text-white">
@@ -64,7 +96,7 @@ export default function AboutPage() {
         className="bg-surface"
         eyebrow="What we plan"
         title="Services overview"
-        description="These links open the public demo pages already on this site."
+        description="Explore our services and send your requirements to the travel desk."
       >
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {services.map((service) => (
@@ -100,11 +132,19 @@ export default function AboutPage() {
             Talk with {site.shortName}
           </h2>
           <p className="max-w-2xl text-base leading-7 text-white/85">
-            The contact form is checked on this website, then sent to the travel desk. It is not emailed from that page.
+            The contact form is checked on this website, then sent to the travel
+            desk. It is not emailed from that page.
           </p>
           <Button href="/contact">Contact us</Button>
         </div>
       </section>
     </>
   );
+}
+
+export async function generateMetadata() {
+  const page = await getWebsitePage("about");
+  return page
+    ? { title: page.content.title, description: page.content.summary }
+    : fallbackMetadata;
 }

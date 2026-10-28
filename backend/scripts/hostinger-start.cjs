@@ -126,8 +126,10 @@ function listenGateway() {
     }
     socket.destroy();
   });
-  server.listen(publicPort, "0.0.0.0", () => {
-    console.log(`ZAT gateway listening on 0.0.0.0:${publicPort} (Next + API in one process)`);
+  const host = process.env.GATEWAY_HOST || "0.0.0.0";
+  if (!["127.0.0.1", "0.0.0.0"].includes(host)) throw new Error("Invalid gateway bind address");
+  server.listen(publicPort, host, () => {
+    console.log(`ZAT gateway listening on ${host}:${publicPort} (Next + API in one process)`);
   });
 }
 

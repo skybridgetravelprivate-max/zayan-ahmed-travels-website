@@ -8,18 +8,25 @@ export function StaffNavigation({
   fullName,
   canViewDashboard,
   canViewLeads,
+  canViewWebsite,
 }: {
   fullName: string;
   canViewDashboard: boolean;
   canViewLeads: boolean;
+  canViewWebsite: boolean;
 }) {
   const pathname = usePathname();
   const links = [
+    ...(canViewWebsite
+      ? [{ label: "Website management", href: "/admin/website" }]
+      : []),
     { label: "Management", href: "/admin/manage" },
     ...(canViewDashboard || canViewLeads
       ? [{ label: "Dashboard", href: "/admin" }]
       : []),
-    ...(canViewLeads ? [{ label: "Inquiries & leads", href: "/admin/leads" }] : []),
+    ...(canViewLeads
+      ? [{ label: "Inquiries & leads", href: "/admin/leads" }]
+      : []),
   ];
 
   return (
@@ -44,7 +51,8 @@ export function StaffNavigation({
             const current =
               link.href === "/admin"
                 ? pathname === "/admin"
-                : pathname === link.href || pathname.startsWith(`${link.href}/`);
+                : pathname === link.href ||
+                  pathname.startsWith(`${link.href}/`);
             return (
               <li key={link.href} className="shrink-0">
                 <Link

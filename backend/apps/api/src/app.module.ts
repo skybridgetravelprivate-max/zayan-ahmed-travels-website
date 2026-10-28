@@ -1,3 +1,9 @@
+import {
+  WebsiteMediaController,
+  PublicWebsiteController,
+} from "./website/website-media.controller";
+import { WebsiteCmsService } from "./website/website-cms.service";
+import { WebsiteCmsController } from "./website/website-cms.controller";
 import { GlobalFinanceGuard } from "./auth/global-finance.guard";
 import { CrmScopeGuard } from "./crm/crm-scope.guard";
 import { WebsiteCustomerLinkController } from "./website/website-customer-link.controller";
@@ -25,7 +31,10 @@ import { FinanceController } from "./finance/finance.controller";
 import { AccountingService } from "./finance/accounting.service";
 import { WorkflowsController } from "./workflows/workflows.controller";
 import { SettingsController } from "./settings/settings.controller";
-import { DocumentsController, PdfController } from "./documents/documents.controller";
+import {
+  DocumentsController,
+  PdfController,
+} from "./documents/documents.controller";
 import { DocumentPdfService } from "./documents/document-pdf.service";
 import { CrmController } from "./crm/crm.controller";
 import { CrmService } from "./crm/crm.service";
@@ -38,7 +47,14 @@ import { UmrahOpsController } from "./umrah/umrah-ops.controller";
 import { UmrahOpsService } from "./umrah/umrah-ops.service";
 import { ComplaintsController } from "./complaints/complaints.controller";
 import { ComplaintsService } from "./complaints/complaints.service";
-import { ReportsController, ExportController, ImportController, CommsController, RbacController, PublicController } from "./reports/misc.controller";
+import {
+  ReportsController,
+  ExportController,
+  ImportController,
+  CommsController,
+  RbacController,
+  PublicController,
+} from "./reports/misc.controller";
 import { ReportsService } from "./reports/reports.service";
 import { AdminController } from "./admin/admin.controller";
 import { AdminService } from "./admin/admin.service";
@@ -55,6 +71,9 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60000, limit: 120 }] }),
   ],
   controllers: [
+    WebsiteCmsController,
+    WebsiteMediaController,
+    PublicWebsiteController,
     ManagementController,
     WebsiteCustomerLinkController,
     AuthController,
@@ -84,6 +103,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     HealthController,
   ],
   providers: [
+    WebsiteCmsService,
     ManagementService,
     ManagementOriginGuard,
     GlobalFinanceGuard,

@@ -1,83 +1,36 @@
-name: Remediate npm dependency vulnerabilities
+name: Verify locked dependency security
 
 on:
-  push:
-    branches:
-      - agents/connect-travel-website-backend
-    paths:
-      - package.json
-      - package-lock.json
-      - backend/package.json
-      - backend/package-lock.json
-      - .github/workflows/dependency-security-fix.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: dependency-security-fix-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  fix-and-verify:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
-      - name: Check out branch
-        uses: actions/checkout@v4
-        with:
-          ref: agents/connect-travel-website-backend
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Synchronize root lockfile
-        run: npm install --package-lock-only --ignore-scripts --legacy-peer-deps
-
-      - name: Apply compatible root security updates
-        continue-on-error: true
-        run: npm audit fix --ignore-scripts --legacy-peer-deps
-
-      - name: Synchronize backend lockfile
-        run: npm install --package-lock-only --prefix backend --ignore-scripts --legacy-peer-deps
-
-      - name: Apply compatible backend security updates
-        continue-on-error: true
-        run: npm audit fix --prefix backend --ignore-scripts --legacy-peer-deps
-
-      - name: Commit lockfile remediation before strict checks
-        continue-on-error: true
+          cache: npm
+      - name: Install reviewed lockfiles
         run: |
-          if ! git diff --quiet -- package-lock.json backend/package-lock.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json backend/package-lock.json
-            git commit -m "security: update npm dependency lockfiles"
-            git push origin HEAD:agents/connect-travel-website-backend
-          else
-            echo "Lockfiles already synchronized."
-          fi
-
-      - name: Verify root dependency audit
-        run: npm audit --audit-level=moderate --legacy-peer-deps
-
-      - name: Verify backend dependency audit
-        run: npm audit --prefix backend --audit-level=moderate --legacy-peer-deps
-
-      - name: Install exact root dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Install exact backend dependencies
-        run: npm ci --prefix backend --legacy-peer-deps
-
-      - name: Build website and API
-        run: npm run build
-
-      - name: Run customer-booking tests
-        env:
-          NODE_OPTIONS: --conditions=react-server
-        run: npm run test:customer-bookings
+          npm ci
+          npm ci --prefix backend
+      - name: Fail on unresolved dependency advisories
+        run: |
+          npm audit --audit-level=moderate
+          npm audit --prefix backend --audit-level=moderate
+      - name: Validate reviewed application
+        run: |
+          npm run build
+          npm test --prefix backend
+          npm run test:customer-bookings
+          npm run test:customer-auth
+          npm run test:inquiries
+          npm run test:staff
+          npm run test:receipt-retry
+          npm run test:website-presentation

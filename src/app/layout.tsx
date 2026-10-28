@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { getWebsiteSettings } from "@/server/website-content";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Footer } from "@/components/layout/Footer";
@@ -6,7 +8,12 @@ import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SiteNotice } from "@/components/layout/SiteNotice";
 import { WhatsAppButton } from "@/components/layout/WhatsAppButton";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { allowSearchIndexing, site, siteDescription, siteOrigin } from "@/config/site";
+import {
+  allowSearchIndexing,
+  site,
+  siteDescription,
+  siteOrigin,
+} from "@/config/site";
 import { siteGraph } from "@/lib/structured-data";
 import "./globals.css";
 
@@ -19,7 +26,7 @@ const jakarta = localFont({
 
 const indexingAllowed = allowSearchIndexing();
 
-export const metadata: Metadata = {
+const defaultMetadata: Metadata = {
   metadataBase: siteOrigin(),
   title: {
     default: site.legalName,
@@ -47,20 +54,37 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const settings = await getWebsiteSettings();
   return (
     <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <SiteChrome
-          header={<Header />}
-          footer={<Footer />}
+          header={<Header settings={settings} />}
+          footer={<Footer settings={settings} />}
           notice={<SiteNotice />}
-          structuredData={<JsonLd data={siteGraph()} />}
+          structuredData={<JsonLd data={siteGraph(settings)} />}
         >
           {children}
         </SiteChrome>
-        <WhatsAppButton />
+        <WhatsAppButton settings={settings} />
       </body>
     </html>
   );
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getWebsiteSettings();
+  return {
+    ...defaultMetadata,
+    title: {
+      default: s.seoTitle || s.companyName,
+      template: `%s | ${s.companyName}`,
+    },
+    description: s.seoDescription,
+  };
 }

@@ -1,67 +1,74 @@
+import { getWebsitePage } from "@/server/website-content";
+import { WebsiteView } from "@/components/website/WebsiteView";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { InfoHero, InfoSection } from "@/components/layout/InfoPage";
-import { Button } from "@/components/ui/Button";
-import { site } from "@/config/site";
-
-export const metadata: Metadata = {
-  title: "Support",
-  description: `Support notes for ${site.legalName}. Questions on this page are samples.`,
+const fallbackMetadata: Metadata = {
+  title: "Travel support",
+  description:
+    "Help with travel inquiries, website accounts and linked bookings.",
 };
-
 const questions = [
-  {
-    question: "Where do I ask about a demo booking card?",
-    answer:
-      "Use the contact page. The form is checked there, then sent to the travel desk.",
-  },
-  {
-    question: "Are the prices on this website live?",
-    answer:
-      "No. Fares, nightly rates, and fees on this site are labelled as demo figures.",
-  },
-  {
-    question: "Can I file a visa from the visa page?",
-    answer:
-      "No. Visa cards are sample categories. The View visa button opens a sample page and does not submit an application.",
-  },
-  {
-    question: "Is the account page a real sign-in?",
-    answer:
-      "No. The account and booking screens use sample profiles and sample cards only.",
-  },
-] as const;
+  [
+    "How do I request a quotation?",
+    "Use the relevant service inquiry form or contact the travel desk. Include your route, dates, travellers and preferences. Sending an inquiry does not reserve services.",
+  ],
+  [
+    "Where can I see my bookings?",
+    "Sign in to your website account and open My bookings. Only bookings linked to that account are available there. Contact the desk if a booking needs to be linked.",
+  ],
+  [
+    "Are website inquiries and staff accounts the same?",
+    "No. Customers use the account page; authorised staff use the separate staff sign-in. Public inquiry messages go to the travel desk.",
+  ],
+  [
+    "Can I upload travel documents?",
+    "Document uploads are currently unavailable. Contact the desk for an approved way to provide documents; do not paste passport or payment details into inquiry messages.",
+  ],
+  [
+    "Does a visa inquiry submit an application?",
+    "No. It requests assistance from the travel desk. Requirements and the application process must be confirmed for your circumstances.",
+  ],
+];
+export default async function SupportPage() {
+  const publishedWebsitePage = await getWebsitePage("support");
+  if (publishedWebsitePage)
+    return <WebsiteView content={publishedWebsitePage.content} />;
 
-export default function SupportPage() {
   return (
     <>
       <InfoHero
-        title="Support"
-        intro={`${site.shortName} can point you to the public pages on this site. The questions below are demo text, not a live help desk.`}
+        title="How can we help?"
+        intro="Find help with planning, website access and your existing trip."
       />
-      <InfoSection title="Sample questions">
-        <ul className="space-y-3">
-          {questions.map((item) => (
-            <li key={item.question}>
-              <details className="rounded-2xl border border-line bg-surface p-4">
-                <summary className="cursor-pointer rounded-sm font-semibold text-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue">
-                  {item.question}
-                </summary>
-                <p className="mt-3 text-sm leading-6 text-muted">{item.answer}</p>
-              </details>
-            </li>
+      <InfoSection title="Common questions">
+        <div className="space-y-3">
+          {questions.map(([title, answer]) => (
+            <details
+              key={title}
+              className="rounded-xl border border-line bg-surface p-5"
+            >
+              <summary className="cursor-pointer font-semibold text-zayan-blue">
+                {title}
+              </summary>
+              <p className="mt-3">{answer}</p>
+            </details>
           ))}
-        </ul>
-      </InfoSection>
-      <section className="bg-zayan-blue px-4 py-16 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-3xl flex-col items-start gap-4">
-          <h2 className="text-3xl font-bold tracking-tight">Contact {site.shortName}</h2>
-          <p className="text-base leading-7 text-white/85">
-            The contact page lists the company details that are published.
-            Blank address and email fields stay unmarked until a value is available.
-          </p>
-          <Button href="/contact">Contact us</Button>
         </div>
-      </section>
+        <Link
+          className="inline-block font-semibold text-zayan-blue underline"
+          href="/contact"
+        >
+          Contact the travel desk
+        </Link>
+      </InfoSection>
     </>
   );
+}
+
+export async function generateMetadata() {
+  const page = await getWebsitePage("support");
+  return page
+    ? { title: page.content.title, description: page.content.summary }
+    : fallbackMetadata;
 }
