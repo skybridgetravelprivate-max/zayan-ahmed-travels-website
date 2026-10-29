@@ -14,6 +14,7 @@ export type StaffResult =
 export type StaffApiPath =
   | "/api/auth/me"
   | "/api/v1/dashboard/summary"
+  | "/api/v1/crm/today"
   | `/api/v1/leads${string}`
   | `/api/v1/website/pages${string}`;
 
@@ -46,6 +47,7 @@ export async function staffRequest(path: StaffApiPath) {
   if (
     path !== "/api/auth/me" &&
     path !== "/api/v1/dashboard/summary" &&
+    path !== "/api/v1/crm/today" &&
     (path.length > 600 ||
       (!leadApiPath.test(path) &&
         !/^\/api\/v1\/website\/pages(?:\/[a-z][a-z0-9-]{0,79})?$/.test(path)))

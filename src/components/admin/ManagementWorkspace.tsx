@@ -647,6 +647,7 @@ export function ManagementWorkspace({
   permissions,
   isSuperAdmin,
   initialId,
+  initialLeadId,
 }: {
   resource: string;
   staffUsername: string;
@@ -654,6 +655,7 @@ export function ManagementWorkspace({
   permissions: string[];
   isSuperAdmin: boolean;
   initialId?: string;
+  initialLeadId?: string;
 }) {
   const { modules, error: catalogError } = useCatalog();
   const contract = modules?.find((m) => m.key === resource);
@@ -664,9 +666,10 @@ export function ManagementWorkspace({
     data: ManagementRow[];
     total: number;
   } | null>(null);
-  const [row, setRow] = useState<ManagementRow | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const linkedLead = !initialId && initialLeadId && ["follow-ups", "tasks"].includes(resource) ? initialLeadId : undefined;
+  const [row, setRow] = useState<ManagementRow | null>(() => linkedLead ? { id: "", version: null, leadId: linkedLead } : null);
+  const [editing, setEditing] = useState(Boolean(linkedLead));
+  const [creating, setCreating] = useState(Boolean(linkedLead));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -1017,6 +1020,7 @@ export function ManagementWorkspace({
       </section>
     );
   if (!contract) return <p role="status">Loading workspace…</p>;
+  if (linkedLead && !contract.canCreate) return <p role="alert">You do not have permission to create linked work in this module.</p>;
   return (
     <section>
       <AgencyMasthead />
@@ -1325,6 +1329,12 @@ export function ManagementWorkspace({
                 Edit record
               </button>
             )}
+            {resource === "leads" && [
+              { permission: "followup", resource: "follow-ups", label: "Schedule follow-up" },
+              { permission: "task", resource: "tasks", label: "Add lead task" },
+            ].filter(action => isSuperAdmin || (permissions.includes(`${action.permission}.view`) && permissions.includes(`${action.permission}.create`))).map(action => (
+              <Link prefetch={false} key={action.resource} className={button} href={`/admin/manage/${action.resource}?lead=${encodeURIComponent(row.id)}`}>{action.label}</Link>
+            ))}
             {resource === "leads" && canAssign && (
               <button
                 className={button}

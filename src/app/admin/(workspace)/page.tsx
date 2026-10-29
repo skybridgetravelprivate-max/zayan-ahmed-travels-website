@@ -1,3 +1,4 @@
+import { CrmWorkQueue } from "@/components/admin/CrmWorkQueue";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -74,6 +75,8 @@ export default async function StaffDashboard() {
       <p className="mt-2 text-sm text-muted">
         {user.roleNames.join(" · ") || "Staff"}
       </p>
+
+      {canViewLeads && <CrmWorkQueue />}
 
       <h2 className="mt-8 text-xl font-semibold text-zayan-blue">
         Your workspace
