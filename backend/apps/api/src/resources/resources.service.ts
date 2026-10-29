@@ -1,5 +1,8 @@
+import { isSerializationConflict } from "../common/serialization-conflict";
+import { lockFollowUpLeads, refreshFollowUpLeads } from "../crm/follow-up-state";
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -306,7 +309,10 @@ export class ResourcesService {
             new AuditService(tx as PrismaService),
           ).create(resource, user, body, ip),
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
+      ).catch(error => {
+        if (isSerializationConflict(error)) throw new ConflictException("Record changed. Reload before retrying.");
+        throw error;
+      });
     this.assert(user, resource, "create");
     const meta = this.meta(resource);
     const data = this.sanitize(resource, body, true);
@@ -350,7 +356,9 @@ export class ResourcesService {
     }
     if (["hotel-physical-rooms", "hotel-bookings"].includes(resource))
       await assertHotelRoomLinks(this.prisma, data);
+    if (resource === "follow-ups") await lockFollowUpLeads(this.prisma, [data.leadId]);
     const created = await this.delegate(resource).create({ data });
+    if (resource === "follow-ups") await refreshFollowUpLeads(this.prisma, [created.leadId]);
     await this.audit.log({
       userId: user.id,
       action: "CREATE",
@@ -380,7 +388,10 @@ export class ResourcesService {
             new AuditService(tx as PrismaService),
           ).update(resource, id, user, body, ip),
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
+      ).catch(error => {
+        if (isSerializationConflict(error)) throw new ConflictException("Record changed. Reload before retrying.");
+        throw error;
+      });
     this.assert(user, resource, "edit");
     const meta = this.meta(resource);
     const before = await this.delegate(resource).findUnique({ where: { id } });
@@ -455,10 +466,12 @@ export class ResourcesService {
     }
     if (["hotel-physical-rooms", "hotel-bookings"].includes(resource))
       await assertHotelRoomLinks(this.prisma, { ...before, ...data });
+    if (resource === "follow-ups") await lockFollowUpLeads(this.prisma, [before.leadId, data.leadId]);
     const updated = await this.delegate(resource).update({
       where: { id },
       data,
     });
+    if (resource === "follow-ups") await refreshFollowUpLeads(this.prisma, [before.leadId, updated.leadId]);
     await this.audit.log({
       userId: user.id,
       action: "UPDATE",
@@ -488,7 +501,10 @@ export class ResourcesService {
             new AuditService(tx as PrismaService),
           ).remove(resource, id, user, ip),
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
+      ).catch(error => {
+        if (isSerializationConflict(error)) throw new ConflictException("Record changed. Reload before retrying.");
+        throw error;
+      });
     this.assert(user, resource, "delete");
     const meta = this.meta(resource);
     const before = await this.delegate(resource).findUnique({ where: { id } });
@@ -503,7 +519,9 @@ export class ResourcesService {
       throw new ForbiddenException(
         "Use the reservation workflow for posted bookings",
       );
+    if (resource === "follow-ups") await lockFollowUpLeads(this.prisma, [before.leadId]);
     await this.delegate(resource).delete({ where: { id } });
+    if (resource === "follow-ups") await refreshFollowUpLeads(this.prisma, [before.leadId]);
     await this.audit.log({
       userId: user.id,
       action: "DELETE",
@@ -523,13 +541,19 @@ export class ResourcesService {
     return parseFields(fieldsFor(resource, true), body, create);
   }
 
-  async bulk(resource: string, user: AuthUser, ids: string[], action: string) {
+  async bulk(resource: string, user: AuthUser, ids: string[], action: string): Promise<{ ok: boolean; count: number }> {
+    if (typeof this.prisma.$transaction === "function")
+      return this.prisma.$transaction(tx => new ResourcesService(tx as PrismaService, new SequenceService(tx as PrismaService), new AuditService(tx as PrismaService)).bulk(resource, user, ids, action), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch(error => {
+        if (isSerializationConflict(error)) throw new ConflictException("Records changed. Reload before retrying.");
+        throw error;
+      });
     if (
       !Array.isArray(ids) ||
-      ids.length > 100 ||
+      !ids.length || ids.length > 100 ||
       ids.some((id) => typeof id !== "string")
     )
       throw new BadRequestException("Invalid record ids");
+    ids = [...new Set(ids)];
     if (action !== "delete" && !(action === "archive" && resource === "leads"))
       throw new BadRequestException("Unsupported bulk action");
     if (action === "delete") {

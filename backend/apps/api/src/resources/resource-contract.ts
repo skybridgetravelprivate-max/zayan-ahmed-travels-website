@@ -34,7 +34,7 @@ export const MANAGEMENT: Record<string, ModuleSpec> = {
     title: "Inquiries & leads",
     group: "CRM",
     fields:
-      "leadNumber fullName mobile whatsapp email city country source priority status assignedUserId assignedAgentId branchId adults children infants travelDate returnDate budget notes lostReason",
+      "leadNumber fullName mobile whatsapp email city country source priority status nextFollowUpAt assignedUserId assignedAgentId branchId adults children infants travelDate returnDate budget notes lostReason",
     write:
       "fullName mobile whatsapp email city country source priority branchId adults children infants travelDate returnDate budget notes",
   },

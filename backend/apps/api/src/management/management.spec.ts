@@ -83,7 +83,7 @@ test("assignment changes only assigned staff and writes an audit in the same tra
   let data: unknown;
   let audit: unknown;
   const lead = { id: "lead-a", branchId: "a", assignedAgentId: "agent-preserved", updatedAt: new Date(version) };
-  const tx = { lead: { findMany: async () => [lead], update: async (args: { data: unknown }) => { data = args.data; return { ...lead, assignedUserId: "staff-next" }; } }, user: { findUnique: async () => ({ id: "staff-next", status: "ACTIVE", deletedAt: null, defaultBranchId: "a", branches: [] }) }, auditLog: { create: async (args: unknown) => { audit = args; } } };
+  const tx = { lead: { findMany: async () => [lead], update: async (args: { data: unknown }) => { data = args.data; return { ...lead, assignedUserId: "staff-next" }; } }, user: { findUnique: async () => ({ id: "staff-next", status: "ACTIVE", deletedAt: null, defaultBranchId: "a", branches: [] }) }, notification: { create: async () => ({}) }, auditLog: { create: async (args: unknown) => { audit = args; } } };
   const db = { $transaction: async (run: (tx: unknown) => unknown, options: { isolationLevel: string }) => { assert.equal(options.isolationLevel, "Serializable"); return run(tx); } };
   await service(db).assign(user, "lead-a", { assignedUserId: "staff-next", version });
   assert.deepEqual(data, { assignedUserId: "staff-next" });
@@ -136,7 +136,7 @@ test("staff access validates references, changes scope and revokes sessions atom
 test("staff creation starts inactive, hashes passwords, and excludes secrets from audit and response", async () => {
   let created: Record<string, unknown> = {};
   let audit: unknown;
-  const tx = { user: { create: async ({ data }: { data: Record<string, unknown> }) => { created = data; return { id: "new-staff", ...data }; } }, auditLog: { create: async (args: unknown) => { audit = args; } } };
+  const tx = { user: { create: async ({ data }: { data: Record<string, unknown> }) => { created = data; return { id: "new-staff", ...data }; } }, notification: { create: async () => ({}) }, auditLog: { create: async (args: unknown) => { audit = args; } } };
   const db = { $transaction: async (run: (tx: unknown) => unknown) => run(tx) };
   const result = await service(db).createStaff(admin, { fullName: "Synthetic", username: "synthetic", email: "SYNTHETIC@example.invalid", password: "synthetic-only-password" });
   assert.equal(created.status, "INACTIVE");

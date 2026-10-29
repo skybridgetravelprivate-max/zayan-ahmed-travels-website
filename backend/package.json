@@ -24,7 +24,7 @@
     "db:push": "npm run push -w @zat/database",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run db:generate && npx tsc -p apps/api/tsconfig.json --noEmit",
-    "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/jwt.guard.spec.ts apps/api/src/common/storage.service.spec.ts apps/api/src/documents/documents.controller.spec.ts apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts apps/api/src/website/website-inquiries.controller.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs apps/api/src/common/security-audit.spec.ts apps/api/src/common/final-audit.spec.ts apps/api/src/common/pr16-review.spec.ts apps/api/src/resources/lead-access.spec.ts apps/api/src/management/management.spec.ts apps/api/src/management/operations.spec.ts scripts/prepare-umrah-reference.spec.mjs apps/api/src/documents/document-brand.spec.ts apps/api/src/common/p0-remediation.spec.ts apps/api/src/common/communications.spec.ts apps/api/src/reports/reports-completion.spec.ts",
+    "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/jwt.guard.spec.ts apps/api/src/common/storage.service.spec.ts apps/api/src/documents/documents.controller.spec.ts apps/api/src/reservation/reservation.dates.spec.ts apps/api/src/website/website-booking.dto.spec.ts apps/api/src/website/website-customer-upsert.service.spec.ts apps/api/src/website/website-internal-token.spec.ts apps/api/src/website/website-inquiries.controller.spec.ts packages/config/postgres-tls.spec.cjs scripts/hostinger-api-path.spec.mjs scripts/hostinger-start.spec.mjs apps/api/src/common/security-audit.spec.ts apps/api/src/common/final-audit.spec.ts apps/api/src/common/pr16-review.spec.ts apps/api/src/resources/lead-access.spec.ts apps/api/src/management/management.spec.ts apps/api/src/management/operations.spec.ts scripts/prepare-umrah-reference.spec.mjs apps/api/src/documents/document-brand.spec.ts apps/api/src/common/p0-remediation.spec.ts apps/api/src/common/communications.spec.ts apps/api/src/reports/reports-completion.spec.ts apps/api/src/crm/business-day.spec.ts",
     "test:e2e": "npx tsx scripts/e2e-api.mjs",
     "test:quotation:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/crm/lead-quotation.pg17.spec.ts apps/api/src/crm/quotation-journey.pg17.spec.ts",
     "deploy:shared-crm": "node scripts/deploy-shared-crm.cjs",
@@ -32,7 +32,8 @@
     "test:operations:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/workflows/remaining-workflows.pg17.spec.ts apps/api/src/reservation/reservation-completion.pg17.spec.ts",
     "test:manual:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/umrah/lifecycle.pg17.spec.ts apps/api/src/documents/persistence.pg17.spec.ts",
     "test:cms:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/website/website-cms.pg17.spec.ts",
-    "test:cms:browser": "node scripts/website-cms-journey.cjs"
+    "test:cms:browser": "node scripts/website-cms-journey.cjs",
+    "test:crm:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/crm/crm-operations.pg17.spec.ts"
   },
   "engines": {
     "node": ">=20"

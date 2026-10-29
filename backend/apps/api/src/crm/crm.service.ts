@@ -1,3 +1,11 @@
+import { isSerializationConflict } from "../common/serialization-conflict";
+import { RESOURCES, actionPermission } from "../resources/registry";
+import { refreshFollowUpLeads } from "./follow-up-state";
+import { businessDay } from "./business-day";
+import { ResourcesService } from "../resources/resources.service";
+import { resourceScope, validateResourceLinks } from "../resources/resource-scope";
+import { ManagementService } from "../management/management.service";
+import { requirePermission } from "../auth/record-scope";
 import { convertLeadToCustomer } from "./convert-lead";
 import { convertQuotationToBooking } from "./convert-quotation";
 import { AccountingService } from "../finance/accounting.service";
@@ -9,7 +17,7 @@ import { AuditService } from "../common/audit.service";
 import { NotifyService } from "../common/notify.service";
 import { MailService } from "../common/mail.service";
 import { WhatsAppService } from "../common/whatsapp.service";
-import { AuthUser } from "../auth/auth.types";
+import { AuthUser, can } from "../auth/auth.types";
 import { LeadStatus, Prisma } from "@prisma/client";
 
 const STATUSES: LeadStatus[] = [
@@ -35,6 +43,10 @@ export class CrmService {
     private wa: WhatsAppService,
     private accounting: AccountingService,
   ) {}
+
+  private visibleResource(user: AuthUser, resource: string) {
+    return can(user, actionPermission(RESOURCES[resource], "view")) ? resourceScope(user, resource) : { id: { in: [] } };
+  }
 
   private branchIds(user: AuthUser) {
     return [...new Set([...user.branchIds, ...(user.defaultBranchId ? [user.defaultBranchId] : [])])];
@@ -99,9 +111,9 @@ export class CrmService {
       !user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {};
     const [open, overdue, quoted, confirmed, bySource] = await Promise.all([
       this.prisma.lead.count({ where: { archivedAt: null, status: { notIn: ["LOST", "CANCELLED", "CONFIRMED"] }, ...branch } }),
-      this.prisma.followUp.count({
-        where: { status: "PENDING", dueAt: { lt: new Date() } },
-      }),
+      can(user, "followup.view") ? this.prisma.followUp.count({
+        where: { status: "PENDING", dueAt: { lt: new Date() }, ...resourceScope(user, "follow-ups") },
+      }) : Promise.resolve(null),
       this.prisma.lead.count({ where: { status: "QUOTED", archivedAt: null, ...branch } }),
       this.prisma.lead.count({ where: { status: "CONFIRMED", archivedAt: null, ...branch } }),
       this.prisma.lead.groupBy({ by: ["source"], where: { archivedAt: null, ...branch }, _count: true }),
@@ -199,33 +211,34 @@ export class CrmService {
     return lead;
   }
 
-  async workspace(id: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id },
+  async workspace(id: string, user: AuthUser) {
+    requirePermission(user, "lead.view");
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, ...resourceScope(user, "leads") },
       include: {
         assignedUser: { select: { id: true, fullName: true, email: true } },
-        assignedAgent: true,
-        branch: true,
-        package: true,
-        followUps: { orderBy: { dueAt: "desc" } },
-        tasks: { orderBy: { createdAt: "desc" } },
-        quotations: { orderBy: { createdAt: "desc" } },
-        customers: true,
+        assignedAgent: { select: { id: true, name: true } },
+        branch: { select: { id: true, code: true, name: true } },
+        package: can(user, "umrah.view"),
+        followUps: { where: this.visibleResource(user, "follow-ups"), orderBy: { dueAt: "desc" } },
+        tasks: { where: this.visibleResource(user, "tasks"), orderBy: { createdAt: "desc" } },
+        quotations: { where: this.visibleResource(user, "quotations"), orderBy: { createdAt: "desc" } },
+        customers: { where: this.visibleResource(user, "customers") },
         leadNotes: { orderBy: { createdAt: "desc" }, include: { user: { select: { fullName: true } } } },
         communications: { orderBy: { createdAt: "desc" } },
       },
     });
     if (!lead) throw new NotFoundException("Lead not found");
     const documents = await this.prisma.storedDocument.findMany({
-      where: { entityType: "lead", entityId: id },
+      where: { entityType: "lead", entityId: id, ...(can(user, "document.view") ? {} : { id: { in: [] } }) },
       orderBy: { createdAt: "desc" },
     });
     const bookings = await this.prisma.umrahBooking.findMany({
-      where: { customer: { leadId: id } },
+      where: { customer: { leadId: id }, ...this.visibleResource(user, "umrah-bookings") },
       orderBy: { createdAt: "desc" },
     });
     const receipts = await this.prisma.receipt.findMany({
-      where: { customer: { leadId: id } },
+      where: { customer: { leadId: id }, ...this.visibleResource(user, "receipts") },
       orderBy: { date: "desc" },
     });
     const timeline = [
@@ -258,23 +271,11 @@ export class CrmService {
     return note;
   }
 
-  async assign(id: string, user: AuthUser, assignedUserId?: string, assignedAgentId?: string) {
-    const before = await this.prisma.lead.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException();
-    const lead = await this.prisma.lead.update({
-      where: { id },
-      data: {
-        assignedUserId: assignedUserId || null,
-        assignedAgentId: assignedAgentId || null,
-      },
+  async assign(id: string, user: AuthUser, assignedUserId?: string | null, assignedAgentId?: string | null, version?: string) {
+    return new ManagementService(this.prisma, this.seq).assign(user, id, {
+      ...(assignedUserId !== undefined ? { assignedUserId } : {}),
+      ...(assignedAgentId !== undefined ? { assignedAgentId } : {}), version,
     });
-    if (assignedUserId) {
-      await this.notify.send(assignedUserId, "Lead assigned", `${lead.fullName} (${lead.leadNumber}) was assigned to you`, "LEAD", {
-        leadId: id,
-      });
-    }
-    await this.audit.log({ userId: user.id, action: "ASSIGN", entity: "lead", entityId: id, before, after: lead });
-    return lead;
   }
 
   async setStatus(id: string, user: AuthUser, status: LeadStatus, lostReason?: string) {
@@ -296,39 +297,12 @@ export class CrmService {
     return lead;
   }
 
-  async addFollowUp(
-    id: string,
-    user: AuthUser,
-    body: { dueAt: string; type?: string; subject: string; notes?: string; priority?: string },
-  ) {
-    const follow = await this.prisma.followUp.create({
-      data: {
-        leadId: id,
-        assignedUserId: user.id,
-        dueAt: new Date(body.dueAt),
-        type: (body.type as never) ?? "CALL",
-        subject: body.subject,
-        notes: body.notes,
-        priority: (body.priority as never) ?? "MEDIUM",
-      },
-    });
-    await this.prisma.lead.update({
-      where: { id },
-      data: { nextFollowUpAt: follow.dueAt, status: "FOLLOW_UP" },
-    });
-    return follow;
+  async addFollowUp(id: string, user: AuthUser, body: { dueAt: string; type?: string; subject: string; notes?: string; priority?: string }) {
+    return new ResourcesService(this.prisma, this.seq, this.audit).create("follow-ups", user, { ...body, leadId: id, assignedUserId: user.id });
   }
 
   async addTask(id: string, user: AuthUser, body: { title: string; description?: string; dueDate?: string }) {
-    return this.prisma.task.create({
-      data: {
-        title: body.title,
-        description: body.description,
-        dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
-        leadId: id,
-        assignedUserId: user.id,
-      },
-    });
+    return new ResourcesService(this.prisma, this.seq, this.audit).create("tasks", user, { ...body, leadId: id, assignedUserId: user.id });
   }
 
   async logCommunication(
@@ -429,28 +403,38 @@ export class CrmService {
   }
 
   async bulk(user: AuthUser, ids: string[], action: string, assignedUserId?: string) {
-    if (!ids.length) throw new BadRequestException("No leads selected");
-    if (action === "archive") {
-      await this.prisma.lead.updateMany({ where: { id: { in: ids } }, data: { archivedAt: new Date() } });
-    } else if (action === "unarchive") {
-      await this.prisma.lead.updateMany({ where: { id: { in: ids } }, data: { archivedAt: null } });
-    } else if (action === "assign") {
-      await this.prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedUserId: assignedUserId || user.id } });
-    } else if (action === "delete") {
-      await this.prisma.lead.deleteMany({ where: { id: { in: ids } } });
-    } else {
-      throw new BadRequestException("Unknown bulk action");
-    }
-    await this.audit.log({ userId: user.id, action: `BULK_${action.toUpperCase()}`, entity: "lead", after: { ids } });
-    return { ok: true, count: ids.length };
+    if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => typeof id !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(id))) throw new BadRequestException("Select at most 100 valid leads");
+    if (!["archive", "unarchive", "assign", "delete"].includes(action)) throw new BadRequestException("Unknown bulk action");
+    requirePermission(user, action === "assign" ? "lead.assign" : action === "delete" ? "lead.delete" : "lead.edit");
+    const selected = [...new Set(ids)].sort();
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Lead" WHERE id IN (${Prisma.join(selected)}) ORDER BY id FOR UPDATE`);
+      const leads = await tx.lead.findMany({ where: { id: { in: selected }, ...resourceScope(user, "leads") } });
+      if (leads.length !== selected.length) throw new NotFoundException();
+      if (action === "assign") {
+        const target = assignedUserId || user.id;
+        for (const lead of leads) await validateResourceLinks(tx as PrismaService, user, "leads", { assignedUserId: target }, lead);
+        await tx.lead.updateMany({ where: { id: { in: selected } }, data: { assignedUserId: target } });
+      } else if (action === "delete") {
+        const resources = new ResourcesService(tx as PrismaService, new SequenceService(tx as PrismaService), new AuditService(tx as PrismaService));
+        for (const id of selected) await resources.remove("leads", id, user);
+      } else {
+        await tx.lead.updateMany({ where: { id: { in: selected } }, data: { archivedAt: action === "archive" ? new Date() : null } });
+      }
+      await this.audit.log({ db: tx, userId: user.id, action: `BULK_${action.toUpperCase()}`, entity: "lead", after: { ids: selected } });
+      return { ok: true, count: selected.length };
+    }).catch(error => {
+      if (isSerializationConflict(error)) throw new ConflictException("Records changed. Reload before retrying.");
+      throw error;
+    });
   }
 
-  async setFollowUpStatus(id: string, status: "COMPLETED" | "MISSED" | "CANCELLED" | "PENDING") {
-    return this.prisma.followUp.update({ where: { id }, data: { status } });
+  async setFollowUpStatus(id: string, status: "COMPLETED" | "MISSED" | "CANCELLED" | "PENDING", user: AuthUser) {
+    return new ResourcesService(this.prisma, this.seq, this.audit).update("follow-ups", id, user, { status });
   }
 
-  async setTaskStatus(id: string, status: "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED") {
-    return this.prisma.task.update({ where: { id }, data: { status } });
+  async setTaskStatus(id: string, status: "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED", user: AuthUser) {
+    return new ResourcesService(this.prisma, this.seq, this.audit).update("tasks", id, user, { status });
   }
 
   async quotationWorkspace(id: string) {
@@ -465,6 +449,8 @@ export class CrmService {
   async sendQuotation(id: string, user: AuthUser) {
     const q = await this.prisma.quotation.findUnique({ where: { id }, include: { customer: true, lead: true } });
     if (!q) throw new NotFoundException();
+    assertBranch(user, q.branchId);
+    if (!["DRAFT", "SENT"].includes(q.status)) throw new ConflictException("Only an open quotation can be sent.");
     const to = q.customer?.email || q.lead?.email;
     const html = `<p>Quotation ${q.quotationNumber}</p><p>Net: ${q.net} ${q.currency}</p>`;
     let mail = null;
@@ -472,6 +458,7 @@ export class CrmService {
     const phone = q.customer?.whatsapp || q.lead?.whatsapp || q.lead?.mobile;
     let wa = null;
     if (phone) wa = await this.wa.send(phone, `Quotation ${q.quotationNumber} net ${q.net} ${q.currency}`);
+    if (![mail, wa].some(result => result && !(result as { skipped?: boolean }).skipped)) throw new ConflictException("No delivery channel accepted the quotation; its status is unchanged.");
     const updated = await this.prisma.quotation.update({ where: { id }, data: { status: "SENT" } });
     await this.audit.log({ userId: user.id, action: "SEND", entity: "quotation", entityId: id });
     return { quotation: updated, mail, wa };
@@ -506,15 +493,7 @@ export class CrmService {
   }
 
   async upcomingFollowUps(user: AuthUser) {
-    const branchScope =
-      !user.isSuperAdmin
-        ? {
-            OR: [
-              { lead: { branchId: { in: this.branchIds(user) } } },
-              { customer: { branchId: { in: this.branchIds(user) } } },
-            ],
-          }
-        : {};
+    const branchScope = resourceScope(user, "follow-ups");
     return this.prisma.followUp.findMany({
       where: {
         status: "PENDING",
@@ -527,37 +506,38 @@ export class CrmService {
     });
   }
 
-  async customerWorkspace(id: string) {
-    const customer = await this.prisma.customer.findUnique({
-      where: { id },
+  async customerWorkspace(id: string, user: AuthUser) {
+    requirePermission(user, "customer.view");
+    const customer = await this.prisma.customer.findFirst({
+      where: { id, ...resourceScope(user, "customers") },
       include: {
         branch: true,
-        agent: true,
-        lead: true,
-        passengers: true,
-        quotations: true,
-        followUps: true,
-        tasks: true,
-        umrahBookings: true,
-        tickets: true,
-        hotelBookings: true,
-        starBookings: true,
-        transportBookings: true,
-        visaApplications: true,
-        receipts: true,
-        complaints: true,
+        agent: { select: { id: true, name: true } },
+        lead: { where: this.visibleResource(user, "leads") },
+        passengers: { where: this.visibleResource(user, "passengers") },
+        quotations: { where: this.visibleResource(user, "quotations") },
+        followUps: { where: this.visibleResource(user, "follow-ups") },
+        tasks: { where: this.visibleResource(user, "tasks") },
+        umrahBookings: { where: this.visibleResource(user, "umrah-bookings") },
+        tickets: { where: this.visibleResource(user, "tickets") },
+        hotelBookings: { where: this.visibleResource(user, "hotel-bookings") },
+        starBookings: { where: this.visibleResource(user, "star-bookings") },
+        transportBookings: { where: this.visibleResource(user, "transport-bookings") },
+        visaApplications: { where: this.visibleResource(user, "visa-applications") },
+        receipts: { where: this.visibleResource(user, "receipts") },
+        complaints: { where: this.visibleResource(user, "complaints") },
         communications: { orderBy: { createdAt: "desc" } },
         passportHistory: { orderBy: { recordedAt: "desc" } },
-        ocrExtracts: { orderBy: { createdAt: "desc" }, take: 20 },
+        ocrExtracts: { where: can(user, "document.view") ? {} : { id: { in: [] } }, orderBy: { createdAt: "desc" }, take: 20 },
       },
     });
     if (!customer) throw new NotFoundException();
-    const outstanding = customer.umrahBookings.reduce((s, b) => s + Number(b.balance), 0);
+    const outstanding = can(user, "booking.view") ? Number(customer.umrahBookings.reduce((sum, booking) => sum.add(booking.balance), new Prisma.Decimal(0)).toFixed(2)) : null;
     const documents = await this.prisma.storedDocument.findMany({
-      where: { entityType: "customer", entityId: id },
+      where: { entityType: "customer", entityId: id, ...(can(user, "document.view") ? {} : { id: { in: [] } }) },
       orderBy: { createdAt: "desc" },
     });
-    return { customer, outstanding, documents };
+    return { customer, outstanding, outstandingScope: "umrah-bookings-only", documents };
   }
 
   async updateCustomer(id: string, user: AuthUser, body: Record<string, unknown>) {
@@ -615,36 +595,12 @@ export class CrmService {
     return { communication: row, delivery };
   }
 
-  async addCustomerFollowUp(
-    id: string,
-    user: AuthUser,
-    body: { dueAt: string; type?: string; subject: string; notes?: string; priority?: string },
-  ) {
-    if (!body.subject?.trim() || !body.dueAt) throw new BadRequestException("Subject and due date required");
-    return this.prisma.followUp.create({
-      data: {
-        customerId: id,
-        assignedUserId: user.id,
-        dueAt: new Date(body.dueAt),
-        type: (body.type as never) ?? "CALL",
-        subject: body.subject,
-        notes: body.notes,
-        priority: (body.priority as never) ?? "MEDIUM",
-      },
-    });
+  async addCustomerFollowUp(id: string, user: AuthUser, body: { dueAt: string; type?: string; subject: string; notes?: string; priority?: string }) {
+    return new ResourcesService(this.prisma, this.seq, this.audit).create("follow-ups", user, { ...body, customerId: id, assignedUserId: user.id });
   }
 
   async addCustomerTask(id: string, user: AuthUser, body: { title: string; description?: string; dueDate?: string }) {
-    if (!body.title?.trim()) throw new BadRequestException("Title required");
-    return this.prisma.task.create({
-      data: {
-        title: body.title,
-        description: body.description,
-        dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
-        customerId: id,
-        assignedUserId: user.id,
-      },
-    });
+    return new ResourcesService(this.prisma, this.seq, this.audit).create("tasks", user, { ...body, customerId: id, assignedUserId: user.id });
   }
 
   async setQuotationStatus(id: string, status: string, user: AuthUser) {
@@ -874,19 +830,17 @@ export class CrmService {
     });
   }
 
-  async today(user: AuthUser) {
+  async today(user: AuthUser, now = new Date()) {
     const branch =
       !user.isSuperAdmin ? { branchId: { in: this.branchIds(user) } } : {};
-    const followScope =
-      !user.isSuperAdmin
-        ? { lead: { branchId: { in: this.branchIds(user) } } }
-        : {};
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const followScope = resourceScope(user, "follow-ups");
+    const taskScope = resourceScope(user, "tasks");
+    const access = { followUps: can(user, "followup.view"), tasks: can(user, "task.view"), quotations: can(user, "quotation.view") };
+    const settings = await this.prisma.companySettings.findFirst({ select: { timezone: true } });
+    const timeZone = settings?.timezone || "Asia/Karachi";
+    const { start, endExclusive } = businessDay(timeZone, now);
     const [overdueFollowUps, todayFollowUps, tasksDue, newLeads, openQuotes, expiringQuotes] = await Promise.all([
-      this.prisma.followUp.findMany({
+      access.followUps ? this.prisma.followUp.findMany({
         where: { status: "PENDING", dueAt: { lt: start }, ...followScope },
         include: {
           lead: { select: { id: true, fullName: true } },
@@ -894,81 +848,73 @@ export class CrmService {
         },
         orderBy: { dueAt: "asc" },
         take: 30,
-      }),
-      this.prisma.followUp.findMany({
-        where: { status: "PENDING", dueAt: { gte: start, lte: end }, ...followScope },
+      }) : Promise.resolve([]),
+      access.followUps ? this.prisma.followUp.findMany({
+        where: { status: "PENDING", dueAt: { gte: start, lt: endExclusive }, ...followScope },
         include: {
           lead: { select: { id: true, fullName: true } },
           customer: { select: { id: true, fullName: true } },
         },
         orderBy: { dueAt: "asc" },
         take: 30,
-      }),
-      this.prisma.task.findMany({
-        where: { status: { in: ["TODO", "IN_PROGRESS"] }, dueDate: { lte: end }, ...followScope },
-        include: { lead: { select: { id: true, fullName: true } } },
+      }) : Promise.resolve([]),
+      access.tasks ? this.prisma.task.findMany({
+        where: { status: { in: ["TODO", "IN_PROGRESS"] }, dueDate: { lt: endExclusive }, ...taskScope },
+        include: { lead: { select: { id: true, fullName: true } }, customer: { select: { id: true, fullName: true } } },
         orderBy: { dueDate: "asc" },
         take: 30,
-      }),
+      }) : Promise.resolve([]),
       this.prisma.lead.findMany({
-        where: { createdAt: { gte: start, lte: end }, archivedAt: null, ...branch },
+        where: { createdAt: { gte: start, lt: endExclusive }, archivedAt: null, ...branch },
         orderBy: { createdAt: "desc" },
         take: 20,
       }),
-      this.prisma.quotation.findMany({
+      access.quotations ? this.prisma.quotation.findMany({
         where: { status: { in: ["DRAFT", "SENT"] }, ...branch },
         orderBy: { createdAt: "desc" },
         take: 20,
-      }),
-      this.prisma.quotation.findMany({
+      }) : Promise.resolve([]),
+      access.quotations ? this.prisma.quotation.findMany({
         where: {
           status: { in: ["DRAFT", "SENT"] },
-          expiresAt: { lte: end },
+          expiresAt: { lt: endExclusive },
           ...branch,
         },
         orderBy: { expiresAt: "asc" },
         take: 20,
-      }),
+      }) : Promise.resolve([]),
     ]);
-    return { overdueFollowUps, todayFollowUps, tasksDue, newLeads, openQuotes, expiringQuotes };
+    return { overdueFollowUps, todayFollowUps, tasksDue, newLeads, openQuotes, expiringQuotes, access, timeZone, day: { start, endExclusive } };
   }
 
   async mergeLeads(keepId: string, dropId: string, user: AuthUser) {
-    if (!dropId) throw new BadRequestException("otherId required");
-    if (keepId === dropId) throw new BadRequestException("Cannot merge a lead into itself");
-    const [keep, drop] = await Promise.all([
-      this.prisma.lead.findUnique({ where: { id: keepId } }),
-      this.prisma.lead.findUnique({ where: { id: dropId } }),
-    ]);
-    if (!keep || !drop) throw new NotFoundException("Lead not found");
-    await this.prisma.$transaction([
-      this.prisma.leadNote.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } }),
-      this.prisma.communication.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } }),
-      this.prisma.followUp.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } }),
-      this.prisma.task.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } }),
-      this.prisma.quotation.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } }),
-      this.prisma.customer.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } }),
-      this.prisma.lead.update({
-        where: { id: dropId },
-        data: { archivedAt: new Date(), status: "CANCELLED", lostReason: `Merged into ${keep.leadNumber}` },
-      }),
-      this.prisma.leadNote.create({
-        data: { leadId: keepId, userId: user.id, body: `Merged lead ${drop.leadNumber} (${drop.fullName}) into this record.` },
-      }),
-    ]);
-    await this.audit.log({ userId: user.id, action: "MERGE", entity: "lead", entityId: keepId, after: { dropId } });
-    return this.workspace(keepId);
+    requirePermission(user, "lead.edit");
+    requirePermission(user, "lead.view");
+    if (!dropId || keepId === dropId) throw new BadRequestException("Select two different leads");
+    const ids = [keepId, dropId].sort();
+    await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Lead" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`);
+      const rows = await tx.lead.findMany({ where: { id: { in: ids }, ...resourceScope(user, "leads") } });
+      const keep = rows.find(r => r.id === keepId), drop = rows.find(r => r.id === dropId);
+      if (!keep || !drop) throw new NotFoundException("Lead not found");
+      if (keep.branchId !== drop.branchId) throw new BadRequestException("Only leads in the same branch can be merged");
+      if (keep.archivedAt) throw new BadRequestException("Select an active target lead");
+      await tx.leadNote.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } });
+      await tx.communication.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } });
+      await tx.followUp.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } });
+      await tx.task.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } });
+      await tx.quotation.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } });
+      await tx.customer.updateMany({ where: { leadId: dropId }, data: { leadId: keepId } });
+      await tx.lead.update({ where: { id: dropId }, data: { archivedAt: new Date(), status: "CANCELLED", lostReason: `Merged into ${keep.leadNumber}` } });
+      await tx.leadNote.create({ data: { leadId: keepId, userId: user.id, body: `Merged lead ${drop.leadNumber} (${drop.fullName}) into this record.` } });
+      await refreshFollowUpLeads(tx as PrismaService, ids);
+      await this.audit.log({ db: tx, userId: user.id, action: "MERGE", entity: "lead", entityId: keepId, after: { dropId } });
+    });
+    return this.workspace(keepId, user);
   }
 
-  async rescheduleFollowUp(id: string, dueAt: string) {
-    const follow = await this.prisma.followUp.update({
-      where: { id },
-      data: { dueAt: new Date(dueAt), status: "PENDING" },
-    });
-    if (follow.leadId) {
-      await this.prisma.lead.update({ where: { id: follow.leadId }, data: { nextFollowUpAt: follow.dueAt } });
-    }
-    return follow;
+  async rescheduleFollowUp(id: string, dueAt: string, user: AuthUser) {
+    return new ResourcesService(this.prisma, this.seq, this.audit).update("follow-ups", id, user, { dueAt, status: "PENDING" });
   }
 
   async quoteFromCustomer(id: string, user: AuthUser) {

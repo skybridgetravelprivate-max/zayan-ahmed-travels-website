@@ -1,3 +1,4 @@
+import { resourceScope } from "../resources/resource-scope";
 import { BadRequestException, CanActivate, ExecutionContext, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma.service";
 import type { AuthUser } from "../auth/auth.types";
@@ -19,10 +20,10 @@ export class CrmScopeGuard implements CanActivate {
       if (typeof id !== "string" || !id) throw new BadRequestException("Invalid record id");
       let row: { id: string; leadId?: string | null } | null | undefined;
       if (kind === "leads") row = await this.prisma.lead.findFirst({ where: { id, ...branch }, select: { id: true } });
-      else if (kind === "customers") row = await this.prisma.customer.findFirst({ where: { id, ...branch }, select: { id: true, leadId: true } });
+      else if (kind === "customers") row = await this.prisma.customer.findFirst({ where: { id, ...resourceScope(user, "customers") }, select: { id: true, leadId: true } });
       else if (kind === "quotations") row = await this.prisma.quotation.findFirst({ where: { id, ...branch }, select: { id: true } });
-      else if (kind === "follow-ups") row = await this.prisma.followUp.findFirst({ where: { id, OR: [{ lead: branch }, { customer: branch }] }, select: { id: true } });
-      else if (kind === "tasks") row = await this.prisma.task.findFirst({ where: { id, OR: [{ lead: branch }, { customer: branch }] }, select: { id: true } });
+      else if (kind === "follow-ups") row = await this.prisma.followUp.findFirst({ where: { id, ...resourceScope(user, "follow-ups") }, select: { id: true } });
+      else if (kind === "tasks") row = await this.prisma.task.findFirst({ where: { id, ...resourceScope(user, "tasks") }, select: { id: true } });
       if (!row) throw new NotFoundException();
       if (kind === "customers" && row.leadId) await check("leads", row.leadId);
     };

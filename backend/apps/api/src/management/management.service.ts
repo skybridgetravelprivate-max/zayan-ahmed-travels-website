@@ -1,3 +1,4 @@
+import { isSerializationConflict } from "../common/serialization-conflict";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuthUser, can } from "../auth/auth.types";
@@ -166,17 +167,32 @@ export class ManagementService {
       return this.projection("leads", lead);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
-  async assign(user: AuthUser, leadId: string, body: { assignedUserId?: unknown; version?: unknown }) {
+  async assign(user: AuthUser, leadId: string, body: { assignedUserId?: unknown; assignedAgentId?: unknown; version?: unknown }) {
     if (!can(user, "lead.assign")) throw new ForbiddenException();
-    if (!body || Object.keys(body).some(k => !["assignedUserId", "version"].includes(k)) || (body.assignedUserId !== null && (typeof body.assignedUserId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(body.assignedUserId)))) throw new BadRequestException("Invalid assignment");
+    if (!body || Object.keys(body).some(k => !["assignedUserId", "assignedAgentId", "version"].includes(k)) || !["assignedUserId", "assignedAgentId"].some(k => Object.hasOwn(body, k))) throw new BadRequestException("Invalid assignment");
+    const data: { assignedUserId?: string | null; assignedAgentId?: string | null } = {};
+    for (const key of ["assignedUserId", "assignedAgentId"] as const) {
+      if (!Object.hasOwn(body, key)) continue;
+      const value = body[key];
+      if (value !== null && (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(value))) throw new BadRequestException("Invalid assignment");
+      data[key] = value as string | null;
+    }
     return this.prisma.$transaction(async tx => {
       const db = tx as PrismaService;
       const before = await this.detail(user, "leads", leadId, db);
       if (before.version !== body.version) throw new ConflictException("Record changed. Reload before assigning.");
-      await this.checkLinks(db, user, "leads", { assignedUserId: body.assignedUserId }, before);
-      const lead = await tx.lead.update({ where: { id: leadId }, data: { assignedUserId: body.assignedUserId as string | null } });
-      await new AuditService(db).log({ userId: user.id, action: "ASSIGN", entity: "lead", entityId: leadId, before: { assignedUserId: before.assignedUserId }, after: { assignedUserId: lead.assignedUserId } });
+      await this.checkLinks(db, user, "leads", data, before);
+      if (data.assignedAgentId) {
+        const agent = await tx.agent.findUnique({ where: { id: data.assignedAgentId } });
+        if (!agent || agent.status !== "ACTIVE") throw new BadRequestException("Agent is unavailable");
+      }
+      const lead = await tx.lead.update({ where: { id: leadId }, data });
+      if (data.assignedUserId && data.assignedUserId !== before.assignedUserId) await tx.notification.create({ data: { userId: data.assignedUserId, title: "Lead assigned", body: `${lead.fullName} (${lead.leadNumber}) was assigned to you`, type: "LEAD", meta: { leadId } } });
+      await new AuditService(db).log({ userId: user.id, action: "ASSIGN", entity: "lead", entityId: leadId, before: { assignedUserId: before.assignedUserId, assignedAgentId: before.assignedAgentId }, after: { assignedUserId: lead.assignedUserId, assignedAgentId: lead.assignedAgentId } });
       return this.projection("leads", lead);
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch(error => {
+      if (isSerializationConflict(error)) throw new ConflictException("Record changed. Reload before assigning.");
+      throw error;
+    });
   }
 }

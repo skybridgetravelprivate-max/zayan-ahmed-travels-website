@@ -89,8 +89,8 @@ export class CrmController {
 
   @Get("leads/:id/workspace")
   @RequirePermission("lead.view")
-  workspace(@Param("id") id: string) {
-    return this.crm.workspace(id);
+  workspace(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
+    return this.crm.workspace(id, req.user);
   }
 
   @Post("leads/:id/notes")
@@ -103,10 +103,10 @@ export class CrmController {
   @RequirePermission("lead.assign")
   assign(
     @Param("id") id: string,
-    @Body() body: { assignedUserId?: string; assignedAgentId?: string },
+    @Body() body: { assignedUserId?: string | null; assignedAgentId?: string | null; version?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    return this.crm.assign(id, req.user, body.assignedUserId, body.assignedAgentId);
+    return this.crm.assign(id, req.user, body.assignedUserId, body.assignedAgentId, body.version);
   }
 
   @Post("leads/:id/status")
@@ -165,14 +165,14 @@ export class CrmController {
 
   @Post("follow-ups/:id/status")
   @RequirePermission("followup.edit")
-  followStatus(@Param("id") id: string, @Body() body: { status: "COMPLETED" | "MISSED" | "CANCELLED" | "PENDING" }) {
-    return this.crm.setFollowUpStatus(id, body.status);
+  followStatus(@Param("id") id: string, @Body() body: { status: "COMPLETED" | "MISSED" | "CANCELLED" | "PENDING" }, @Req() req: Request & { user: AuthUser }) {
+    return this.crm.setFollowUpStatus(id, body.status, req.user);
   }
 
   @Post("tasks/:id/status")
   @RequirePermission("task.edit")
-  taskStatus(@Param("id") id: string, @Body() body: { status: "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" }) {
-    return this.crm.setTaskStatus(id, body.status);
+  taskStatus(@Param("id") id: string, @Body() body: { status: "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" }, @Req() req: Request & { user: AuthUser }) {
+    return this.crm.setTaskStatus(id, body.status, req.user);
   }
 
   @Get("quotations/:id")
@@ -195,8 +195,8 @@ export class CrmController {
 
   @Post("follow-ups/:id/reschedule")
   @RequirePermission("followup.edit")
-  reschedule(@Param("id") id: string, @Body() body: { dueAt: string }) {
-    return this.crm.rescheduleFollowUp(id, body.dueAt);
+  reschedule(@Param("id") id: string, @Body() body: { dueAt: string }, @Req() req: Request & { user: AuthUser }) {
+    return this.crm.rescheduleFollowUp(id, body.dueAt, req.user);
   }
 
   @Post("customers/:id/quotation")
@@ -316,8 +316,8 @@ export class CrmController {
 
   @Get("customers/:id/workspace")
   @RequirePermission("customer.view")
-  customer(@Param("id") id: string) {
-    return this.crm.customerWorkspace(id);
+  customer(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
+    return this.crm.customerWorkspace(id, req.user);
   }
 }
 
