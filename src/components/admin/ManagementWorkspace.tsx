@@ -899,12 +899,14 @@ export function ManagementWorkspace({
           throw new Error("Select 1–20 rooms and 1–20 occupants per room.");
         if (new Date(String(data.checkOut)) <= new Date(String(data.checkIn)))
           throw new Error("Check-out must be after check-in.");
+        if (data.passengerId && count !== 1) throw new Error("Select one room to use the quick guest allocation field.");
         data.segments = [
           {
             hotelId: data.hotelId,
             checkIn: data.checkIn,
             checkOut: data.checkOut,
             rooms: Array.from({ length: count }, () => ({
+              passengerIds: data.passengerId ? [data.passengerId] : [],
               roomTypeId: data.roomTypeId,
               occupancy,
               sellingPrice: data.sellingPrice,
