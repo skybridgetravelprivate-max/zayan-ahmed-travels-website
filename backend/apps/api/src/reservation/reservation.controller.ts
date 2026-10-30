@@ -37,6 +37,12 @@ export class ReservationController {
     return this.reservations.save(req.user, body, req.ip, undefined, requestKey);
   }
 
+  @Post(":id/allocate")
+  @RequirePermission("hotel.booking")
+  allocate(@Param("id") id: string, @Body() body: { roomId: string; passengerId: string }, @Req() req: Request & { user: AuthUser }) {
+    return this.reservations.allocate(req.user, id, body.roomId, body.passengerId, req.ip);
+  }
+
   @Post(":id/checkin")
   @RequirePermission("reservation.checkin")
   checkin(
@@ -44,7 +50,7 @@ export class ReservationController {
     @Body() body: { roomId: string; at?: string; roomNumber?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    return this.reservations.checkin(req.user, body.roomId || id, body.at, body.roomNumber, req.ip);
+    return this.reservations.checkin(req.user, body.roomId || id, body.at, body.roomNumber, req.ip, id);
   }
 
   @Post(":id/checkout")
@@ -54,7 +60,7 @@ export class ReservationController {
     @Body() body: { roomId: string; at?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    return this.reservations.checkout(req.user, body.roomId || id, body.at, req.ip);
+    return this.reservations.checkout(req.user, body.roomId || id, body.at, req.ip, id);
   }
 
   @Post(":id/transfer")
@@ -64,8 +70,7 @@ export class ReservationController {
     @Body() body: { fromRoomId: string; toRoomId?: string; roomNumber?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    void id;
-    return this.reservations.transfer(req.user, body.fromRoomId, body.toRoomId, body.roomNumber, req.ip);
+    return this.reservations.transfer(req.user, body.fromRoomId, body.toRoomId, body.roomNumber, req.ip, id);
   }
 
   @Post(":id/split")

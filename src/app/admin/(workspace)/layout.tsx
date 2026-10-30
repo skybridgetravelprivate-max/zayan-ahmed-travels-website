@@ -29,7 +29,7 @@ export default async function StaffWorkspaceLayout({
 
   const { user } = identity;
   return (
-    <div className="mx-auto grid w-full max-w-[96rem] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8">
+    <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8">
       <StaffNavigation
         fullName={user.fullName}
         canViewWebsite={

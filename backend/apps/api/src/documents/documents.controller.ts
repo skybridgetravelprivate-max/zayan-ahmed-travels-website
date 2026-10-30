@@ -357,7 +357,7 @@ export class PdfController {
       include: {
         hotel: true,
         customer: true,
-        staySegments: { include: { rooms: true } },
+        staySegments: { orderBy: { checkIn: "asc" }, include: { hotel: true, rooms: { orderBy: { id: "asc" }, include: { pax: { include: { passenger: true } } } } } },
       },
     });
     if (!b) return res.status(404).send("Not found");
@@ -371,9 +371,24 @@ export class PdfController {
         ["Check-out", b.checkOut?.toDateString?.() || ""],
         ["Customer", b.customer?.fullName ?? "-"],
       ]);
-      this.pdf
-        .customerLines(m, [{ label: "Selling", value: String(b.sellingPrice) }])
-        .forEach((l) => doc.text(`${l.label}: ${l.value}`));
+      for (const [index, segment] of b.staySegments.entries()) {
+        this.pdf.writeKV(doc, [
+          [`Stay ${index + 1}`, `${segment.hotel.name} | ${segment.checkIn.toISOString().slice(0, 10)} to ${segment.checkOut.toISOString().slice(0, 10)}`],
+          ...segment.rooms.filter(room => room.status !== "TRANSFERRED").map((room, roomIndex): [string, string] => [
+            `Room ${roomIndex + 1}`,
+            `${room.roomNumber || "Number to be confirmed"} | ${room.status} | Guests: ${room.pax.map(pax => pax.passenger.fullName).join(", ") || "Not allocated"}`,
+          ]),
+        ]);
+      }
+      this.pdf.writeKV(doc, this.pdf.customerLines(m, [
+        { label: "Selling", value: b.sellingPrice.toFixed(2) },
+        { label: "Discount", value: b.discount.toFixed(2) },
+        { label: "Tax", value: b.tax.toFixed(2) },
+        { label: "Net total", value: b.net.toFixed(2) },
+        { label: "Paid", value: b.paid.toFixed(2) },
+        { label: "Balance", value: b.balance.toFixed(2) },
+      ]).map(line => [line.label, line.value]));
+      doc.fontSize(8).text("Agency reservation record. Supplier confirmation and settlement are separate.");
     });
   }
 

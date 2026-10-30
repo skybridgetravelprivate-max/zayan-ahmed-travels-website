@@ -45,6 +45,7 @@ export class WebsiteCustomerBookingsService {
           checkIn: true,
           cancelledAt: true,
           status: true,
+          staySegments: { select: { rooms: { select: { status: true } } } },
           hotel: { select: { name: true, city: true } },
           createdAt: true,
           updatedAt: true,
@@ -112,7 +113,9 @@ export class WebsiteCustomerBookingsService {
 
     for (const row of hotels) {
       const cancelled = Boolean(row.cancelledAt) || String(row.status).toUpperCase().includes("CANCEL");
-      const status = mapWebsiteStatus(String(row.status), cancelled);
+      const activeRooms = row.staySegments.flatMap(segment => segment.rooms).filter(room => room.status !== "TRANSFERRED" && room.status !== "CANCELLED");
+      const completed = activeRooms.length > 0 && activeRooms.every(room => room.status === "CHECKED_OUT");
+      const status = mapWebsiteStatus(completed ? "COMPLETED" : String(row.status), cancelled);
       if (!status) continue;
       const destination = [row.hotel?.name, row.hotel?.city].filter(Boolean).join(", ") || "Hotel";
       const travelDate = travelDateFrom(row.checkIn);

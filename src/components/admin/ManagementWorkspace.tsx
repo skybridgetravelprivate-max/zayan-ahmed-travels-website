@@ -815,7 +815,7 @@ export function ManagementWorkspace({
         return;
       }
     }
-    if (["checkin", "checkout"].includes(action.key) && row) {
+    if (["checkin", "checkout", "allocate", "transfer"].includes(action.key) && row) {
       setBusy(true);
       try {
         const rooms: {
@@ -830,7 +830,7 @@ export function ManagementWorkspace({
         setWorkflow({
           ...action,
           fields: action.fields.map((f) =>
-            f.name === "roomId"
+            ["roomId", "fromRoomId"].includes(f.name)
               ? {
                   ...f,
                   options: rooms.map((r) => r.id),

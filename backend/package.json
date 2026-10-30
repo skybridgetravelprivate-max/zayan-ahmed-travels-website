@@ -34,6 +34,8 @@
     "test:cms:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/website/website-cms.pg17.spec.ts",
     "test:cms:browser": "node scripts/website-cms-journey.cjs",
     "test:crm:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/crm/crm-operations.pg17.spec.ts",
+    "test:hotel:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/reservation/hotel-operations.pg17.spec.ts",
+    "test:hotel:browser": "node scripts/hotel-operations-journey.cjs",
     "test:recovery:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/password-recovery.pg17.spec.ts"
   },
   "engines": {

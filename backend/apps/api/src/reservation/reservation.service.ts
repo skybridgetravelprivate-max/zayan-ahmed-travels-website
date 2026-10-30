@@ -128,6 +128,7 @@ export class ReservationService {
     excludeBookingId: string | undefined,
     segments: StaySegmentInput[],
     db: Prisma.TransactionClient | PrismaService = this.prisma,
+    excludeRoomIds: string[] = [],
   ) {
     const conflicts: string[] = [];
     // Shared physical rooms are serialized across processes when called inside save's transaction.
@@ -140,11 +141,16 @@ export class ReservationService {
       const cout = new Date(seg.checkOut);
       for (const rm of seg.rooms) {
         if (!rm.hotelRoomId && !rm.roomNumber) continue;
+        const physical = rm.hotelRoomId ? await db.hotelRoom.findUnique({ where: { id: rm.hotelRoomId } }) : null;
+        const numbers = [...new Set([rm.roomNumber, physical?.roomNumber].filter((n): n is string => !!n))];
         const others = await db.hotelStayRoom.findMany({
           where: {
             status: { notIn: ["CHECKED_OUT", "TRANSFERRED", "CANCELLED"] },
-            hotelRoomId: rm.hotelRoomId || undefined,
-            roomNumber: rm.hotelRoomId ? undefined : rm.roomNumber || undefined,
+            id: excludeRoomIds.length ? { notIn: excludeRoomIds } : undefined,
+            OR: [
+              ...(rm.hotelRoomId ? [{ hotelRoomId: rm.hotelRoomId }] : []),
+              ...numbers.flatMap(number => [{ roomNumber: number }, { hotelRoom: { roomNumber: number } }]),
+            ],
             segment: {
               hotelId: seg.hotelId,
               booking: { cancelledAt: null, id: excludeBookingId ? { not: excludeBookingId } : undefined },
@@ -154,11 +160,7 @@ export class ReservationService {
         });
         for (const o of others) {
           if (!datesOverlap(cin, cout, o.segment.checkIn, o.segment.checkOut)) continue;
-          if (rm.hotelRoomId && o.hotelRoomId && rm.hotelRoomId === o.hotelRoomId) {
-            conflicts.push(`Physical room already allocated on ${o.segment.booking.bookingNumber}.`);
-          } else if (!rm.hotelRoomId && rm.roomNumber && o.roomNumber === rm.roomNumber) {
-            conflicts.push(`Room ${rm.roomNumber} already allocated on ${o.segment.booking.bookingNumber}.`);
-          }
+          conflicts.push("Physical room is already allocated for these dates.");
         }
       }
     }
@@ -444,16 +446,39 @@ export class ReservationService {
     return room;
   }
 
-  async checkin(user: AuthUser, roomId: string, at?: string, roomNumber?: string, ip?: string) {
+  async allocate(user: AuthUser, bookingId: string, roomId: string, passengerId: string, ip?: string) {
+    assertCan(user, "hotel.booking");
+    if (!roomId || !passengerId) throw new BadRequestException("Choose a room and guest.");
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${bookingId} FOR UPDATE`;
+      const room = await this.roomOrThrow(user, roomId, tx);
+      if (room.segment.bookingId !== bookingId) throw new BadRequestException("Room does not belong to this reservation.");
+      if (room.checkinAt || ["CHECKED_IN", "CHECKED_OUT", "TRANSFERRED", "CANCELLED"].includes(room.status)) throw new BadRequestException("Allocate guests before the stay starts.");
+      await assertPeopleLinks(tx, user, { passengerId });
+      await assertPeopleLinksInBranch(tx, { passengerId }, room.segment.booking.branchId);
+      if (room.pax.some(p => p.passengerId === passengerId)) return room;
+      if (room.pax.length >= room.occupancy) throw new BadRequestException("Room capacity exceeded.");
+      const assigned = await tx.hotelStayRoomPax.findFirst({ where: { passengerId, stayRoom: { segmentId: room.segmentId, status: { notIn: ["TRANSFERRED", "CANCELLED"] } } } });
+      if (assigned) throw new BadRequestException("Guest is already assigned in this stay.");
+      await tx.hotelStayRoomPax.create({ data: { stayRoomId: room.id, passengerId } });
+      if (room.status === "VACANT") await tx.hotelStayRoom.update({ where: { id: room.id }, data: { status: "ALLOCATED" } });
+      await this.audit.log({ userId: user.id, action: "allocate", entity: "HotelStayRoom", entityId: room.id, after: { passengerId }, ipAddress: ip, db: tx });
+      return tx.hotelStayRoom.findUniqueOrThrow({ where: { id: room.id }, include: { pax: true } });
+    });
+  }
+
+  async checkin(user: AuthUser, roomId: string, at?: string, roomNumber?: string, ip?: string, expectedBookingId?: string) {
     assertCan(user, "reservation.checkin");
     return this.prisma.$transaction(async (tx) => {
       const source = await tx.hotelStayRoom.findUnique({ where: { id: roomId }, select: { segment: { select: { bookingId: true } } } });
       if (!source) throw new NotFoundException("Room unit not found.");
       await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${source.segment.bookingId} FOR UPDATE`;
       const room = await this.roomOrThrow(user, roomId, tx);
-      if (room.status === "CHECKED_OUT") throw new BadRequestException("Cannot check in a checked-out room.");
+      if (expectedBookingId && room.segment.bookingId !== expectedBookingId) throw new BadRequestException("Room does not belong to this reservation.");
+      if (["CHECKED_OUT", "TRANSFERRED", "CANCELLED"].includes(room.status)) throw new BadRequestException("Cannot check in a closed room.");
       if (room.status === "CHECKED_IN") throw new BadRequestException("Room is already checked in.");
       if (!room.pax.length) throw new BadRequestException("Assign PAX before check-in.");
+      await this.occupancyConflicts(undefined, [{ hotelId: room.segment.hotelId, checkIn: room.segment.checkIn.toISOString(), checkOut: room.segment.checkOut.toISOString(), rooms: [{ hotelRoomId: room.hotelRoomId || undefined, roomNumber: roomNumber || room.roomNumber || undefined }] }], tx, [room.id]);
       const row = await tx.hotelStayRoom.update({
         where: { id: roomId },
         data: { status: "CHECKED_IN", checkinAt: at ? new Date(at) : new Date(), roomNumber: roomNumber || room.roomNumber },
@@ -463,13 +488,14 @@ export class ReservationService {
     });
   }
 
-  async checkout(user: AuthUser, roomId: string, at?: string, ip?: string) {
+  async checkout(user: AuthUser, roomId: string, at?: string, ip?: string, expectedBookingId?: string) {
     assertCan(user, "reservation.checkout");
     return this.prisma.$transaction(async (tx) => {
       const source = await tx.hotelStayRoom.findUnique({ where: { id: roomId }, select: { segment: { select: { bookingId: true } } } });
       if (!source) throw new NotFoundException("Room unit not found.");
       await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${source.segment.bookingId} FOR UPDATE`;
       const room = await this.roomOrThrow(user, roomId, tx);
+      if (expectedBookingId && room.segment.bookingId !== expectedBookingId) throw new BadRequestException("Room does not belong to this reservation.");
       if (room.status !== "CHECKED_IN") throw new BadRequestException("Check-in required before checkout.");
       const when = at ? new Date(at) : new Date();
       if (room.checkinAt && when < room.checkinAt) throw new BadRequestException("Checkout cannot be before check-in.");
@@ -482,7 +508,7 @@ export class ReservationService {
     });
   }
 
-  async transfer(user: AuthUser, fromRoomId: string, toRoomId: string | undefined, roomNumber: string | undefined, ip?: string) {
+  async transfer(user: AuthUser, fromRoomId: string, toRoomId: string | undefined, roomNumber: string | undefined, ip?: string, expectedBookingId?: string) {
     assertCan(user, "reservation.transfer");
     if (toRoomId === fromRoomId) throw new BadRequestException("Choose a different destination room.");
     return this.prisma.$transaction(async (tx) => {
@@ -490,6 +516,16 @@ export class ReservationService {
       if (!source) throw new NotFoundException("Room unit not found.");
       await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${source.segment.bookingId} FOR UPDATE`;
       const from = await this.roomOrThrow(user, fromRoomId, tx);
+      if (expectedBookingId && from.segment.bookingId !== expectedBookingId) throw new BadRequestException("Room does not belong to this reservation.");
+      if (["CHECKED_OUT", "TRANSFERRED", "CANCELLED"].includes(from.status) || !from.pax.length) throw new BadRequestException("Only an active occupied allocation can be transferred.");
+      const destination = toRoomId ? await this.roomOrThrow(user, toRoomId, tx) : null;
+      if (destination) {
+        if (destination.segmentId !== from.segmentId) throw new BadRequestException("Transfer rooms within the same stay.");
+        if (["CHECKED_OUT", "TRANSFERRED", "CANCELLED"].includes(destination.status)) throw new BadRequestException("Destination room is closed.");
+        if (destination.pax.length && (from.status === "CHECKED_IN") !== (destination.status === "CHECKED_IN")) throw new BadRequestException("Transfer guests between rooms at the same check-in stage.");
+        if (new Set([...from.pax, ...destination.pax].map(p => p.passengerId)).size > destination.occupancy) throw new BadRequestException("Destination room capacity exceeded.");
+      }
+      await this.occupancyConflicts(undefined, [{ hotelId: from.segment.hotelId, checkIn: from.segment.checkIn.toISOString(), checkOut: from.segment.checkOut.toISOString(), rooms: [{ hotelRoomId: destination?.hotelRoomId || undefined, roomNumber: roomNumber || destination?.roomNumber || undefined }] }], tx, [from.id, ...(destination ? [destination.id] : [])]);
       let toId = toRoomId;
       if (!toId) {
         const created = await tx.hotelStayRoom.create({
@@ -515,7 +551,7 @@ export class ReservationService {
           where: { id: to.id },
           data: {
             roomNumber: roomNumber || to.roomNumber,
-            status: to.status === "VACANT" ? (from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED") : to.status,
+            status: !to.pax.length ? (from.status === "CHECKED_IN" ? "CHECKED_IN" : "ALLOCATED") : to.status,
             checkinAt: to.checkinAt || from.checkinAt,
           },
         });
