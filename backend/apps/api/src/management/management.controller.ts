@@ -37,6 +37,14 @@ export class ManagementController {
     res.setHeader("Cache-Control", "private, no-store");
     return this.management.list(req.user, resource, query);
   }
+  @Get(":resource/:id/summary")
+  summary(
+    @Param("resource") resource: string,
+    @Param("id") id: string,
+    @Req() req: Request & { user: AuthUser },
+  ) {
+    return this.management.summary(req.user, resource, id);
+  }
   @Get(":resource/:id")
   detail(@Param("resource") resource: string, @Param("id") id: string, @Req() req: Request & { user: AuthUser }, @Res({ passthrough: true }) res: Response) {
     res.setHeader("Cache-Control", "private, no-store");

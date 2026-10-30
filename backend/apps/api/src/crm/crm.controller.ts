@@ -89,8 +89,12 @@ export class CrmController {
 
   @Get("leads/:id/workspace")
   @RequirePermission("lead.view")
-  workspace(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
-    return this.crm.workspace(id, req.user);
+  workspace(
+    @Param("id") id: string,
+    @Req() req: Request & { user: AuthUser },
+    @Query("preview") preview?: string,
+  ) {
+    return this.crm.workspace(id, req.user, preview === "true");
   }
 
   @Post("leads/:id/notes")
@@ -316,8 +320,11 @@ export class CrmController {
 
   @Get("customers/:id/workspace")
   @RequirePermission("customer.view")
-  customer(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
-    return this.crm.customerWorkspace(id, req.user);
+  customer(
+    @Param("id") id: string,
+    @Req() req: Request & { user: AuthUser },
+    @Query("preview") preview?: string,
+  ) {
+    return this.crm.customerWorkspace(id, req.user, preview === "true");
   }
 }
-

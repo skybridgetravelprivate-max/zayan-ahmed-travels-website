@@ -5,7 +5,9 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { RequirePermission } from "../auth/permission.guard";
 import { PermissionGuard } from "../auth/permission.guard";
 import { PrismaService } from "../common/prisma.service";
-import { AuthUser } from "../auth/auth.types";
+import { businessMonth } from "../crm/business-day";
+import { resourceScope } from "../resources/resource-scope";
+import { AuthUser, can } from "../auth/auth.types";
 
 function range(preset?: string, from?: string, to?: string) {
   const now = new Date();
@@ -45,6 +47,96 @@ function range(preset?: string, from?: string, to?: string) {
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class DashboardController {
   constructor(private prisma: PrismaService) {}
+
+  /** Operational counters only; not revenue, ledger balances or all-service totals. */
+  @Get("workspace")
+  @RequirePermission("dashboard.view")
+  async workspace(@Req() req: Request & { user: AuthUser }, now = new Date()) {
+    const user = req.user;
+    const settings = await this.prisma.companySettings.findFirst({
+      select: { timezone: true },
+    });
+    const timeZone = settings?.timezone || "Asia/Karachi";
+    const period = businessMonth(timeZone, now);
+    const createdAt = {
+      gte: period.start,
+      lt: new Date(Math.min(+period.endExclusive, +now + 1)),
+    };
+    const [customers, leads, confirmedUmrah, pendingUmrahVisas] =
+      await Promise.all([
+        can(user, "customer.view")
+          ? this.prisma.customer.count({
+              where: {
+                AND: [
+                  resourceScope(user, "customers"),
+                  { createdAt, deletedAt: null },
+                ],
+              },
+            })
+          : null,
+        can(user, "lead.view")
+          ? this.prisma.lead.count({
+              where: {
+                AND: [
+                  resourceScope(user, "leads"),
+                  { createdAt, archivedAt: null },
+                ],
+              },
+            })
+          : null,
+        can(user, "booking.view")
+          ? this.prisma.umrahBooking.count({
+              where: {
+                AND: [
+                  resourceScope(user, "umrah-bookings"),
+                  { createdAt, status: "CONFIRMED" },
+                ],
+              },
+            })
+          : null,
+        user.isSuperAdmin
+          ? this.prisma.umrahVisa.count({
+              where: {
+                status: {
+                  in: ["DOCUMENT_PENDING", "READY", "SUBMITTED", "PROCESSING"],
+                },
+              },
+            })
+          : null,
+      ]);
+    return {
+      timeZone,
+      period,
+      scope: user.isSuperAdmin ? "All branches" : "Your authorized branches",
+      generatedAt: now,
+      metrics: [
+        {
+          key: "customers",
+          label: "New CRM customers",
+          value: customers,
+          basis: "Created this month; excludes deleted customers",
+        },
+        {
+          key: "leads",
+          label: "New inquiries",
+          value: leads,
+          basis: "Created this month; excludes archived leads",
+        },
+        {
+          key: "confirmedUmrah",
+          label: "Confirmed Umrah bookings",
+          value: confirmedUmrah,
+          basis: "Created this month and currently confirmed",
+        },
+        {
+          key: "pendingUmrahVisas",
+          label: "Umrah visas in progress",
+          value: pendingUmrahVisas,
+          basis: "Current pipeline across all dates; administrator view",
+        },
+      ],
+    };
+  }
 
   @Get("summary")
   @RequirePermission("dashboard.view")

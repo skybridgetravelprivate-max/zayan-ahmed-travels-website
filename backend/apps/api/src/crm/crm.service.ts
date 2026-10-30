@@ -211,7 +211,7 @@ export class CrmService {
     return lead;
   }
 
-  async workspace(id: string, user: AuthUser) {
+  async workspace(id: string, user: AuthUser, preview = false) {
     requirePermission(user, "lead.view");
     const lead = await this.prisma.lead.findFirst({
       where: { id, ...resourceScope(user, "leads") },
@@ -220,25 +220,60 @@ export class CrmService {
         assignedAgent: { select: { id: true, name: true } },
         branch: { select: { id: true, code: true, name: true } },
         package: can(user, "umrah.view"),
-        followUps: { where: this.visibleResource(user, "follow-ups"), orderBy: { dueAt: "desc" } },
-        tasks: { where: this.visibleResource(user, "tasks"), orderBy: { createdAt: "desc" } },
-        quotations: { where: this.visibleResource(user, "quotations"), orderBy: { createdAt: "desc" } },
-        customers: { where: this.visibleResource(user, "customers") },
-        leadNotes: { orderBy: { createdAt: "desc" }, include: { user: { select: { fullName: true } } } },
-        communications: { orderBy: { createdAt: "desc" } },
+        followUps: {
+          where: this.visibleResource(user, "follow-ups"),
+          take: preview ? 20 : undefined,
+          orderBy: { dueAt: "desc" },
+        },
+        tasks: {
+          where: this.visibleResource(user, "tasks"),
+          take: preview ? 20 : undefined,
+          orderBy: { createdAt: "desc" },
+        },
+        quotations: {
+          where: this.visibleResource(user, "quotations"),
+          take: preview ? 20 : undefined,
+          orderBy: { createdAt: "desc" },
+        },
+        customers: {
+          where: this.visibleResource(user, "customers"),
+          take: preview ? 20 : undefined,
+        },
+        leadNotes: {
+          take: preview ? 20 : undefined,
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { fullName: true } } },
+        },
+        communications: {
+          take: preview ? 20 : undefined,
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
     if (!lead) throw new NotFoundException("Lead not found");
     const documents = await this.prisma.storedDocument.findMany({
-      where: { entityType: "lead", entityId: id, ...(can(user, "document.view") ? {} : { id: { in: [] } }) },
+      where: {
+        entityType: "lead",
+        entityId: id,
+        ...(can(user, "document.view") ? {} : { id: { in: [] } }),
+      },
+      take: preview ? 20 : undefined,
       orderBy: { createdAt: "desc" },
     });
     const bookings = await this.prisma.umrahBooking.findMany({
-      where: { customer: { leadId: id }, ...this.visibleResource(user, "umrah-bookings") },
+      where: {
+        customer: { leadId: id },
+        ...this.visibleResource(user, "umrah-bookings"),
+      },
+      take: preview ? 20 : undefined,
       orderBy: { createdAt: "desc" },
     });
     const receipts = await this.prisma.receipt.findMany({
-      where: { customer: { leadId: id }, ...this.visibleResource(user, "receipts") },
+      where: {
+        customer: { leadId: id },
+        ...this.visibleResource(user, "receipts"),
+      },
+      take: preview ? 20 : undefined,
       orderBy: { date: "desc" },
     });
     const timeline = [
@@ -506,7 +541,7 @@ export class CrmService {
     });
   }
 
-  async customerWorkspace(id: string, user: AuthUser) {
+  async customerWorkspace(id: string, user: AuthUser, preview = false) {
     requirePermission(user, "customer.view");
     const customer = await this.prisma.customer.findFirst({
       where: { id, ...resourceScope(user, "customers") },
@@ -514,30 +549,98 @@ export class CrmService {
         branch: true,
         agent: { select: { id: true, name: true } },
         lead: { where: this.visibleResource(user, "leads") },
-        passengers: { where: this.visibleResource(user, "passengers") },
-        quotations: { where: this.visibleResource(user, "quotations") },
-        followUps: { where: this.visibleResource(user, "follow-ups") },
-        tasks: { where: this.visibleResource(user, "tasks") },
-        umrahBookings: { where: this.visibleResource(user, "umrah-bookings") },
-        tickets: { where: this.visibleResource(user, "tickets") },
-        hotelBookings: { where: this.visibleResource(user, "hotel-bookings") },
-        starBookings: { where: this.visibleResource(user, "star-bookings") },
-        transportBookings: { where: this.visibleResource(user, "transport-bookings") },
-        visaApplications: { where: this.visibleResource(user, "visa-applications") },
-        receipts: { where: this.visibleResource(user, "receipts") },
-        complaints: { where: this.visibleResource(user, "complaints") },
-        communications: { orderBy: { createdAt: "desc" } },
-        passportHistory: { orderBy: { recordedAt: "desc" } },
-        ocrExtracts: { where: can(user, "document.view") ? {} : { id: { in: [] } }, orderBy: { createdAt: "desc" }, take: 20 },
+        passengers: {
+          where: this.visibleResource(user, "passengers"),
+          take: preview ? 20 : undefined,
+        },
+        quotations: {
+          where: this.visibleResource(user, "quotations"),
+          take: preview ? 20 : undefined,
+        },
+        followUps: {
+          where: this.visibleResource(user, "follow-ups"),
+          take: preview ? 20 : undefined,
+        },
+        tasks: {
+          where: this.visibleResource(user, "tasks"),
+          take: preview ? 20 : undefined,
+        },
+        umrahBookings: {
+          where: this.visibleResource(user, "umrah-bookings"),
+          take: preview ? 20 : undefined,
+        },
+        tickets: {
+          where: this.visibleResource(user, "tickets"),
+          take: preview ? 20 : undefined,
+        },
+        hotelBookings: {
+          where: this.visibleResource(user, "hotel-bookings"),
+          take: preview ? 20 : undefined,
+        },
+        starBookings: {
+          where: this.visibleResource(user, "star-bookings"),
+          take: preview ? 20 : undefined,
+        },
+        transportBookings: {
+          where: this.visibleResource(user, "transport-bookings"),
+          take: preview ? 20 : undefined,
+        },
+        visaApplications: {
+          where: this.visibleResource(user, "visa-applications"),
+          take: preview ? 20 : undefined,
+        },
+        receipts: {
+          where: this.visibleResource(user, "receipts"),
+          take: preview ? 20 : undefined,
+        },
+        complaints: {
+          where: this.visibleResource(user, "complaints"),
+          take: preview ? 20 : undefined,
+        },
+        communications: {
+          take: preview ? 20 : undefined,
+          orderBy: { createdAt: "desc" },
+        },
+        passportHistory: {
+          take: preview ? 20 : undefined,
+          orderBy: { recordedAt: "desc" },
+        },
+        ocrExtracts: {
+          where: can(user, "document.view") ? {} : { id: { in: [] } },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        },
       },
     });
     if (!customer) throw new NotFoundException();
-    const outstanding = can(user, "booking.view") ? Number(customer.umrahBookings.reduce((sum, booking) => sum.add(booking.balance), new Prisma.Decimal(0)).toFixed(2)) : null;
+    const outstanding =
+      !preview && can(user, "booking.view")
+        ? Number(
+            customer.umrahBookings
+              .reduce(
+                (sum, booking) => sum.add(booking.balance),
+                new Prisma.Decimal(0),
+              )
+              .toFixed(2),
+          )
+        : null;
     const documents = await this.prisma.storedDocument.findMany({
-      where: { entityType: "customer", entityId: id, ...(can(user, "document.view") ? {} : { id: { in: [] } }) },
+      where: {
+        entityType: "customer",
+        entityId: id,
+        ...(can(user, "document.view") ? {} : { id: { in: [] } }),
+      },
+      take: preview ? 20 : undefined,
       orderBy: { createdAt: "desc" },
     });
-    return { customer, outstanding, outstandingScope: "umrah-bookings-only", documents };
+    return {
+      customer,
+      outstanding,
+      outstandingScope: preview
+        ? "not-calculated-in-preview"
+        : "umrah-bookings-only",
+      documents,
+    };
   }
 
   async updateCustomer(id: string, user: AuthUser, body: Record<string, unknown>) {
@@ -934,4 +1037,3 @@ export class CrmService {
     });
   }
 }
-

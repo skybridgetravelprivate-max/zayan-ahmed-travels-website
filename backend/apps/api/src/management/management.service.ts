@@ -1,3 +1,4 @@
+import { businessDate } from "../crm/business-day";
 import { isSerializationConflict } from "../common/serialization-conflict";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -23,7 +24,24 @@ export class ManagementService {
   constructor(private prisma: PrismaService, private seq: SequenceService) {}
 
   catalog(user: AuthUser) {
-    return Object.keys(MANAGEMENT).filter(key => allowedModule(user, key)).map(key => moduleContract(user, key));
+    const modules = Object.keys(MANAGEMENT)
+      .filter((key) => allowedModule(user, key))
+      .map((key) => moduleContract(user, key));
+    // Website content has its own guarded API; do not enable generic CMS record access.
+    if (
+      can(user, "cms.view") &&
+      !modules.some((module) => module.key === "cms-pages")
+    )
+      modules.push({
+        key: "cms-pages",
+        title: "Website pages",
+        group: "Website",
+        fields: [],
+        writeFields: [],
+        canCreate: false,
+        canEdit: false,
+      });
+    return modules;
   }
   async umrahCatalog(user: AuthUser) {
     if (!can(user, "umrah.view")) throw new ForbiddenException();
@@ -37,12 +55,54 @@ export class ManagementService {
   async options(user: AuthUser, resource: string, q = "") {
     if (q.length > 100) throw new BadRequestException("Invalid search");
     if (resource === "branches") {
-      const where = { ...(!user.isSuperAdmin ? { id: { in: branchIds(user) } } : {}), ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}) };
-      return { data: await this.prisma.branch.findMany({ where, select: { id: true, name: true }, take: 20, orderBy: { name: "asc" } }) };
+      const where = {
+        ...(!user.isSuperAdmin ? { id: { in: branchIds(user) } } : {}),
+        ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+      };
+      return {
+        data: await this.prisma.branch.findMany({
+          where,
+          select: { id: true, name: true },
+          take: 20,
+          orderBy: { name: "asc" },
+        }),
+      };
     }
-    if (resource !== "users" || !["lead.assign", "task.edit", "task.create", "followup.edit", "followup.create"].some(p => can(user, p))) throw new ForbiddenException();
-    const where = { status: "ACTIVE" as const, deletedAt: null, ...(!user.isSuperAdmin ? { OR: [{ defaultBranchId: { in: branchIds(user) } }, { branches: { some: { branchId: { in: branchIds(user) } } } }] } : {}), ...(q ? { fullName: { contains: q, mode: "insensitive" as const } } : {}) };
-    return { data: await this.prisma.user.findMany({ where, select: { id: true, fullName: true }, take: 20, orderBy: { fullName: "asc" } }) };
+    if (
+      resource !== "users" ||
+      ![
+        "lead.view",
+        "lead.assign",
+        "task.view",
+        "task.edit",
+        "task.create",
+        "followup.view",
+        "followup.edit",
+        "followup.create",
+      ].some((p) => can(user, p))
+    )
+      throw new ForbiddenException();
+    const where = {
+      status: "ACTIVE" as const,
+      deletedAt: null,
+      ...(!user.isSuperAdmin
+        ? {
+            OR: [
+              { defaultBranchId: { in: branchIds(user) } },
+              { branches: { some: { branchId: { in: branchIds(user) } } } },
+            ],
+          }
+        : {}),
+      ...(q ? { fullName: { contains: q, mode: "insensitive" as const } } : {}),
+    };
+    return {
+      data: await this.prisma.user.findMany({
+        where,
+        select: { id: true, fullName: true },
+        take: 20,
+        orderBy: { fullName: "asc" },
+      }),
+    };
   }
   private spec(user: AuthUser, key: string) {
     if (!allowedModule(user, key)) throw new ForbiddenException("Module access denied");
@@ -62,18 +122,255 @@ export class ManagementService {
   }
   async list(user: AuthUser, resource: string, query: Record<string, string>) {
     this.spec(user, resource);
+    if (
+      (query.q !== undefined && typeof query.q !== "string") ||
+      (query.page !== undefined && typeof query.page !== "string")
+    )
+      throw new BadRequestException("Invalid search");
     const page = Number(query.page ?? 1);
     const q = query.q?.trim() ?? "";
-    if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || q.length > 100) throw new BadRequestException("Invalid search");
+    if (
+      !Number.isSafeInteger(page) ||
+      page < 1 ||
+      page > 10000 ||
+      q.length > 100
+    )
+      throw new BadRequestException("Invalid search");
     const where = this.scope(user, resource);
-    const search = (RESOURCES[resource].search ?? []).filter(k => fieldsFor(resource).some(f => f.name === k));
-    if (q && search.length) where.OR = search.map(k => ({ [k]: { contains: q, mode: "insensitive" } }));
-    const select = Object.fromEntries(["id", ...fieldsFor(resource).map(f => f.name), ...(modelFor(resource)?.fields.some(f => f.name === "updatedAt") ? ["updatedAt"] : [])].map(k => [k, true]));
-    const sort = modelFor(resource)?.fields.some(f => f.name === "createdAt") ? "createdAt" : "id";
-    const db = this.delegate(this.prisma, resource);
-    const [rows, total] = await Promise.all([db.findMany({ where, select, orderBy: { [sort]: "desc" }, skip: (page - 1) * 20, take: 20 }), db.count({ where })]);
-    return { data: rows.map(r => this.projection(resource, r)), total, page, pageSize: 20 };
+    const search = (RESOURCES[resource].search ?? []).filter((k) =>
+      fieldsFor(resource).some((f) => f.name === k),
+    );
+    if (q && search.length)
+      where.OR = search.map((k) => ({
+        [k]: { contains: q, mode: "insensitive" },
+      }));
+    const select = Object.fromEntries(
+      [
+        "id",
+        ...fieldsFor(resource).map((f) => f.name),
+        ...(modelFor(resource)?.fields.some((f) => f.name === "updatedAt")
+          ? ["updatedAt"]
+          : []),
+      ].map((k) => [k, true]),
+    );
+    const predicates: Record<string, unknown>[] = [where];
+    const fields = fieldsFor(resource);
+    const filterable = [
+      "leads",
+      "customers",
+      "tasks",
+      "follow-ups",
+      "quotations",
+      "complaints",
+    ].includes(resource);
+    for (const key of [
+      "status",
+      "assignedUserId",
+      "branchId",
+      "from",
+      "to",
+      "sort",
+    ]) {
+      if (
+        query[key] !== undefined &&
+        (typeof query[key] !== "string" || query[key].length > 100)
+      )
+        throw new BadRequestException("Invalid filter");
+      if (query[key] && !filterable)
+        throw new BadRequestException(
+          "Filters are not supported for this module",
+        );
+    }
+    for (const key of ["status", "assignedUserId", "branchId"])
+      if (query[key]) {
+        const field = fields.find((field) => field.name === key);
+        if (
+          !field ||
+          (field.options && !field.options.includes(query[key])) ||
+          (!field.options && !/^[A-Za-z0-9_-]{1,80}$/.test(query[key]))
+        )
+          throw new BadRequestException("Invalid filter");
+        predicates.push({ [key]: query[key] });
+      }
+    if (query.from || query.to) {
+      const settings = await this.prisma.companySettings.findFirst({
+        select: { timezone: true },
+      });
+      try {
+        const timeZone = settings?.timezone || "Asia/Karachi";
+        const gte = query.from ? businessDate(timeZone, query.from) : undefined;
+        const lt = query.to
+          ? businessDate(timeZone, query.to, true)
+          : undefined;
+        if (gte && lt && gte >= lt) throw new RangeError("Invalid date range");
+        predicates.push({ createdAt: { gte, lt } });
+      } catch {
+        throw new BadRequestException("Invalid company-calendar date range");
+      }
+    }
+    const model = modelFor(resource)!;
+    let sort = model.fields.some((f) => f.name === "createdAt")
+      ? "createdAt"
+      : "id";
+    let direction: "asc" | "desc" = "desc";
+    if (query.sort && query.sort !== "newest") {
+      if (query.sort === "oldest") direction = "asc";
+      else if (
+        query.sort === "updated" &&
+        model.fields.some((f) => f.name === "updatedAt")
+      )
+        sort = "updatedAt";
+      else if (query.sort === "name") {
+        const field = [
+          "fullName",
+          "name",
+          "title",
+          "subject",
+          "quotationNumber",
+          "complaintNumber",
+        ].find((name) => fields.some((f) => f.name === name));
+        if (!field) throw new BadRequestException("Unsupported sort");
+        sort = field;
+        direction = "asc";
+      } else throw new BadRequestException("Unsupported sort");
+    }
+    const db = this.delegate(this.prisma, resource),
+      filtered = predicates.length === 1 ? where : { AND: predicates };
+    const [rows, total] = await Promise.all([
+      db.findMany({
+        where: filtered,
+        select,
+        orderBy: [
+          { [sort]: direction },
+          ...(sort === "id" ? [] : [{ id: direction }]),
+        ],
+        skip: (page - 1) * 20,
+        take: 20,
+      }),
+      db.count({ where: filtered }),
+    ]);
+    const data = rows.map((row) => this.projection(resource, row));
+    return {
+      data:
+        query.presentation === "true"
+          ? await this.presentRows(user, resource, data)
+          : data,
+      total,
+      page,
+      pageSize: 20,
+    };
   }
+
+  async summary(user: AuthUser, resource: string, id: string) {
+    return (
+      await this.presentRows(user, resource, [
+        await this.detail(user, resource, id),
+      ])
+    )[0];
+  }
+
+  /** Batched, bounded labels from authorized records; never unrestricted relation includes. */
+  private async presentRows(
+    user: AuthUser,
+    resource: string,
+    rows: Record<string, unknown>[],
+  ) {
+    const timeZone =
+      (
+        await this.prisma.companySettings.findFirst({
+          select: { timezone: true },
+        })
+      )?.timezone || "Asia/Karachi";
+    const labels = new Map<
+      string,
+      { id: string; label: string; resource: string; link: boolean }
+    >();
+    for (const field of fieldsFor(resource).filter(
+      (field) => field.reference,
+    )) {
+      const reference = field.reference!;
+      const ids = [
+        ...new Set(
+          rows
+            .map((row) => row[field.name])
+            .filter((id): id is string => typeof id === "string" && !!id),
+        ),
+      ];
+      if (!ids.length) continue;
+      let scope: Record<string, unknown>;
+      const link = allowedModule(user, reference);
+      if (reference === "branches")
+        scope = user.isSuperAdmin ? {} : { id: { in: branchIds(user) } };
+      else if (reference === "users")
+        scope = user.isSuperAdmin
+          ? {}
+          : {
+              OR: [
+                { defaultBranchId: { in: branchIds(user) } },
+                { branches: { some: { branchId: { in: branchIds(user) } } } },
+              ],
+            };
+      else {
+        if (!link) continue;
+        scope = this.scope(user, reference);
+      }
+      const candidates = [
+        "fullName",
+        "name",
+        "title",
+        "customerNumber",
+        "leadNumber",
+        "bookingNumber",
+        "ticketNumber",
+        "receiptNo",
+        "code",
+        "roomNumber",
+      ];
+      const names = candidates.filter((name) =>
+        fieldsFor(reference).some((f) => f.name === name),
+      );
+      const selected = Object.fromEntries(
+        ["id", ...names].map((name) => [name, true]),
+      );
+      const linked = await this.delegate(this.prisma, reference).findMany({
+        where: { AND: [scope, { id: { in: ids } }] },
+        select: selected,
+        take: 20,
+      });
+      for (const row of linked) {
+        const label = names
+          .map((name) => row[name])
+          .filter((value) => typeof value === "string" && value)
+          .slice(0, 2)
+          .join(" · ");
+        if (label)
+          labels.set(`${field.name}:${row.id}`, {
+            id: String(row.id),
+            label,
+            resource: reference,
+            link,
+          });
+      }
+    }
+    return rows.map((row) => ({
+      ...row,
+      presentation: {
+        timeZone,
+        references: Object.fromEntries(
+          fieldsFor(resource)
+            .filter((f) => f.reference && row[f.name])
+            .map((f) => [
+              f.name,
+              labels.get(`${f.name}:${row[f.name]}`) || {
+                label: "Restricted or unavailable record",
+                link: false,
+              },
+            ]),
+        ),
+      },
+    }));
+  }
+
   async detail(user: AuthUser, resource: string, id: string, db = this.prisma) {
     this.spec(user, resource);
     if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) throw new NotFoundException();
