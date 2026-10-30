@@ -1,151 +1,201 @@
-import { CrmWorkQueue } from "@/components/admin/CrmWorkQueue";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getStaffIdentity, staffRequest } from "@/server/staff-api";
-
+import {
+  getStaffIdentity,
+  getStaffModules,
+  staffRequest,
+} from "@/server/staff-api";
+import { CrmWorkQueue } from "@/components/admin/CrmWorkQueue";
+import { moduleHref, moduleCapabilities } from "@/lib/staff-navigation";
 export const metadata: Metadata = {
   title: "Staff dashboard",
   robots: { index: false, follow: false },
 };
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
+type Summary = {
+  generatedAt: string;
+  timeZone: string;
+  scope: string;
+  period: { start: string; endExclusive: string };
+  metrics: {
+    key: string;
+    label: string;
+    value: number | null;
+    basis: string;
+  }[];
+};
 export default async function StaffDashboard() {
   const identity = await getStaffIdentity();
   if (identity.status === "signed-out") redirect("/admin/login");
-  if (identity.status !== "authenticated") {
+  if (identity.status !== "authenticated")
     return (
-      <section className="rounded-2xl border border-line bg-surface p-6">
-        <h1 className="text-2xl font-bold text-zayan-blue">
-          Staff workspace unavailable
-        </h1>
-        <p className="mt-3 text-muted">We could not verify your session. Please try again.</p>
-        <Link href="/admin" className="mt-4 inline-block underline">Retry</Link>
+      <section role="alert">
+        <h1 className="text-2xl font-bold">Staff workspace unavailable</h1>
+        <p className="mt-3">We could not verify your session.</p>
+        <Link href="/admin" className="underline">
+          Retry
+        </Link>
       </section>
     );
-  }
-
   const { user } = identity;
-  const canViewLeads = user.isSuperAdmin || user.permissions.includes("lead.view");
-  const canViewDashboard =
+  let modules: Awaited<ReturnType<typeof getStaffModules>> | null = null,
+    summary: Summary | null = null;
+  try {
+    modules = await getStaffModules();
+  } catch {
+    /* Unavailable is not an empty catalogue. */
+  }
+  const canViewSummary =
     user.isSuperAdmin || user.permissions.includes("dashboard.view");
-  let counts: Record<string, unknown> | null = null;
-  let summaryUnavailable = false;
-
-  if (user.isSuperAdmin) {
+  if (canViewSummary)
     try {
-      const response = await staffRequest("/api/v1/dashboard/summary");
+      const response = await staffRequest("/api/v1/dashboard/workspace");
       if (response?.ok) {
-        const body = record(await response.json());
-        counts = record(body?.cards);
-        if (!counts) summaryUnavailable = true;
-      } else {
-        summaryUnavailable = true;
+        const value = await response.json();
+        if (
+          typeof value.timeZone === "string" &&
+          typeof value.scope === "string" &&
+          value.period?.start &&
+          Array.isArray(value.metrics)
+        )
+          summary = value;
       }
     } catch {
-      summaryUnavailable = true;
+      /* Preserve an honest unavailable state. */
     }
-  }
-
-  if (!canViewDashboard && !canViewLeads) {
-    return (
-      <section className="rounded-2xl border border-line bg-surface p-6">
-        <h1 className="text-2xl font-bold text-zayan-blue">Staff dashboard</h1>
-        <p role="alert" className="mt-4">
-          Your account does not have access to an implemented staff workspace.
-          Contact your administrator.
-        </p>
-      </section>
-    );
-  }
-
+  const date = summary
+    ? new Intl.DateTimeFormat("en-PK", {
+        timeZone: summary.timeZone,
+        dateStyle: "medium",
+      })
+    : null;
+  const quick = modules?.filter((module) =>
+    [
+      "leads",
+      "customers",
+      "quotations",
+      "tasks",
+      "follow-ups",
+      "hotel-bookings",
+      "tickets",
+      "transport-bookings",
+    ].includes(module.key),
+  );
   return (
     <section>
-      <p className="text-sm font-semibold uppercase tracking-wide text-zayan-orange">
-        Staff workspace
-      </p>
-      <h1 className="mt-2 text-3xl font-bold text-zayan-blue">
-        Welcome, {user.fullName}
-      </h1>
-      <p className="mt-2 text-sm text-muted">
-        {user.roleNames.join(" · ") || "Staff"}
-      </p>
-
-      {canViewLeads && <CrmWorkQueue />}
-
-      <h2 className="mt-8 text-xl font-semibold text-zayan-blue">
-        Your workspace
-      </h2>
-      <Link href="/admin/manage" className="mt-4 block rounded-2xl border border-line bg-surface p-5 hover:border-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue">
-        <span className="block text-lg font-semibold text-zayan-blue">Management console</span>
-        <span className="mt-2 block text-sm text-muted">Manage authorized customers, leads, assignments, tasks, travel records, and administration.</span>
-      </Link>
-      {canViewLeads ? (
-        <Link
-          href="/admin/leads"
-          className="mt-4 block rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue"
-        >
-          <span className="block text-sm text-muted">CRM</span>
-          <span className="mt-1 block text-lg font-semibold text-zayan-blue">
-            Inquiries and leads
-          </span>
-          <span className="mt-2 block text-sm text-muted">
-            View leads you are authorized to access.
-          </span>
-        </Link>
-      ) : null}
-
-      {user.isSuperAdmin ? (
-        summaryUnavailable || !counts ? (
-          <p role="status" className="mt-4 rounded-xl border border-line p-4">
-            Summary is temporarily unavailable. Refresh to retry.
+      <header className="rounded-2xl border border-line bg-slate-50 p-5 sm:p-6">
+        <p className="text-sm font-semibold uppercase tracking-wide text-zayan-orange">
+          Your work today
+        </p>
+        <h1 className="mt-2 text-3xl font-bold text-zayan-blue">
+          Welcome, {user.fullName}
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Open your permitted work, review priorities and continue customer
+          journeys.
+        </p>
+      </header>
+      {canViewSummary && (
+        <section aria-labelledby="operational-summary" className="mt-6">
+          <h2
+            id="operational-summary"
+            className="text-xl font-semibold text-zayan-blue"
+          >
+            Operational overview
+          </h2>
+          {summary ? (
+            <>
+              <p className="mt-2 text-sm text-muted">
+                {summary.scope} · Company time: {summary.timeZone}. Month to
+                date: {date!.format(new Date(summary.period.start))} to{" "}
+                {date!.format(new Date(summary.generatedAt))}. These are
+                operational counts, not financial statements.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {summary.metrics
+                  .filter((metric) => metric.value !== null)
+                  .map((metric) => (
+                    <article
+                      key={metric.key}
+                      className="rounded-xl border border-line bg-surface p-4"
+                    >
+                      <h3 className="text-sm font-semibold text-zayan-blue">
+                        {metric.label}
+                      </h3>
+                      <p className="mt-2 text-3xl font-bold">
+                        {Number.isSafeInteger(metric.value)
+                          ? metric.value
+                          : "Unavailable"}
+                      </p>
+                      <p className="mt-2 text-xs text-muted">{metric.basis}</p>
+                    </article>
+                  ))}
+              </div>
+            </>
+          ) : (
+            <p role="status" className="mt-3 rounded-xl border border-line p-4">
+              Summary is temporarily unavailable.{" "}
+              <Link href="/admin" className="underline">
+                Reload to retry
+              </Link>
+              .
+            </p>
+          )}
+        </section>
+      )}
+      <section aria-labelledby="quick-work" className="mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="quick-work" className="text-xl font-semibold text-zayan-blue">
+            Your workspace
+          </h2>
+          <Link
+            href="/admin/manage"
+            className="min-h-11 rounded-lg border border-line px-4 py-3 text-sm font-semibold"
+          >
+            All modules
+          </Link>
+        </div>
+        {modules === null ? (
+          <p role="status" className="mt-3">
+            Your module list is unavailable. Reload to retry.
+          </p>
+        ) : !modules.length ? (
+          <p className="mt-3">
+            No modules are assigned to this account. Contact your administrator.
           </p>
         ) : (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["totalCustomers", "CRM customers"],
-              ["newLeads", "New leads this month"],
-              ["confirmedBookings", "Confirmed bookings"],
-              ["pendingVisa", "Pending visas"],
-            ].map(([key, label]) => (
-              <article
-                key={key}
-                className="rounded-2xl border border-line bg-surface p-5"
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {(quick?.length ? quick : modules.slice(0, 6)).map((module) => (
+              <Link
+                prefetch={false}
+                key={module.key}
+                href={moduleHref(module.key)}
+                className="rounded-xl border border-line bg-surface p-4 hover:border-zayan-blue"
               >
-                <h3 className="text-sm text-muted">{label}</h3>
-                <p className="mt-2 text-3xl font-bold text-zayan-blue">
-                  {typeof counts?.[key] === "number"
-                    ? String(counts[key])
-                    : "Unavailable"}
-                </p>
-              </article>
+                <span className="font-semibold text-zayan-blue">
+                  {module.title}
+                </span>
+                <span className="mt-2 block text-sm text-muted">
+                  {moduleCapabilities(
+                    module,
+                    user.permissions,
+                    user.isSuperAdmin,
+                  )}
+                </span>
+              </Link>
             ))}
           </div>
-        )
-      ) : null}
-
-      {canViewDashboard && !canViewLeads ? (
-        <p className="mt-4 rounded-xl border border-line bg-surface p-4 text-sm text-muted">
-          No additional staff modules are available in this workspace yet.
-        </p>
-      ) : null}
-
-      <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
-        <h2 className="font-semibold text-zayan-blue">Account access</h2>
-        <p className="mt-2 text-sm text-muted">Username: {user.username}</p>
-        <p className="mt-2 text-sm">
-          Document uploads remain unavailable until secure persistent storage is
-          configured.
-        </p>
-        <Link href="/" className="mt-4 inline-block text-sm underline">
+        )}
+      </section>
+      {(user.isSuperAdmin || user.permissions.includes("lead.view")) && (
+        <CrmWorkQueue />
+      )}
+      <footer className="mt-8 flex flex-wrap items-center gap-4 border-t border-line pt-5 text-sm text-muted">
+        <span>Signed in as {user.username}</span>
+        <Link href="/" className="min-h-11 py-3 underline">
           View public website
         </Link>
-      </div>
+      </footer>
     </section>
   );
 }

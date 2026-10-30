@@ -9,16 +9,20 @@ export function SiteChrome({
   footer,
   notice,
   structuredData,
+  contact,
 }: {
   children: ReactNode;
   header: ReactNode;
   footer: ReactNode;
   notice: ReactNode;
   structuredData: ReactNode;
+  contact: ReactNode;
 }) {
   const pathname = usePathname();
   const isStaffRoute =
-    pathname === "/reset-password" || pathname === "/admin" || pathname?.startsWith("/admin/") === true;
+    pathname === "/reset-password" ||
+    pathname === "/admin" ||
+    pathname?.startsWith("/admin/") === true;
 
   if (isStaffRoute) {
     return <main className="flex-1">{children}</main>;
@@ -31,6 +35,7 @@ export function SiteChrome({
       {header}
       <main className="flex-1">{children}</main>
       {footer}
+      {contact}
     </>
   );
 }

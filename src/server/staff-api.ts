@@ -14,6 +14,8 @@ export type StaffResult =
 export type StaffApiPath =
   | "/api/auth/me"
   | "/api/v1/dashboard/summary"
+  | "/api/v1/dashboard/workspace"
+  | "/api/v1/management/modules"
   | "/api/v1/crm/today"
   | `/api/v1/leads${string}`
   | `/api/v1/website/pages${string}`;
@@ -47,6 +49,8 @@ export async function staffRequest(path: StaffApiPath) {
   if (
     path !== "/api/auth/me" &&
     path !== "/api/v1/dashboard/summary" &&
+    path !== "/api/v1/dashboard/workspace" &&
+    path !== "/api/v1/management/modules" &&
     path !== "/api/v1/crm/today" &&
     (path.length > 600 ||
       (!leadApiPath.test(path) &&
@@ -86,4 +90,23 @@ export async function getStaffIdentity(
   } catch {
     return { status: "unavailable" };
   }
+}
+
+export async function getStaffModules() {
+  const response = await staffRequest("/api/v1/management/modules");
+  if (!response?.ok) throw new Error("Staff modules unavailable");
+  const modules: unknown = await response.json();
+  if (
+    !Array.isArray(modules) ||
+    modules.some(
+      (m) =>
+        !m ||
+        typeof m.key !== "string" ||
+        !/^[a-z-]+$/.test(m.key) ||
+        typeof m.title !== "string" ||
+        typeof m.group !== "string",
+    )
+  )
+    throw new Error("Invalid module catalogue");
+  return modules as import("@/lib/staff-management").ManagementModule[];
 }

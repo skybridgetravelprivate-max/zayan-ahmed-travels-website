@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { RecordSummary, RecordResults } from "./RecordSummary";
+import { CrmRelatedWork } from "./CrmRelatedWork";
+import { moduleCapabilities, moduleHref } from "@/lib/staff-navigation";
 import { AgencyMasthead } from "@/components/admin/AgencyMasthead";
 import {
   bookingDocumentUrl,
@@ -15,7 +19,6 @@ import {
 } from "@/lib/receipt-retry";
 import { useEffect, useRef, useState } from "react";
 import {
-  displayValue,
   formPayload,
   rowLabel,
   staffConflictMessage,
@@ -27,7 +30,7 @@ import {
 const control =
   "mt-1 w-full min-w-0 rounded-lg border border-line bg-white px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue";
 const button =
-  "rounded-xl border border-line px-4 py-2 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue disabled:cursor-not-allowed disabled:opacity-50";
+  "min-h-11 rounded-xl border border-line px-4 py-2 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-blue disabled:cursor-not-allowed disabled:opacity-50";
 const api = "/api/v1/management";
 
 async function request(
@@ -55,6 +58,10 @@ async function request(
   if (response.status === 404)
     throw new Error(
       "This record is unavailable or outside your authorized scope.",
+    );
+  if (response.status === 400 && method === "GET")
+    throw new Error(
+      "Check the selected filters and company-date range, then try again.",
     );
   if (response.status === 409)
     throw new Error(
@@ -89,7 +96,13 @@ function useCatalog() {
   return { modules, error };
 }
 
-export function ManagementHub() {
+export function ManagementHub({
+  permissions = [],
+  isSuperAdmin = false,
+}: {
+  permissions?: string[];
+  isSuperAdmin?: boolean;
+}) {
   const { modules, error } = useCatalog();
   const [query, setQuery] = useState("");
   const filtered = modules?.filter((m) =>
@@ -133,22 +146,12 @@ export function ManagementHub() {
               .map((m) => (
                 <Link
                   className="rounded-xl border border-line bg-surface p-4 hover:border-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue"
-                  href={
-                    m.key === "cms-pages"
-                      ? "/admin/website"
-                      : m.key === "umrah-packages"
-                        ? "/admin/manage/umrah-packages/catalog"
-                        : `/admin/manage/${m.key}`
-                  }
+                  href={moduleHref(m.key)}
                   key={m.key}
                 >
                   <span className="block font-semibold">{m.title}</span>
                   <span className="mt-1 block text-sm text-muted">
-                    {m.canCreate
-                      ? "Create, search and manage"
-                      : m.canEdit
-                        ? "Search and edit"
-                        : "Search and view records"}
+                    {moduleCapabilities(m, permissions, isSuperAdmin)}
                   </span>
                 </Link>
               ))}
@@ -215,6 +218,7 @@ function ReferenceInput({
         disabled={disabled}
       />
       <select
+        id={`field-${field.name}`}
         className={control}
         name={field.name}
         aria-label={field.label}
@@ -268,6 +272,7 @@ function Field({
         htmlFor={`field-${field.name}`}
       >
         {field.label}
+        {field.type === "DateTime" && !field.label.includes("UTC") ? " (UTC)" : ""}
         {required ? " *" : ""}
       </label>
       {field.reference ? (
@@ -659,15 +664,51 @@ export function ManagementWorkspace({
 }) {
   const { modules, error: catalogError } = useCatalog();
   const contract = modules?.find((m) => m.key === resource);
-  const [query, setQuery] = useState("");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const router = useRouter(),
+    searchParams = useSearchParams();
+  const filterKeys = [
+    "q",
+    "status",
+    "assignedUserId",
+    "branchId",
+    "from",
+    "to",
+    "sort",
+    "page",
+  ];
+  const listParameters = new URLSearchParams();
+  for (const key of filterKeys) {
+    const value = searchParams.get(key);
+    if (value) listParameters.set(key, value);
+  }
+  const filterQuery = listParameters.toString();
+  const page = Number(searchParams.get("page") || "1");
+  function listUrl(changes: Record<string, string> = {}) {
+    const params = new URLSearchParams(filterQuery);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    return `/admin/manage/${resource}${params.size ? "?" + params.toString() : ""}`;
+  }
+  function backToList() {
+    setRow(null);
+    setWorkflow(null);
+    setMessage("");
+    router.push(listUrl());
+  }
+
   const [list, setList] = useState<{
     data: ManagementRow[];
     total: number;
   } | null>(null);
-  const linkedLead = !initialId && initialLeadId && ["follow-ups", "tasks"].includes(resource) ? initialLeadId : undefined;
-  const [row, setRow] = useState<ManagementRow | null>(() => linkedLead ? { id: "", version: null, leadId: linkedLead } : null);
+  const linkedLead =
+    !initialId && initialLeadId && ["follow-ups", "tasks"].includes(resource)
+      ? initialLeadId
+      : undefined;
+  const [row, setRow] = useState<ManagementRow | null>(() =>
+    linkedLead ? { id: "", version: null, leadId: linkedLead } : null,
+  );
   const [editing, setEditing] = useState(Boolean(linkedLead));
   const [creating, setCreating] = useState(Boolean(linkedLead));
   const [busy, setBusy] = useState(false);
@@ -693,7 +734,7 @@ export function ManagementWorkspace({
     if (!contract) return;
     let active = true;
 
-    request(`${api}/${resource}?page=${page}&q=${encodeURIComponent(search)}`)
+    request(`${api}/${resource}?${filterQuery}&presentation=true`)
       .then((data) => {
         if (active) setList(data);
       })
@@ -703,11 +744,11 @@ export function ManagementWorkspace({
     return () => {
       active = false;
     };
-  }, [contract, resource, page, search, revision]);
+  }, [contract, resource, filterQuery, revision]);
   useEffect(() => {
     if (!initialId) return;
     let active = true;
-    request(`${api}/${resource}/${initialId}`)
+    request(`${api}/${resource}/${initialId}/summary`)
       .then((data) => {
         if (active) setRow(data);
       })
@@ -719,22 +760,7 @@ export function ManagementWorkspace({
     };
   }, [initialId, resource]);
   async function open(id: string) {
-    setBusy(true);
-    setError("");
-    setMessage("");
-    setEditing(false);
-    setCreating(false);
-    setAssigning(false);
-    setWorkflow(null);
-    setAccessOpen(false);
-    setStaffCreate(false);
-    try {
-      setRow(await request(`${api}/${resource}/${encodeURIComponent(id)}`));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Record unavailable");
-    } finally {
-      setBusy(false);
-    }
+    router.push(listUrl({ record: id }));
   }
   async function save(form: FormData) {
     if (!contract || busy) return;
@@ -748,7 +774,8 @@ export function ManagementWorkspace({
         creating ? "POST" : "PATCH",
         { data, ...(creating ? {} : { version: row!.version }) },
       );
-      setRow(saved);
+      setRow(await request(`${api}/${resource}/${saved.id}/summary`));
+      router.replace(listUrl({ record: saved.id }));
       setEditing(false);
       setCreating(false);
       setRevision((r) => r + 1);
@@ -770,12 +797,11 @@ export function ManagementWorkspace({
     setBusy(true);
     setError("");
     try {
-      setRow(
-        await request(`${api}/leads/${row.id}/assign`, "POST", {
-          assignedUserId: form.get("assignedUserId") || null,
-          version: row.version,
-        }),
-      );
+      await request(`${api}/leads/${row.id}/assign`, "POST", {
+        assignedUserId: form.get("assignedUserId") || null,
+        version: row.version,
+      });
+      setRow(await request(`${api}/${resource}/${row.id}/summary`));
       setAssigning(false);
       setMessage("Assignment saved.");
       setRevision((r) => r + 1);
@@ -815,7 +841,10 @@ export function ManagementWorkspace({
         return;
       }
     }
-    if (["checkin", "checkout", "allocate", "transfer"].includes(action.key) && row) {
+    if (
+      ["checkin", "checkout", "allocate", "transfer"].includes(action.key) &&
+      row
+    ) {
       setBusy(true);
       try {
         const rooms: {
@@ -899,7 +928,10 @@ export function ManagementWorkspace({
           throw new Error("Select 1–20 rooms and 1–20 occupants per room.");
         if (new Date(String(data.checkOut)) <= new Date(String(data.checkIn)))
           throw new Error("Check-out must be after check-in.");
-        if (data.passengerId && count !== 1) throw new Error("Select one room to use the quick guest allocation field.");
+        if (data.passengerId && count !== 1)
+          throw new Error(
+            "Select one room to use the quick guest allocation field.",
+          );
         data.segments = [
           {
             hotelId: data.hotelId,
@@ -963,7 +995,8 @@ export function ManagementWorkspace({
       const selectedId = row?.id;
       setWorkflow(null);
       setRevision((r) => r + 1);
-      if (selectedId) setRow(await request(`${api}/${resource}/${selectedId}`));
+      if (selectedId)
+        setRow(await request(`${api}/${resource}/${selectedId}/summary`));
       setMessage("Operation completed. Review the refreshed record.");
     } catch (e) {
       setError(
@@ -1022,10 +1055,17 @@ export function ManagementWorkspace({
       </section>
     );
   if (!contract) return <p role="status">Loading workspace…</p>;
-  if (linkedLead && !contract.canCreate) return <p role="alert">You do not have permission to create linked work in this module.</p>;
+  if (linkedLead && !contract.canCreate)
+    return (
+      <p role="alert">
+        You do not have permission to create linked work in this module.
+      </p>
+    );
   return (
     <section>
-      <AgencyMasthead />
+      {!["leads", "customers", "tasks", "follow-ups", "quotations"].includes(
+        resource,
+      ) && <AgencyMasthead />}
       <Link href="/admin/manage" className="text-sm underline">
         All management modules
       </Link>
@@ -1308,15 +1348,7 @@ export function ManagementWorkspace({
       ) : row ? (
         <div className="mt-6">
           <div className="flex flex-wrap gap-3">
-            <button
-              className={button}
-              disabled={busy}
-              onClick={() => {
-                setRow(null);
-                setWorkflow(null);
-                setMessage("");
-              }}
-            >
+            <button className={button} disabled={busy} onClick={backToList}>
               Back to list
             </button>
             {contract.canEdit && (
@@ -1331,12 +1363,35 @@ export function ManagementWorkspace({
                 Edit record
               </button>
             )}
-            {resource === "leads" && [
-              { permission: "followup", resource: "follow-ups", label: "Schedule follow-up" },
-              { permission: "task", resource: "tasks", label: "Add lead task" },
-            ].filter(action => isSuperAdmin || (permissions.includes(`${action.permission}.view`) && permissions.includes(`${action.permission}.create`))).map(action => (
-              <Link prefetch={false} key={action.resource} className={button} href={`/admin/manage/${action.resource}?lead=${encodeURIComponent(row.id)}`}>{action.label}</Link>
-            ))}
+            {resource === "leads" &&
+              [
+                {
+                  permission: "followup",
+                  resource: "follow-ups",
+                  label: "Schedule follow-up",
+                },
+                {
+                  permission: "task",
+                  resource: "tasks",
+                  label: "Add lead task",
+                },
+              ]
+                .filter(
+                  (action) =>
+                    isSuperAdmin ||
+                    (permissions.includes(`${action.permission}.view`) &&
+                      permissions.includes(`${action.permission}.create`)),
+                )
+                .map((action) => (
+                  <Link
+                    prefetch={false}
+                    key={action.resource}
+                    className={button}
+                    href={`/admin/manage/${action.resource}?lead=${encodeURIComponent(row.id)}`}
+                  >
+                    {action.label}
+                  </Link>
+                ))}
             {resource === "leads" && canAssign && (
               <button
                 className={button}
@@ -1396,46 +1451,146 @@ export function ManagementWorkspace({
             </form>
           )}
           <h2 className="mt-5 text-xl font-semibold">{rowLabel(row)}</h2>
-          <dl className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {contract.fields.map((f) => (
-              <div
-                key={f.name}
-                className="min-w-0 rounded-xl border border-line bg-surface p-4"
-              >
-                <dt className="text-sm text-muted">{f.label}</dt>
-                <dd className="mt-1 whitespace-pre-wrap break-words">
-                  {displayValue(row[f.name])}
-                </dd>
-              </div>
-            ))}
-          </dl>
+          <RecordSummary fields={contract.fields} row={row} />
+          {["leads", "customers"].includes(resource) && (
+            <CrmRelatedWork
+              key={`${row.id}:${revision}`}
+              resource={resource}
+              id={row.id}
+              revision={revision}
+              timeZone={row.presentation?.timeZone || "Asia/Karachi"}
+              permissions={permissions}
+              isSuperAdmin={isSuperAdmin}
+            />
+          )}
         </div>
       ) : (
         <>
           <form
-            className="mt-5 flex flex-wrap items-end gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
+            key={filterQuery}
+            className="mt-5 grid gap-3 rounded-xl border border-line bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget),
+                params: Record<string, string> = { page: "1" };
+              for (const key of filterKeys.filter((key) => key !== "page"))
+                params[key] = String(form.get(key) || "");
               setList(null);
               setError("");
-              setPage(1);
-              setSearch(query);
-              setRevision((r) => r + 1);
+              router.push(listUrl(params));
             }}
           >
-            <label className="min-w-0 flex-1 font-medium">
+            <label className="min-w-0 font-medium">
               Search records
               <input
+                name="q"
                 className={control}
                 type="search"
                 maxLength={100}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                defaultValue={searchParams.get("q") || ""}
               />
             </label>
-            <button className={button} disabled={busy}>
-              Search
-            </button>
+            {[
+              "leads",
+              "customers",
+              "tasks",
+              "follow-ups",
+              "quotations",
+              "complaints",
+            ].includes(resource) && (
+              <>
+                {contract.fields.find(
+                  (field) => field.name === "status" && field.options,
+                ) && (
+                  <label className="font-medium">
+                    Status
+                    <select
+                      aria-label="Status"
+                      className={control}
+                      name="status"
+                      defaultValue={searchParams.get("status") || ""}
+                    >
+                      <option value="">All statuses</option>
+                      {contract.fields
+                        .find((field) => field.name === "status")!
+                        .options!.map((value) => (
+                          <option key={value} value={value}>
+                            {value.replaceAll("_", " ")}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                {contract.fields
+                  .filter((field) =>
+                    ["assignedUserId", "branchId"].includes(field.name),
+                  )
+                  .map((field) => (
+                    <Field
+                      key={field.name}
+                      field={{
+                        ...field,
+                        required: false,
+                        nullable: true,
+                        label:
+                          field.name === "branchId"
+                            ? "Branch"
+                            : "Assigned staff",
+                      }}
+                      row={{
+                        id: "",
+                        version: null,
+                        [field.name]: searchParams.get(field.name) || "",
+                      }}
+                      create={false}
+                      disabled={busy}
+                    />
+                  ))}
+                <label className="font-medium">
+                  Created from (company date)
+                  <input
+                    className={control}
+                    type="date"
+                    name="from"
+                    defaultValue={searchParams.get("from") || ""}
+                  />
+                </label>
+                <label className="font-medium">
+                  Created through (company date)
+                  <input
+                    className={control}
+                    type="date"
+                    name="to"
+                    defaultValue={searchParams.get("to") || ""}
+                  />
+                </label>
+                <label className="font-medium">
+                  Sort records
+                  <select
+                    aria-label="Sort records"
+                    className={control}
+                    name="sort"
+                    defaultValue={searchParams.get("sort") || "newest"}
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="name">Name or reference</option>
+                    <option value="updated">Recently updated</option>
+                  </select>
+                </label>
+              </>
+            )}
+            <div className="flex flex-wrap items-end gap-2">
+              <button className={button} disabled={busy}>
+                Apply filters
+              </button>
+              <Link
+                className={`${button} inline-flex items-center`}
+                href={`/admin/manage/${resource}`}
+              >
+                Reset filters
+              </Link>
+            </div>
           </form>
           {!list && !error && (
             <p role="status" className="mt-5">
@@ -1453,41 +1608,20 @@ export function ManagementWorkspace({
                   No records found.
                 </p>
               )}
-              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-                {list.data.map((item) => (
-                  <li key={item.id} className="min-w-0">
-                    <button
-                      className="w-full rounded-xl border border-line bg-surface p-4 text-left hover:border-zayan-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-zayan-blue"
-                      disabled={busy}
-                      onClick={() => void open(item.id)}
-                    >
-                      <span className="block break-words font-semibold">
-                        {rowLabel(item)}
-                      </span>
-                      <span className="mt-1 block text-sm text-muted">
-                        {[
-                          item.status,
-                          item.leadNumber,
-                          item.customerNumber,
-                          item.bookingNumber,
-                          item.createdAt,
-                        ]
-                          .filter(Boolean)
-                          .slice(0, 3)
-                          .map(displayValue)
-                          .join(" · ") || "View details"}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <RecordResults
+                resource={resource}
+                fields={contract.fields}
+                rows={list.data}
+                onOpen={(id) => void open(id)}
+                busy={busy}
+              />
               <nav aria-label="Record pagination" className="mt-5 flex gap-3">
                 <button
                   className={button}
                   disabled={busy || page <= 1}
                   onClick={() => {
                     setList(null);
-                    setPage((p) => p - 1);
+                    router.push(listUrl({ page: String(page - 1) }));
                   }}
                 >
                   Previous
@@ -1497,7 +1631,7 @@ export function ManagementWorkspace({
                   disabled={busy || page * 20 >= list.total}
                   onClick={() => {
                     setList(null);
-                    setPage((p) => p + 1);
+                    router.push(listUrl({ page: String(page + 1) }));
                   }}
                 >
                   Next

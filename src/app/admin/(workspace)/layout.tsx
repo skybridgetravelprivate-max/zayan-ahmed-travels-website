@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { StaffNavigation } from "@/components/admin/StaffNavigation";
-import { getStaffIdentity } from "@/server/staff-api";
+import {
+  StaffNavigation,
+  StaffBreadcrumbs,
+} from "@/components/admin/StaffNavigation";
+import { getStaffIdentity, getStaffModules } from "@/server/staff-api";
 
 export default async function StaffWorkspaceLayout({
   children,
@@ -28,21 +31,31 @@ export default async function StaffWorkspaceLayout({
   }
 
   const { user } = identity;
+  let modules: Awaited<ReturnType<typeof getStaffModules>> = [],
+    unavailable = false;
+  try {
+    modules = await getStaffModules();
+  } catch {
+    unavailable = true;
+  }
+  const links = modules.map(({ key, title, group }) => ({ key, title, group }));
   return (
-    <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8">
+    <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:px-8">
+      <a
+        href="#staff-content"
+        className="sr-only z-50 rounded-lg bg-zayan-blue p-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to workspace content
+      </a>
       <StaffNavigation
         fullName={user.fullName}
-        canViewWebsite={
-          user.isSuperAdmin || user.permissions.includes("cms.view")
-        }
-        canViewDashboard={
-          user.isSuperAdmin || user.permissions.includes("dashboard.view")
-        }
-        canViewLeads={
-          user.isSuperAdmin || user.permissions.includes("lead.view")
-        }
+        modules={links}
+        unavailable={unavailable}
       />
-      <div className="min-w-0">{children}</div>
+      <div id="staff-content" tabIndex={-1} className="min-w-0 outline-none">
+        <StaffBreadcrumbs modules={links} />
+        {children}
+      </div>
     </div>
   );
 }

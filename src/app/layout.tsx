@@ -68,10 +68,10 @@ export default async function RootLayout({
           footer={<Footer settings={settings} />}
           notice={<SiteNotice />}
           structuredData={<JsonLd data={siteGraph(settings)} />}
+          contact={<WhatsAppButton settings={settings} />}
         >
           {children}
         </SiteChrome>
-        <WhatsAppButton settings={settings} />
       </body>
     </html>
   );

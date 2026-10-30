@@ -1,6 +1,35 @@
-export type ManagementField = { name: string; label: string; type: string; required: boolean; nullable: boolean; options?: string[]; optionLabels?: Record<string, string>; reference?: string; min?: number };
-export type ManagementModule = { key: string; title: string; group: string; fields: ManagementField[]; writeFields: ManagementField[]; canCreate: boolean; canEdit: boolean };
-export type ManagementRow = { id: string; version: string | null } & Record<string, unknown>;
+export type ManagementField = {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  nullable: boolean;
+  options?: string[];
+  optionLabels?: Record<string, string>;
+  reference?: string;
+  min?: number;
+};
+export type ManagementModule = {
+  key: string;
+  title: string;
+  group: string;
+  fields: ManagementField[];
+  writeFields: ManagementField[];
+  canCreate: boolean;
+  canEdit: boolean;
+};
+export type RecordPresentation = {
+  timeZone: string;
+  references: Record<
+    string,
+    { id?: string; label: string; resource?: string; link: boolean }
+  >;
+};
+export type ManagementRow = {
+  id: string;
+  version: string | null;
+  presentation?: RecordPresentation;
+} & Record<string, unknown>;
 export function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -26,3 +55,59 @@ export function staffConflictMessage(body: unknown): string {
   return "The record changed or conflicts with an existing record. Reload and review before saving.";
 }
 
+export function humanLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/^./, (char) => char.toUpperCase());
+}
+export function recordSection(field: ManagementField) {
+  if (/assigned|branchId|agentId/.test(field.name)) return "Ownership";
+  if (
+    /fullName|fatherName|mobile|phone|whatsapp|email|address|city|country|nationality|emergency|gender|dateOfBirth/.test(
+      field.name,
+    )
+  )
+    return "Contact & identity";
+  if (
+    /price|cost|net|budget|fare|tax|discount|paid|balance|amount|profit|commission|currency/i.test(
+      field.name,
+    )
+  )
+    return "Commercial details";
+  if (/notes|terms|description|reason/i.test(field.name))
+    return "Notes & instructions";
+  if (
+    /date|departure|return|adults|children|infants|hotel|room|occupancy|travel|checkIn|checkOut/i.test(
+      field.name,
+    )
+  )
+    return "Travel & service";
+  return "Record details";
+}
+export function formatRecordValue(field: ManagementField, row: ManagementRow) {
+  const value = row[field.name];
+  if (field.reference && value)
+    return row.presentation?.references[field.name]?.label || "Linked record";
+  if (value == null || value === "") return "—";
+  if (field.type === "DateTime" && typeof value === "string") {
+    const date = new Date(value);
+    if (Number.isNaN(+date)) return "Unavailable";
+    return new Intl.DateTimeFormat("en-PK", {
+      timeZone: row.presentation?.timeZone || "Asia/Karachi",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  }
+  if (field.type === "Decimal" && /^-?\d+(\.\d+)?$/.test(String(value))) {
+    const [integer, fraction = ""] = String(value).split(".");
+    const formatted = new Intl.NumberFormat("en-PK").format(BigInt(integer));
+    return `${integer.startsWith("-") && BigInt(integer) === BigInt(0) ? "-" : ""}${formatted}${fraction ? "." + fraction.padEnd(2, "0") : ".00"}`;
+  }
+  if (
+    field.options ||
+    ["status", "priority", "workflowStep"].includes(field.name)
+  )
+    return humanLabel(String(value));
+  return displayValue(value);
+}
