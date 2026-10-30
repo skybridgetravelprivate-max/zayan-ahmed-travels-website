@@ -9,7 +9,7 @@ export default function StaffLoginPage() {
     <h1 className="mt-2 text-3xl font-bold text-zayan-blue">Welcome back</h1>
     <p className="mt-3 text-sm text-muted">Use your existing staff credentials. Customer accounts sign in separately.</p>
     <StaffLoginForm />
-    <p className="mt-6 text-sm text-muted">Forgot your password? Contact your administrator for account recovery.</p>
+    <p className="mt-6 text-sm text-muted"><Link href="/admin/forgot-password" className="underline">Forgot your password?</Link> Recovery is for staff accounts.</p>
     <Link href="/account" className="mt-4 inline-block text-sm underline">Customer sign in</Link>
   </div></section>;
 }

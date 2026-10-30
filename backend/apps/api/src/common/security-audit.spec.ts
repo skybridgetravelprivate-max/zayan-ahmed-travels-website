@@ -63,11 +63,11 @@ test("password reset claims token atomically and revokes old sessions", async ()
   let changed = false;
   const tx = { passwordResetToken: { updateMany: async () => ({ count: 1 }) }, user: { findUnique: async () => ({ id: "staff", status: "ACTIVE" }), update: async () => { changed = true; } }, session: { updateMany: async () => { revoked = true; } } };
   const controller = new AuthController({ passwordResetToken: { findFirst: async () => ({ id: "token", email: user.email }) }, $transaction: async (fn: (db: typeof tx) => unknown) => fn(tx) } as never, {} as never, {} as never);
-  assert.deepEqual(await controller.reset({ token: "fixture-token", password: "fixture-password-123" }), { ok: true });
+  assert.deepEqual(await controller.reset({ token: "a".repeat(64), password: "fixture-password-123" }), { ok: true });
   assert.equal(changed, true); assert.equal(revoked, true);
   tx.passwordResetToken.updateMany = async () => ({ count: 0 });
   changed = false;
-  await assert.rejects(controller.reset({ token: "fixture-token", password: "fixture-password-123" }), { status: 400 });
+  await assert.rejects(controller.reset({ token: "a".repeat(64), password: "fixture-password-123" }), { status: 400 });
   assert.equal(changed, false);
 });
 

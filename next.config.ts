@@ -34,6 +34,7 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     return [
+      { source: "/reset-password", headers: [...privateNoStore, { key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/admin", headers: privateNoStore },
       { source: "/admin/:path*", headers: privateNoStore },
       { source: "/account", headers: privateNoStore },

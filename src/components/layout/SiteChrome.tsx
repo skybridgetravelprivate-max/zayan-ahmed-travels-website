@@ -18,7 +18,7 @@ export function SiteChrome({
 }) {
   const pathname = usePathname();
   const isStaffRoute =
-    pathname === "/admin" || pathname?.startsWith("/admin/") === true;
+    pathname === "/reset-password" || pathname === "/admin" || pathname?.startsWith("/admin/") === true;
 
   if (isStaffRoute) {
     return <main className="flex-1">{children}</main>;

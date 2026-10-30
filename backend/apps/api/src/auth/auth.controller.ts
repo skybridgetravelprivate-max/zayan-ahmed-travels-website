@@ -7,6 +7,7 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Throttle } from "@nestjs/throttler";
@@ -218,23 +219,28 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post("forgot-password")
   async forgot(@Body() body: { email?: string }) {
-    const email = body.email?.trim();
-    if (!email) throw new BadRequestException();
+    const email = typeof body?.email === "string" ? body.email.trim() : "";
+    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException("Enter a valid email address");
+    // Global availability is checked before any account lookup: never reveal account existence.
+    if (!process.env.SMTP_HOST) throw new ServiceUnavailableException("Staff recovery email is unavailable. Contact your administrator.");
+    const origin = process.env.SITE_URL || (process.env.APP_URL ?? "").split(",")[0].trim();
+    let link: URL;
+    try { link = new URL("/reset-password", origin); }
+    catch { throw new ServiceUnavailableException("Staff recovery is unavailable"); }
+    if ((link.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && link.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(link.hostname))) || link.username || link.password) throw new ServiceUnavailableException("Staff recovery is unavailable");
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (user) {
+    if (user && !user.deletedAt && (user.status === "ACTIVE" || (user.status === "LOCKED" && user.lockedUntil))) {
       const token = randomBytes(32).toString("hex");
-      await this.prisma.passwordResetToken.create({
-        data: {
-          email,
-          tokenHash: createHash("sha256").update(token).digest("hex"),
-          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        },
-      });
-      const origin = process.env.SITE_URL || (process.env.APP_URL ?? "").split(",")[0].trim();
-      const link = new URL("/reset-password", origin);
-      if (link.protocol !== "https:" && process.env.NODE_ENV === "production") throw new BadRequestException("Invalid site configuration");
+      const row = await this.prisma.passwordResetToken.create({ data: { email, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 60 * 60 * 1000) } });
       link.searchParams.set("token", token);
-      await this.mail.send(email, "Reset your password", `<p>Reset link: <a href="${link}">${link}</a></p>`);
+      let accepted = false;
+      try {
+        const delivery = await this.mail.send(email, "Reset your password", `<p>Reset link: <a href="${link}">${link}</a></p>`);
+        const result = delivery as { skipped?: boolean; accepted?: unknown[] };
+        accepted = !result.skipped && Array.isArray(result.accepted) && result.accepted.length > 0;
+      } catch { console.warn("Staff recovery email delivery failed"); }
+      // A rejected/skipped send must not leave a usable unissued token. Response stays generic.
+      if (!accepted) await this.prisma.passwordResetToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
     }
     return { ok: true };
   }
@@ -242,7 +248,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post("reset-password")
   async reset(@Body() body: { token?: string; password?: string }) {
-    if (typeof body.token !== "string" || typeof body.password !== "string" || !body.token || !body.password) throw new BadRequestException();
+    if (typeof body?.token !== "string" || !/^[a-f0-9]{64}$/.test(body.token) || typeof body.password !== "string" || !body.password) throw new BadRequestException();
     assertPasswordPolicy(body.password);
     const tokenHash = createHash("sha256").update(body.token).digest("hex");
     const row = await this.prisma.passwordResetToken.findFirst({
