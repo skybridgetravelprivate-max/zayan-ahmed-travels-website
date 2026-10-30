@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import nodemailer from "nodemailer";
+import { agencyBrand } from "../../../../packages/config/agency-brand.cjs";
 
 @Injectable()
 export class MailService {
@@ -19,7 +20,7 @@ export class MailService {
       return { skipped: true };
     }
     return this.transporter.sendMail({
-      from: process.env.SMTP_FROM,
+      from: process.env.SMTP_FROM?.trim() || agencyBrand.email,
       to,
       subject,
       html,

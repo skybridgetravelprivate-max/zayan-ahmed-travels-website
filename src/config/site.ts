@@ -34,7 +34,7 @@ export function allowSearchIndexing() {
 
 /** Public contact details shown on Contact and Footer. Leave blank if not approved. */
 export const companyContact = {
-  email: "zayanahmedtravels@gmail.com",
+  email: "ceo@zayanahmedtravels.com",
   address: "Pine View Road, Main Cantt Chowk, Abbottabad",
   website: "https://www.zayanahmedtravels.com",
 } as const;

@@ -7,6 +7,6 @@ exports.agencyBrand = Object.freeze({
   address: "Pine View Road, Main Cantt Chowk, Abbottabad",
   phone: "+92 312 1558860",
   whatsapp: "+923121558860",
-  email: "zayanahmedtravels@gmail.com",
+  email: "ceo@zayanahmedtravels.com",
   website: "https://www.zayanahmedtravels.com",
 });

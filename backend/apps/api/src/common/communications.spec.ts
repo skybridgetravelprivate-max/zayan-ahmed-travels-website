@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WhatsAppService } from "./whatsapp.service";
 import { MailService } from "./mail.service";
+import nodemailer from "nodemailer";
 
 test("unconfigured communications skip without sending or logging contact data", async t => {
   const old = { url: process.env.WHATSAPP_API_URL, token: process.env.WHATSAPP_API_TOKEN, smtp: process.env.SMTP_HOST };
@@ -32,5 +33,24 @@ test("WhatsApp rejection, malformed response and network failures return redacte
   } finally {
     if (oldUrl === undefined) delete process.env.WHATSAPP_API_URL; else process.env.WHATSAPP_API_URL = oldUrl;
     if (oldToken === undefined) delete process.env.WHATSAPP_API_TOKEN; else process.env.WHATSAPP_API_TOKEN = oldToken;
+  }
+});
+
+
+test("mail uses approved CEO sender by default and preserves explicit SMTP override without delivery", async t => {
+  const oldHost = process.env.SMTP_HOST, oldFrom = process.env.SMTP_FROM;
+  const messages: {from: string}[] = [];
+  t.mock.method(nodemailer, "createTransport", () => ({ sendMail: async (message: {from: string}) => { messages.push(message); return { accepted: ["synthetic@example.test"] }; } }) as never);
+  try {
+    process.env.SMTP_HOST = "mocked-no-network.invalid"; delete process.env.SMTP_FROM;
+    const service = new MailService();
+    await service.send("synthetic@example.test", "Synthetic sender test", "Synthetic only");
+    assert.equal(messages[0].from, "ceo@zayanahmedtravels.com");
+    process.env.SMTP_FROM = "explicit@example.test";
+    await service.send("synthetic@example.test", "Synthetic sender test", "Synthetic only");
+    assert.equal(messages[1].from, "explicit@example.test");
+  } finally {
+    if (oldHost === undefined) delete process.env.SMTP_HOST; else process.env.SMTP_HOST = oldHost;
+    if (oldFrom === undefined) delete process.env.SMTP_FROM; else process.env.SMTP_FROM = oldFrom;
   }
 });
