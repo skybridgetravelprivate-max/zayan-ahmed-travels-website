@@ -31,6 +31,8 @@ function crmApiOrigin() {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Shared hosting reports many CPUs, but cannot sustain that many build workers.
+  experimental: { cpus: 2 },
   distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     return [
