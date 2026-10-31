@@ -1,4 +1,5 @@
 "use client";
+import { canonicalMoney } from "@/lib/staff-management";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -720,10 +721,15 @@ export function ManagementWorkspace({
   >([]);
   const [assigning, setAssigning] = useState(false);
   const [workflow, setWorkflow] = useState<StaffWorkflow | null>(null);
+  const supplierPayment = resource === "payments";
+  const settlementResource = supplierPayment ? "payments" : "receipts";
+  const retryIdentity = supplierPayment ? `supplier-payment:${staffUsername}` : staffUsername;
+  const settlementLabel = supplierPayment ? "supplier payment" : "receipt";
   const [pendingReceipt, setPendingReceipt] = useState(false);
   const [receiptPreview, setReceiptPreview] = useState<{
     id: string;
-    receiptNo: string;
+    receiptNo?: string;
+    paymentNo?: string;
     amount: string;
     method: string;
   } | null>(null);
@@ -820,14 +826,14 @@ export function ManagementWorkspace({
     setError("");
     if (isSuperAdmin) {
       try {
-        setPendingReceipt(hasPendingReceipt(localStorage, staffUsername));
+        setPendingReceipt(hasPendingReceipt(localStorage, retryIdentity));
         setReceiptPreview(null);
-        const key = savedReceiptRetryKey(localStorage, staffUsername);
+        const key = savedReceiptRetryKey(localStorage, retryIdentity);
         if (key) {
           try {
             setReceiptPreview(
               await request(
-                `/api/v1/finance/receipts/submission/${encodeURIComponent(key)}`,
+                `/api/v1/finance/${settlementResource}/submission/${encodeURIComponent(key)}`,
               ),
             );
           } catch {
@@ -840,6 +846,12 @@ export function ManagementWorkspace({
         );
         return;
       }
+    }
+    if (supplierPayment) {
+      try {
+        const pending = await request("/api/v1/finance/payments/pending");
+        if (pending.length) { setReceiptPreview(pending[0]); setPendingReceipt(true); }
+      } catch { setError("Supplier payment recovery is unavailable. Do not start a payment."); return; }
     }
     if (
       ["checkin", "checkout", "allocate", "transfer"].includes(action.key) &&
@@ -899,6 +911,11 @@ export function ManagementWorkspace({
           ["Int", "Float", "Decimal"].includes(field.type) &&
           data[field.name] !== undefined
         ) {
+          if (field.type === "Decimal") {
+            data[field.name] = canonicalMoney(data[field.name]);
+            if (!["receipts", "payments", "expenses"].includes(resource) && BigInt(String(data[field.name]).replace(".", "")) > BigInt("100000000000000")) throw new Error("This service supports amounts up to 1,000,000,000,000.00. Larger values require review.");
+            continue;
+          }
           const n = Number(data[field.name]);
           if (
             !Number.isFinite(n) ||
@@ -958,7 +975,7 @@ export function ManagementWorkspace({
       if (workflow.version && row) data.version = row.version;
       let requestKey: string | undefined;
       if (
-        resource === "receipts" ||
+        ["receipts", "payments"].includes(resource) ||
         Number(data.paid ?? data.paidAmount ?? 0) > 0
       ) {
         if (!navigator.locks)
@@ -966,12 +983,12 @@ export function ManagementWorkspace({
             "This browser cannot safely coordinate receipt retries across tabs.",
           );
         requestKey = await navigator.locks.request(
-          `zat:receipt-key:${staffUsername}`,
+          `zat:settlement-key:${retryIdentity}`,
           () =>
             receiptRetryKey(
               localStorage,
-              staffUsername,
-              resource === "receipts"
+              retryIdentity,
+              ["receipts", "payments"].includes(resource)
                 ? data
                 : { ...data, paymentWorkflowPath: workflow.path },
             ),
@@ -986,10 +1003,10 @@ export function ManagementWorkspace({
       );
       if (requestKey)
         setReceiptPreview(
-          resource === "receipts"
+          ["receipts", "payments"].includes(resource)
             ? result
             : await request(
-                `/api/v1/finance/receipts/submission/${encodeURIComponent(requestKey)}`,
+                `/api/v1/finance/${settlementResource}/submission/${encodeURIComponent(requestKey)}`,
               ),
         );
       const selectedId = row?.id;
@@ -1015,22 +1032,22 @@ export function ManagementWorkspace({
     setError("");
     try {
       await request(
-        `/api/v1/finance/receipts/${encodeURIComponent(id)}/review`,
+        `/api/v1/finance/${settlementResource}/${encodeURIComponent(id)}/review`,
         "POST",
         { reviewed: true },
       );
-      const key = savedReceiptRetryKey(localStorage, staffUsername);
+      const key = savedReceiptRetryKey(localStorage, retryIdentity);
       if (key) {
         const saved = await request(
-          `/api/v1/finance/receipts/submission/${encodeURIComponent(key)}`,
+          `/api/v1/finance/${settlementResource}/submission/${encodeURIComponent(key)}`,
         );
-        if (saved.id === id) clearReceiptRetry(localStorage, staffUsername);
+        if (saved.id === id) clearReceiptRetry(localStorage, retryIdentity);
       }
-      setPendingReceipt(hasPendingReceipt(localStorage, staffUsername));
+      setPendingReceipt(hasPendingReceipt(localStorage, retryIdentity));
       setReceiptPreview(null);
       setWorkflow(null);
       setMessage(
-        "Saved receipt reviewed. You may explicitly start a new payment.",
+        `Saved ${settlementLabel} reviewed. You may explicitly start a new payment.`,
       );
     } catch (e) {
       setError(
@@ -1148,40 +1165,39 @@ export function ManagementWorkspace({
       {pendingReceipt && (
         <div className="mt-4 rounded-xl border border-amber-300 p-4">
           <p>
-            A prior receipt submission is saved across tabs. Retry the original
-            details safely, or review its saved receipt before starting another
-            payment.
+            A prior {settlementLabel} needs review. Retry its original details safely, or review the saved record before starting another payment. Ledger review does not confirm a bank transfer.
           </p>
           {receiptPreview && (
             <>
               <p className="mt-2">
-                Saved receipt: {receiptPreview.receiptNo} ·{" "}
-                {Number(receiptPreview.amount).toFixed(2)} ·{" "}
+                Saved {settlementLabel}: {receiptPreview.paymentNo || receiptPreview.receiptNo} ·{" "}
+                {canonicalMoney(receiptPreview.amount)} ·{" "}
                 {receiptPreview.method}
               </p>
+              <Link className="mt-2 block underline" href={`/admin/manage/${settlementResource}?record=${encodeURIComponent(receiptPreview.id)}`}>Open saved {settlementLabel} details before review</Link>
               <button
                 type="button"
                 className={`${button} mt-3`}
                 disabled={busy}
                 onClick={() => void reviewSavedReceipt(receiptPreview.id)}
               >
-                I reviewed this saved receipt; allow a new payment
+                I reviewed this saved {settlementLabel}; allow a new payment
               </button>
             </>
           )}
-          <Link className="mt-3 block underline" href="/admin/manage/receipts">
-            View receipt history
+          <Link className="mt-3 block underline" href={`/admin/manage/${settlementResource}`}>
+            View {settlementLabel} history
           </Link>
         </div>
       )}
-      {resource === "receipts" && row && isSuperAdmin && (
+      {["receipts", "payments"].includes(resource) && row && isSuperAdmin && (
         <button
           type="button"
           className={`${button} mt-4`}
           disabled={busy}
           onClick={() => void reviewSavedReceipt(row.id)}
         >
-          I reviewed this saved receipt; allow a new payment
+          I reviewed this saved {settlementLabel}; allow a new payment
         </button>
       )}
       {resource === "users" && isSuperAdmin && (

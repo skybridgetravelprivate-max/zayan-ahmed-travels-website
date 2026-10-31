@@ -1,3 +1,4 @@
+import { canonicalMoney } from "./staff-management";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -130,4 +131,10 @@ test("business presentation preserves exact decimals, company dates and restrict
     ),
     /30\WOct\W2026/,
   );
+});
+
+test("financial entry preserves large cents and rejects unsupported precision", () => {
+  assert.equal(canonicalMoney("99999999999999.99"), "99999999999999.99");
+  assert.equal(canonicalMoney("000125.2"), "125.20");
+  for (const input of ["1.001", "-0.01", "1e3", "10000000000000000.00"]) assert.throws(() => canonicalMoney(input));
 });

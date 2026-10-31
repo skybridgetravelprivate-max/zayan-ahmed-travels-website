@@ -1,3 +1,4 @@
+import { money, paymentMethod, type MoneyInput } from "./money";
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { Prisma, type UmrahBooking, type TicketSale, type HotelBooking, type TransportBooking, type StarBooking } from "@prisma/client";
@@ -10,18 +11,14 @@ import type { AccountingService } from "./accounting.service";
 export const RECEIPT_SOURCES = ["bookingId", "ticketSaleId", "hotelBookingId", "transportBookingId", "starBookingId"] as const;
 export type ReceiptSource = typeof RECEIPT_SOURCES[number];
 type SourceRows = { bookingId: UmrahBooking; ticketSaleId: TicketSale; hotelBookingId: HotelBooking; transportBookingId: TransportBooking; starBookingId: StarBooking };
-export type ReceiptInput = Partial<Record<ReceiptSource, string>> & { customerId?: string; branchId?: string; amount: number; method: string; notes?: string };
+export type ReceiptInput = Partial<Record<ReceiptSource, string>> & { customerId?: string; branchId?: string; amount: MoneyInput; method: string; notes?: string };
 
 export function receiptSubmissionId(userId: string, key: unknown) {
   if (typeof key !== "string" || !/^[A-Za-z0-9_-]{8,100}$/.test(key)) throw new BadRequestException("A valid Idempotency-Key is required for receipts");
   return `request_${createHash("sha256").update(`${userId}:${key}`).digest("hex")}`;
 }
 
-function paymentAmount(input: unknown) {
-  const amount = Number(input);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 1e12 || new Prisma.Decimal(amount).decimalPlaces() > 2) throw new BadRequestException("Receipt amount must be positive with at most two decimal places");
-  return amount;
-}
+function paymentAmount(input: unknown) { return money(input, true); }
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -101,7 +98,7 @@ export class ReceiptOperations {
 
   private async createInTransaction(tx: Prisma.TransactionClient, body: ReceiptInput, user: AuthUser, key?: string, fingerprint?: string) {
     const amount = paymentAmount(body.amount);
-    if (!["CASH", "BANK", "CARD", "ONLINE"].includes(body.method)) throw new BadRequestException("Invalid receipt method");
+    paymentMethod(body.method);
     if (body.notes !== undefined && (typeof body.notes !== "string" || body.notes.length > 4000)) throw new BadRequestException("Invalid receipt notes");
     const id = receiptSubmissionId(user.id, key);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 0))::text`;
@@ -134,8 +131,8 @@ export class ReceiptOperations {
   }
 
   async initial<F extends ReceiptSource>(user: AuthUser, body: Record<string, unknown>, key: string | undefined, field: F, amountInput: unknown, create: (tx: Prisma.TransactionClient) => Promise<SourceRows[F]>): Promise<SourceRows[F]> {
-    const amount = Number(amountInput ?? 0);
-    if (amount === 0) return this.prisma.$transaction(create, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    const amount = money(amountInput ?? 0);
+    if (amount.isZero()) return this.prisma.$transaction(create, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     requireReceiptWrites();
     paymentAmount(amountInput);
     financeAuthority(user);

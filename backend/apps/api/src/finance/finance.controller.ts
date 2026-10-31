@@ -1,3 +1,6 @@
+import { Prisma } from "@prisma/client";
+import { PaymentOperations, paymentSubmissionId, type PaymentInput } from "./payment-operations";
+import { money, type MoneyInput } from "./money";
 import { GlobalFinanceGuard } from "../auth/global-finance.guard";
 import { ReceiptOperations, receiptSubmissionId, type ReceiptInput } from "./receipt-operations";
 import { BadRequestException, NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
@@ -86,48 +89,39 @@ export class FinanceController {
     return this.receiptOperations.create(body, req.user, requestKey);
   }
 
+  private get paymentOperations() { return new PaymentOperations(this.prisma, this.seq, this.audit, this.accounting); }
+
+  @Get("payments/pending")
+  @RequirePermission("account.post")
+  pendingPayments(@Req() req: Request & { user: AuthUser }) { return this.paymentOperations.pending(req.user); }
+
+  @Get("payments/submission/:key")
+  @RequirePermission("account.post")
+  async paymentSubmission(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
+    const saved = await this.prisma.payment.findUnique({ where: { id: paymentSubmissionId(req.user.id, key) } });
+    if (!saved) throw new NotFoundException("Payment is unconfirmed. Retry original details.");
+    return saved;
+  }
+
+  @Post("payments/:id/review")
+  @RequirePermission("account.post")
+  reviewPayment(@Param("id") id: string, @Body() body: { reviewed?: boolean }, @Req() req: Request & { user: AuthUser }) { return this.paymentOperations.review(id, body.reviewed === true, req.user); }
+
   @Post("payments")
   @RequirePermission("account.post")
-  async createPayment(
-    @Body() body: { supplierId?: string; amount: number; method: string; branchId?: string; notes?: string },
-    @Req() req: Request & { user: AuthUser },
-  ) {
-    return this.prisma.$transaction(async tx => {
-    const journal = await this.accounting.postPayment({
-      db: tx,
-      userId: req.user.id,
-      amount: Number(body.amount),
-      method: body.method,
-      supplierId: body.supplierId,
-      branchId: body.branchId || req.user.defaultBranchId,
-      module: "accounts",
-    });
-    const paymentNo = await this.seq.next("pay", "ZAT-PAY", tx);
-    return tx.payment.create({
-      data: {
-        paymentNo,
-        supplierId: body.supplierId,
-        amount: body.amount,
-        method: body.method,
-        branchId: body.branchId || req.user.defaultBranchId,
-        notes: body.notes,
-        journalId: journal.id,
-      },
-    });
-    });
-  }
+  createPayment(@Body() body: PaymentInput, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) { return this.paymentOperations.create(body, req.user, key); }
 
   @Post("expenses")
   @RequirePermission("account.post")
   async createExpense(
-    @Body() body: { category: string; amount: number; supplierId?: string; branchId?: string; notes?: string },
+    @Body() body: { category: string; amount: MoneyInput; supplierId?: string; branchId?: string; notes?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
     return this.prisma.$transaction(async tx => {
     const journal = await this.accounting.postExpense({
       db: tx,
       userId: req.user.id,
-      amount: Number(body.amount),
+      amount: money(body.amount, true),
       category: body.category,
       branchId: body.branchId || req.user.defaultBranchId,
     });
@@ -136,7 +130,7 @@ export class FinanceController {
       data: {
         expenseNo,
         category: body.category,
-        amount: body.amount,
+        amount: money(body.amount, true),
         supplierId: body.supplierId,
         branchId: body.branchId || req.user.defaultBranchId,
         notes: body.notes,
@@ -186,7 +180,7 @@ export class FinanceController {
     const tb = await this.trial(q);
     const by = (t: string) => tb.filter((r) => r.type === t);
     const sum = (t: string) =>
-      by(t).reduce((s, r) => s + (t === "ASSET" ? r.balance : -r.balance), 0);
+      by(t).reduce((sum, row) => sum.plus(t === "ASSET" ? row.balance : new Prisma.Decimal(row.balance).negated()), new Prisma.Decimal(0)).toFixed(2);
     return {
       assets: by("ASSET"),
       liabilities: by("LIABILITY"),
@@ -203,9 +197,9 @@ export class FinanceController {
     const receipts = await this.prisma.receipt.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } });
     const payments = await this.prisma.payment.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } });
     const expenses = await this.prisma.expense.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } });
-    const inflows = Number(receipts._sum.amount ?? 0);
-    const outflows = Number(payments._sum.amount ?? 0) + Number(expenses._sum.amount ?? 0);
-    return { inflows, outflows, net: inflows - outflows };
+    const inflows = new Prisma.Decimal(receipts._sum.amount ?? 0);
+    const outflows = new Prisma.Decimal(payments._sum.amount ?? 0).plus(expenses._sum.amount ?? 0);
+    return { inflows: inflows.toFixed(2), outflows: outflows.toFixed(2), net: inflows.minus(outflows).toFixed(2) };
   }
 
   @Get("ageing")
@@ -219,7 +213,7 @@ export class FinanceController {
     return bookings.map((b) => {
       const days = Math.floor((now - b.createdAt.getTime()) / 86400000);
       const bucket = days <= 30 ? "0-30" : days <= 60 ? "31-60" : days <= 90 ? "61-90" : "90+";
-      return { bookingNumber: b.bookingNumber, customer: b.customer.fullName, balance: Number(b.balance), days, bucket };
+      return { bookingNumber: b.bookingNumber, customer: b.customer.fullName, balance: b.balance.toFixed(2), days, bucket };
     });
   }
 

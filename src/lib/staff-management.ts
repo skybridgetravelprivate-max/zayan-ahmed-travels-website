@@ -36,7 +36,7 @@ export function displayValue(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "—";
 }
 export function rowLabel(row: ManagementRow) {
-  return ["fullName", "name", "subject", "title", "receiptNo", "bookingNumber", "leadNumber", "customerNumber", "ticketNumber", "entryNumber", "code", "id"].map(k => row[k]).find(v => typeof v === "string" && v) as string || row.id;
+  return ["fullName", "name", "subject", "title", "receiptNo", "paymentNo", "bookingNumber", "leadNumber", "customerNumber", "ticketNumber", "entryNumber", "code", "id"].map(k => row[k]).find(v => typeof v === "string" && v) as string || row.id;
 }
 export function formPayload(fields: ManagementField[], form: FormData, create: boolean) {
   const data: Record<string, unknown> = {};
@@ -110,4 +110,14 @@ export function formatRecordValue(field: ManagementField, row: ManagementRow) {
   )
     return humanLabel(String(value));
   return displayValue(value);
+}
+
+/** Exact Decimal(18,2) form value; never pass through binary floating point. */
+export function canonicalMoney(value: unknown): string {
+  const text = String(value ?? "");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) throw new Error("Use an amount with at most two decimal places.");
+  const [whole, fraction = ""] = text.split(".");
+  const normalized = whole.replace(/^0+(?=\d)/, "");
+  if (normalized.length > 16) throw new Error("Amount exceeds the supported range.");
+  return `${normalized}.${fraction.padEnd(2, "0")}`;
 }

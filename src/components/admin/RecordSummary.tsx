@@ -104,6 +104,7 @@ export function RecordResults({
   busy: boolean;
 }) {
   const businessColumns: Record<string, string[]> = {
+    payments: ["paymentNo", "supplierId", "date", "amount", "method", "branchId"],
     leads: ["fullName", "leadNumber", "mobile", "status", "assignedUserId", "nextFollowUpAt"],
     customers: ["fullName", "customerNumber", "phone", "email", "branchId"],
     quotations: ["quotationNumber", "customerId", "leadId", "status", "net", "expiresAt"],

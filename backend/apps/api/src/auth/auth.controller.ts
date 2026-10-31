@@ -19,6 +19,7 @@ import { MailService } from "../common/mail.service";
 import { JwtAuthGuard } from "./jwt.guard";
 import { UseGuards } from "@nestjs/common";
 import { AuthUser } from "./auth.types";
+import { isLoginPortal, loginPortalForRoles } from "./login-portal";
 
 const ACCESS_COOKIE = "access_token";
 const REFRESH_COOKIE = "refresh_token";
@@ -46,12 +47,13 @@ export class AuthController {
   @Throttle({ default: { limit: 8, ttl: 60000 } })
   @Post("login")
   async login(
-    @Body() body: { identifier?: string; password?: string; rememberMe?: boolean },
+    @Body() body: { identifier?: string; password?: string; rememberMe?: boolean; portal?: unknown },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const identifier = typeof body.identifier === "string" ? body.identifier.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
+    if (body.portal !== undefined && !isLoginPortal(body.portal)) throw new BadRequestException("Invalid sign-in portal");
     if (identifier.length > 254 || Buffer.byteLength(password, "utf8") > 72) throw new BadRequestException("Invalid sign-in fields");
     if (!identifier || !password) throw new BadRequestException("Email/username and password are required");
 
@@ -70,8 +72,14 @@ export class AuthController {
     }
 
     const ok = await verifyPassword(password, user.passwordHash);
+    // Resolve portal membership from stored roles, never from the client.
+    let portalMatches = true;
+    if (ok && body.portal !== undefined) {
+      const roles = await this.prisma.userRole.findMany({ where: { userId: user.id }, include: { role: true } });
+      portalMatches = loginPortalForRoles(roles.map(row => row.role.name)) === body.portal;
+    }
     await this.prisma.loginAttempt.create({
-      data: { userId: user.id, identifier, success: ok, ipAddress: ip },
+      data: { userId: user.id, identifier, success: ok && portalMatches, ipAddress: ip },
     });
     if (!ok) {
       const failed = user.failedLogins + 1;
@@ -86,6 +94,10 @@ export class AuthController {
     if (user.status !== "ACTIVE" && user.status !== "LOCKED") {
       throw new UnauthorizedException("Account inactive");
     }
+
+    // Omitted portal preserves existing API client compatibility. Wrong portal
+    // never issues cookies and does not count as an incorrect password.
+    if (!portalMatches) throw new UnauthorizedException("Invalid credentials or sign-in portal");
 
     await this.prisma.user.update({
       where: { id: user.id },

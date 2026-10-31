@@ -85,7 +85,14 @@ export function SearchCard({ title }: { title?: string }) {
         </p>
         <form
           onSubmit={prepare}
-          onChange={() => {
+          onInput={(event) => {
+            event.currentTarget.querySelector<HTMLInputElement>('[name="return"]')?.setCustomValidity("");
+            if (context) setContext("");
+          }}
+          onChange={(event) => {
+            if (event.target instanceof HTMLInputElement && ["departure", "return"].includes(event.target.name)) {
+              event.currentTarget.querySelector<HTMLInputElement>('[name="return"]')?.setCustomValidity("");
+            }
             if (context) setContext("");
           }}
           className="mt-4"

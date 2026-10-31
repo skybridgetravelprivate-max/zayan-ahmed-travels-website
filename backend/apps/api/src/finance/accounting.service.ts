@@ -1,3 +1,4 @@
+import { money, paymentMethod, type MoneyInput } from "./money";
 import { Injectable, BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
@@ -6,8 +7,8 @@ import { AuditService } from "../common/audit.service";
 
 export type JournalLineInput = {
   accountId: string;
-  debit: number;
-  credit: number;
+  debit: MoneyInput;
+  credit: MoneyInput;
   memo?: string;
   partyType?: string;
   partyId?: string;
@@ -63,7 +64,7 @@ export class AccountingService {
   }
 
   moneyAccount(method?: string) {
-    return method === "BANK" ? GL.BANK : GL.CASH;
+    return paymentMethod(method) === "BANK" ? GL.BANK : GL.CASH;
   }
 
   revenueCode(module?: string) {
@@ -101,18 +102,17 @@ export class AccountingService {
     const db = this.store(params.db);
     const lines = (params.lines || []).map((l) => ({
       ...l,
-      debit: Number(l.debit || 0),
-      credit: Number(l.credit || 0),
+      debit: money(l.debit ?? 0),
+      credit: money(l.credit ?? 0),
     }));
     if (lines.length < 2) throw new BadRequestException("Journal needs at least two lines");
     for (const l of lines) {
-      if (!Number.isFinite(l.debit) || !Number.isFinite(l.credit) || l.debit < 0 || l.credit < 0) throw new BadRequestException("Debit and credit cannot be negative");
-      if (l.debit > 0 && l.credit > 0) throw new BadRequestException("A line cannot be both debit and credit");
-      if (l.debit === 0 && l.credit === 0) throw new BadRequestException("Each line needs a debit or a credit");
+      if (l.debit.greaterThan(0) && l.credit.greaterThan(0)) throw new BadRequestException("A line cannot be both debit and credit");
+      if (l.debit.isZero() && l.credit.isZero()) throw new BadRequestException("Each line needs a debit or a credit");
     }
-    const debit = lines.reduce((s, l) => s + l.debit, 0);
-    const credit = lines.reduce((s, l) => s + l.credit, 0);
-    if (Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
+    const debit = lines.reduce((sum, line) => sum.plus(line.debit), new Prisma.Decimal(0));
+    const credit = lines.reduce((sum, line) => sum.plus(line.credit), new Prisma.Decimal(0));
+    if (!debit.equals(credit)) throw new BadRequestException("Journal is not balanced");
     const status = params.status || "POSTED";
     await this.assertPostingAccounts(db, lines);
     const entryNumber = await this.seq.next("jv", "ZAT-JV", db);
@@ -127,7 +127,7 @@ export class AccountingService {
         sourceId: params.sourceId,
         postedAt: status === "POSTED" ? new Date() : null,
         branchId: params.branchId,
-        lines: { create: lines },
+        lines: { create: lines.map(line => ({ ...line, debit: line.debit.toFixed(2), credit: line.credit.toFixed(2) })) },
       },
       include: { lines: true },
     });
@@ -140,9 +140,9 @@ export class AccountingService {
       await tx.$queryRaw`SELECT id FROM "JournalEntry" WHERE id = ${id} FOR UPDATE`;
       const j = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } });
       if (!j || j.status !== "DRAFT") throw new BadRequestException("Only draft journals can be posted");
-      const debit = j.lines.reduce((sum, line) => sum + Number(line.debit), 0);
-      const credit = j.lines.reduce((sum, line) => sum + Number(line.credit), 0);
-      if (j.lines.length < 2 || !Number.isFinite(debit) || !Number.isFinite(credit) || debit <= 0 || Math.abs(debit - credit) > 0.009) throw new BadRequestException("Journal is not balanced");
+      const debit = j.lines.reduce((sum, line) => sum.plus(line.debit), new Prisma.Decimal(0));
+      const credit = j.lines.reduce((sum, line) => sum.plus(line.credit), new Prisma.Decimal(0));
+      if (j.lines.length < 2 || !debit.greaterThan(0) || !debit.equals(credit)) throw new BadRequestException("Journal is not balanced");
       await this.assertPostingAccounts(tx, j.lines);
       const claimed = await tx.journalEntry.updateMany({ where: { id, status: "DRAFT" }, data: { status: "POSTED", postedAt: new Date() } });
       if (claimed.count !== 1) throw new BadRequestException("Journal status changed");
@@ -169,8 +169,8 @@ export class AccountingService {
       sourceId: j.sourceId || undefined,
       lines: j.lines.map((l) => ({
         accountId: l.accountId,
-        debit: Number(l.credit),
-        credit: Number(l.debit),
+        debit: l.credit,
+        credit: l.debit,
         memo: "Reversal",
         partyType: l.partyType || undefined,
         partyId: l.partyId || undefined,
@@ -185,15 +185,15 @@ export class AccountingService {
     userId: string;
     module: string;
     sourceId: string;
-    amount: number;
+    amount: MoneyInput;
     customerId?: string | null;
     branchId?: string | null;
     date?: Date;
     memo?: string;
     db?: Db;
   }) {
-    const amount = Number(opts.amount || 0);
-    if (amount <= 0) return null;
+    const amount = money(opts.amount);
+    if (amount.isZero()) return null;
     if (await this.alreadyPosted(opts.module, opts.sourceId, "SALE", opts.db)) return null;
     const ar = await this.accountByCode(GL.AR, opts.db);
     const rev = await this.accountByCode(this.revenueCode(opts.module), opts.db);
@@ -217,15 +217,15 @@ export class AccountingService {
     userId: string;
     module: string;
     sourceId: string;
-    amount: number;
+    amount: MoneyInput;
     supplierId?: string | null;
     branchId?: string | null;
     date?: Date;
     memo?: string;
     db?: Db;
   }) {
-    const amount = Number(opts.amount || 0);
-    if (amount <= 0) return null;
+    const amount = money(opts.amount);
+    if (amount.isZero()) return null;
     if (await this.alreadyPosted(opts.module, opts.sourceId, "COST", opts.db)) return null;
     const cogs = await this.accountByCode(GL.COGS, opts.db);
     const ap = await this.accountByCode(GL.AP, opts.db);
@@ -248,7 +248,7 @@ export class AccountingService {
   async postReceipt(opts: {
     userId: string;
     db?: Db;
-    amount: number;
+    amount: MoneyInput;
     method?: string;
     customerId?: string | null;
     branchId?: string | null;
@@ -257,8 +257,7 @@ export class AccountingService {
     sourceId?: string;
     module?: string;
   }) {
-    const amount = Number(opts.amount || 0);
-    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Receipt amount must be positive");
+    const amount = money(opts.amount, true);
     const cash = await this.accountByCode(this.moneyAccount(opts.method), opts.db);
     const ar = await this.accountByCode(GL.AR, opts.db);
     return this.postJournal({
@@ -280,7 +279,7 @@ export class AccountingService {
   async postPayment(opts: {
     userId: string;
     db?: Db;
-    amount: number;
+    amount: MoneyInput;
     method?: string;
     supplierId?: string | null;
     branchId?: string | null;
@@ -289,8 +288,7 @@ export class AccountingService {
     sourceId?: string;
     module?: string;
   }) {
-    const amount = Number(opts.amount || 0);
-    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Payment amount must be positive");
+    const amount = money(opts.amount, true);
     const cash = await this.accountByCode(this.moneyAccount(opts.method), opts.db);
     const ap = await this.accountByCode(GL.AP, opts.db);
     return this.postJournal({
@@ -311,7 +309,7 @@ export class AccountingService {
 
   async postRefund(opts: {
     userId: string;
-    amount: number;
+    amount: MoneyInput;
     module: string;
     sourceId: string;
     customerId?: string | null;
@@ -320,8 +318,7 @@ export class AccountingService {
     memo?: string;
     db?: Db;
   }) {
-    const amount = Number(opts.amount || 0);
-    if (amount <= 0) throw new BadRequestException("Refund amount must be positive");
+    const amount = money(opts.amount, true);
     const ar = await this.accountByCode(GL.AR, opts.db);
     const rev = await this.accountByCode(this.revenueCode(opts.module), opts.db);
     return this.postJournal({
@@ -343,8 +340,8 @@ export class AccountingService {
   async postOpening(opts: {
     userId: string;
     accountId: string;
-    debit: number;
-    credit: number;
+    debit: MoneyInput;
+    credit: MoneyInput;
     date?: Date;
     memo?: string;
     branchId?: string | null;
@@ -396,13 +393,12 @@ export class AccountingService {
   async postExpense(opts: {
     userId: string;
     db?: Db;
-    amount: number;
+    amount: MoneyInput;
     category?: string;
     branchId?: string | null;
     date?: Date;
   }) {
-    const amount = Number(opts.amount || 0);
-    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Expense amount must be positive");
+    const amount = money(opts.amount, true);
     const exp = await this.accountByCode(GL.OPEX, opts.db);
     const cash = await this.accountByCode(GL.CASH, opts.db);
     return this.postJournal({
@@ -429,13 +425,13 @@ export class AccountingService {
         where: { accountId: a.id, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { lte: cutoff } } },
         _sum: { debit: true, credit: true },
       });
-      const debit = Number(agg._sum.debit ?? 0);
-      const credit = Number(agg._sum.credit ?? 0);
-      rows.push({ code: a.code, name: a.name, type: a.type, debit, credit, balance: debit - credit });
+      const debit = new Prisma.Decimal(agg._sum.debit ?? 0);
+      const credit = new Prisma.Decimal(agg._sum.credit ?? 0);
+      rows.push({ code: a.code, name: a.name, type: a.type, debit: debit.toFixed(2), credit: credit.toFixed(2), balance: debit.minus(credit).toFixed(2) });
     }
-    const totDr = rows.reduce((s, r) => s + r.debit, 0);
-    const totCr = rows.reduce((s, r) => s + r.credit, 0);
-    return { rows, totals: { debit: totDr, credit: totCr, balanced: Math.abs(totDr - totCr) < 0.009 } };
+    const totDr = rows.reduce((s, r) => s.plus(r.debit), new Prisma.Decimal(0));
+    const totCr = rows.reduce((s, r) => s.plus(r.credit), new Prisma.Decimal(0));
+    return { rows, totals: { debit: totDr.toFixed(2), credit: totCr.toFixed(2), balanced: totDr.equals(totCr) } };
   }
 
   async profitLoss(from: Date, to: Date) {
@@ -446,18 +442,18 @@ export class AccountingService {
         where: { accountId: a.id, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { gte: from, lte: to } } },
         _sum: { debit: true, credit: true },
       });
-      const debit = Number(agg._sum.debit ?? 0);
-      const credit = Number(agg._sum.credit ?? 0);
+      const debit = new Prisma.Decimal(agg._sum.debit ?? 0);
+      const credit = new Prisma.Decimal(agg._sum.credit ?? 0);
       rows.push({
         code: a.code,
         name: a.name,
         type: a.type,
-        amount: a.type === "REVENUE" ? credit - debit : debit - credit,
+        amount: (a.type === "REVENUE" ? credit.minus(debit) : debit.minus(credit)).toFixed(2),
       });
     }
-    const income = rows.filter((r) => r.type === "REVENUE").reduce((s, r) => s + r.amount, 0);
-    const expense = rows.filter((r) => r.type === "EXPENSE").reduce((s, r) => s + r.amount, 0);
-    return { rows, income, expense, net: income - expense };
+    const income = rows.filter((r) => r.type === "REVENUE").reduce((s, r) => s.plus(r.amount), new Prisma.Decimal(0));
+    const expense = rows.filter((r) => r.type === "EXPENSE").reduce((s, r) => s.plus(r.amount), new Prisma.Decimal(0));
+    return { rows, income: income.toFixed(2), expense: expense.toFixed(2), net: income.minus(expense).toFixed(2) };
   }
 
   async partyLedger(partyType: string, partyId: string) {
@@ -474,9 +470,9 @@ export class AccountingService {
         entryNumber: l.journal.entryNumber,
         memo: l.memo || l.journal.memo,
         account: l.account.code,
-        debit: Number(l.debit),
-        credit: Number(l.credit),
-        running: run.toNumber(),
+        debit: new Prisma.Decimal(l.debit).toFixed(2),
+        credit: new Prisma.Decimal(l.credit).toFixed(2),
+        running: run.toFixed(2),
       };
     });
   }
@@ -493,7 +489,7 @@ export class AccountingService {
       map[id] = (map[id] ?? new Prisma.Decimal(0)).plus(l.debit).minus(l.credit);
     }
     return Object.entries(map)
-      .map(([partyId, balance]) => ({ partyId, balance: (partyType === "supplier" ? balance.negated() : balance).toNumber() }))
-      .filter((r) => Math.abs(r.balance) > 0.009);
+      .map(([partyId, balance]) => ({ partyId, balance: (partyType === "supplier" ? balance.negated() : balance).toFixed(2) }))
+      .filter((r) => !new Prisma.Decimal(r.balance).isZero());
   }
 }

@@ -209,7 +209,7 @@ test("reversed original and reversal cancel to zero in the trial balance", async
     return { _sum: { debit: included.includes("REVERSED") ? 10 : 0, credit: included.includes("POSTED") ? 10 : 0 } };
   } } } as never, {} as never, {} as never);
   const result = await service.trialBalance();
-  assert.equal(result.rows[0].balance, 0);
+  assert.equal(result.rows[0].balance, "0.00");
   assert.equal(result.totals.balanced, true);
 });
 

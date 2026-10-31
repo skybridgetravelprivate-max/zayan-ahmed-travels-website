@@ -134,7 +134,7 @@ test("cancellation posts balanced party-preserving offsets and audit through the
     const accounting = new AccountingService(prisma as never, new SequenceService(prisma as never), actualAudit);
     const svc = new ReservationService(prisma as never, {} as never, actualAudit, accounting);
     if (fail) { await assert.rejects(svc.cancel(user, "r", "test"), /injected/); assert.deepEqual(committed, { cancelled: false, journals: [], audits: 0 }); }
-    else { await svc.cancel(user, "r", "test"); assert.equal(committed.audits, 3); assert.equal(committed.cancelled, true); committed.journals.forEach((journal, i) => journal.lines.create.forEach((line, j) => { assert.equal(line.debit, originals[i].lines[j].credit); assert.equal(line.credit, originals[i].lines[j].debit); assert.equal(line.partyId, originals[i].lines[j].partyId); })); }
+    else { await svc.cancel(user, "r", "test"); assert.equal(committed.audits, 3); assert.equal(committed.cancelled, true); committed.journals.forEach((journal, i) => journal.lines.create.forEach((line, j) => { assert.equal(String(line.debit), originals[i].lines[j].credit.toFixed(2)); assert.equal(String(line.credit), originals[i].lines[j].debit.toFixed(2)); assert.equal(line.partyId, originals[i].lines[j].partyId); })); }
   }
 });
 

@@ -71,7 +71,7 @@ export class ReportsService {
       rows = await this.receivables();
     } else if (key === "receivables-summary") {
       const detail = await this.receivables();
-      const amount = detail.reduce((s, r) => s.plus(Number(r.debit || 0)), new Prisma.Decimal(0)).toNumber();
+      const amount = detail.reduce((s, r) => s.plus(String(r.debit || 0)), new Prisma.Decimal(0)).toFixed(2);
       rows = [{ status: "Open", parties: detail.length, debit: amount }];
     } else if (key === "trial-balance") {
       const tb = await this.accounting.trialBalance(q.to ? new Date(q.to) : undefined);
@@ -82,11 +82,11 @@ export class ReportsService {
       const pl = await this.accounting.profitLoss(from, to);
       rows = pl.rows.map((r) => ({ account: `${r.code} ${r.name}`, debit: r.type === "EXPENSE" ? r.amount : 0, credit: r.type === "REVENUE" ? r.amount : 0 }));
     }
-    const totals = { debit: 0, credit: 0, sale: 0, rooms: 0, pax: 0, count: 0 };
+    const totals = { debit: "0.00", credit: "0.00", sale: "0.00", rooms: 0, pax: 0, count: 0 };
     for (const r of rows) {
-      totals.debit = new Prisma.Decimal(totals.debit).plus(Number(r.debit ?? 0)).toNumber();
-      totals.credit = new Prisma.Decimal(totals.credit).plus(Number(r.credit ?? 0)).toNumber();
-      totals.sale = new Prisma.Decimal(totals.sale).plus(Number(r.sale ?? r.amount ?? 0)).toNumber();
+      totals.debit = new Prisma.Decimal(totals.debit).plus(String(r.debit ?? 0)).toFixed(2);
+      totals.credit = new Prisma.Decimal(totals.credit).plus(String(r.credit ?? 0)).toFixed(2);
+      totals.sale = new Prisma.Decimal(totals.sale).plus(String(r.sale ?? r.amount ?? 0)).toFixed(2);
       totals.rooms += Number(r.rooms || 0);
       totals.pax += Number(r.pax || 0);
       totals.count += Number(r.count || r.bookings || 1);
@@ -98,7 +98,7 @@ export class ReportsService {
       page,
       pageSize,
       totals,
-      check: { ...totals, tbBalanced: Math.abs(totals.debit - totals.credit) < 0.009 },
+      check: { ...totals, tbBalanced: new Prisma.Decimal(totals.debit).equals(totals.credit) },
       rows: rows.slice(start, start + pageSize),
     };
   }
