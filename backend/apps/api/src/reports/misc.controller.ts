@@ -35,7 +35,7 @@ export class ReportsController {
   ) {
     const data = await this.reports.run(key, query);
     if (query.format === "csv") {
-      const full = await this.reports.run(key, { ...query, page: "1", pageSize: "5000" });
+      const full = await this.reports.run(key, { ...query, page: "1", pageSize: "50000" });
       const rows = full.rows as Record<string, unknown>[];
       if (!rows.length) {
         res.setHeader("Content-Type", "text/csv");

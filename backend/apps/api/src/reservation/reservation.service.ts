@@ -8,6 +8,7 @@ import { AuthUser, assertCan } from "../auth/auth.types";
 import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, branchWhere } from "../auth/record-scope";
 import { AccountingService } from "../finance/accounting.service";
 import { assertHotelRoomLinks } from "./hotel-links";
+import { money, MoneyInput } from "../finance/money";
 
 export type StayRoomInput = {
   id?: string;
@@ -17,11 +18,11 @@ export type StayRoomInput = {
   occupancy?: number;
   status?: string;
   passengerIds?: string[];
-  supplierCost?: number;
-  sellingPrice?: number;
-  discount?: number;
-  tax?: number;
-  commission?: number;
+  supplierCost?: MoneyInput;
+  sellingPrice?: MoneyInput;
+  discount?: MoneyInput;
+  tax?: MoneyInput;
+  commission?: MoneyInput;
 };
 
 export type StaySegmentInput = {
@@ -49,12 +50,11 @@ export type ReservationInput = {
   branchId?: string;
   notes?: string;
   specialRequests?: string;
-  paid?: number;
+  paid?: MoneyInput;
   paymentMethod?: string;
   segments: StaySegmentInput[];
 };
 
-const money = (n: number) => new Prisma.Decimal(Number(n || 0).toFixed(2));
 
 export function nightsBetween(checkIn: Date, checkOut: Date) {
   const ms = checkOut.getTime() - checkIn.getTime();
@@ -75,24 +75,24 @@ export class ReservationService {
   ) {}
 
   private totals(segments: StaySegmentInput[]) {
-    let cost = 0;
-    let selling = 0;
-    let discount = 0;
-    let tax = 0;
-    let commission = 0;
+    let cost = new Prisma.Decimal(0);
+    let selling = new Prisma.Decimal(0);
+    let discount = new Prisma.Decimal(0);
+    let tax = new Prisma.Decimal(0);
+    let commission = new Prisma.Decimal(0);
     let rooms = 0;
     for (const seg of segments) {
       for (const rm of seg.rooms || []) {
         rooms += 1;
-        cost += Number(rm.supplierCost || 0);
-        selling += Number(rm.sellingPrice || 0);
-        discount += Number(rm.discount || 0);
-        tax += Number(rm.tax || 0);
-        commission += Number(rm.commission || 0);
+        cost = cost.plus(money(rm.supplierCost ?? 0));
+        selling = selling.plus(money(rm.sellingPrice ?? 0));
+        discount = discount.plus(money(rm.discount ?? 0));
+        tax = tax.plus(money(rm.tax ?? 0));
+        commission = commission.plus(money(rm.commission ?? 0));
       }
     }
-    const net = selling - discount + tax;
-    const profit = net - cost - commission;
+    const net = selling.minus(discount).plus(tax);
+    const profit = net.minus(cost).minus(commission);
     return { cost, selling, discount, tax, commission, net, profit, rooms };
   }
 
@@ -168,7 +168,7 @@ export class ReservationService {
   }
 
   async save(user: AuthUser, input: ReservationInput, ip?: string, transaction?: Prisma.TransactionClient, requestKey?: string): Promise<Awaited<ReturnType<ReservationService["get"]>>> {
-    if (!input.id && Number(input.paid ?? 0) !== 0) {
+    if (!input.id && input.paid !== undefined && !money(input.paid).isZero()) {
       const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(user, { ...input }, requestKey, "hotelBookingId", input.paid,
         tx => this.save(user, { ...input, paid: 0, paymentMethod: undefined }, ip, tx));
       return this.get(user, result.id);
@@ -176,9 +176,9 @@ export class ReservationService {
     assertCan(user, "hotel.booking");
     this.validateGraph(input);
     const tot = this.totals(input.segments);
-    const paid = Number(input.paid || 0);
-    if (paid - tot.net > 0.5) throw new BadRequestException("Paid amount exceeds selling total.");
-    if (tot.cost < 0 || tot.net < 0) throw new BadRequestException("Financial totals cannot be negative.");
+    const paid = money(input.paid ?? 0);
+    if (paid.minus(tot.net).greaterThan("0.5")) throw new BadRequestException("Paid amount exceeds selling total.");
+    if (tot.cost.isNegative() || tot.net.isNegative()) throw new BadRequestException("Financial totals cannot be negative.");
     const first = input.segments[0];
     const checkIn = new Date(first.checkIn);
     const checkOut = new Date(input.segments[input.segments.length - 1].checkOut);
@@ -209,11 +209,11 @@ export class ReservationService {
                 roomNumber: rm.roomNumber || null,
                 occupancy: rm.occupancy || 2,
                 status: rm.status || ((rm.passengerIds || []).length ? "ALLOCATED" : "VACANT"),
-                supplierCost: money(rm.supplierCost || 0),
-                sellingPrice: money(rm.sellingPrice || 0),
-                discount: money(rm.discount || 0),
-                tax: money(rm.tax || 0),
-                commission: money(rm.commission || 0),
+                supplierCost: money(rm.supplierCost ?? 0),
+                sellingPrice: money(rm.sellingPrice ?? 0),
+                discount: money(rm.discount ?? 0),
+                tax: money(rm.tax ?? 0),
+                commission: money(rm.commission ?? 0),
                 pax: {
                   create: (rm.passengerIds || []).map((passengerId) => ({ passengerId })),
                 },
@@ -233,7 +233,7 @@ export class ReservationService {
           assertBranch(user, existing.branchId);
           if (existing.staySegments?.some(segment => segment.rooms.some(room => room.checkinAt || ["CHECKED_IN", "CHECKED_OUT"].includes(room.status)))) throw new BadRequestException("A started stay cannot be replaced through reservation editing.");
           // These totals and parties already own posted sale/cost entries.
-          const updatePaid = input.paid === undefined ? Number(existing.paid) : paid;
+          const updatePaid = input.paid === undefined ? money(existing.paid) : paid;
           const financial = { cost: tot.cost, sellingPrice: tot.selling, discount: tot.discount, tax: tot.tax, commission: tot.commission, net: tot.net, paid: updatePaid };
           if (Object.entries(financial).some(([key, value]) => !money(value).equals(existing[key as keyof typeof existing] as Prisma.Decimal)) ||
               (input.customerId || existing.customerId) !== existing.customerId ||
@@ -258,14 +258,14 @@ export class ReservationService {
               checkOut,
               nights,
               rooms: tot.rooms,
-              cost: money(tot.cost),
-              sellingPrice: money(tot.selling),
-              discount: money(tot.discount),
-              tax: money(tot.tax),
-              commission: money(tot.commission),
-              net: money(tot.net),
-              paid: money(updatePaid),
-              balance: money(Math.max(tot.net - updatePaid, 0)),
+              cost: tot.cost,
+              sellingPrice: tot.selling,
+              discount: tot.discount,
+              tax: tot.tax,
+              commission: tot.commission,
+              net: tot.net,
+              paid: updatePaid,
+              balance: Prisma.Decimal.max(tot.net.minus(updatePaid), new Prisma.Decimal(0)),
               supplierId: input.supplierId || first.supplierId || existing.supplierId,
               notes: input.notes,
               specialRequests: input.specialRequests,
@@ -295,14 +295,14 @@ export class ReservationService {
             checkOut,
             nights,
             rooms: tot.rooms,
-            cost: money(tot.cost),
-            sellingPrice: money(tot.selling),
-            discount: money(tot.discount),
-            tax: money(tot.tax),
-            commission: money(tot.commission),
-            net: money(tot.net),
-            paid: money(paid),
-            balance: money(Math.max(tot.net - paid, 0)),
+            cost: tot.cost,
+            sellingPrice: tot.selling,
+            discount: tot.discount,
+            tax: tot.tax,
+            commission: tot.commission,
+            net: tot.net,
+            paid,
+            balance: Prisma.Decimal.max(tot.net.minus(paid), new Prisma.Decimal(0)),
             supplierId: input.supplierId || first.supplierId,
             agentId: input.agentId,
             branchId: input.branchId || user.defaultBranchId,
@@ -316,7 +316,7 @@ export class ReservationService {
           userId: user.id,
           module: "reservation",
           sourceId: row.id,
-          amount: Number(tot.net),
+          amount: tot.net,
           customerId: input.customerId,
           branchId: input.branchId || user.defaultBranchId,
           memo: `Hotel ${row.bookingNumber}`,
@@ -326,7 +326,7 @@ export class ReservationService {
           userId: user.id,
           module: "reservation",
           sourceId: row.id,
-          amount: Number(tot.cost),
+          amount: tot.cost,
           supplierId: input.supplierId || first.supplierId,
           branchId: input.branchId,
           memo: `Hotel cost ${row.bookingNumber}`,
@@ -583,10 +583,10 @@ export class ReservationService {
         await this.accounting.postJournal({
           db: tx, userId: user.id, date: new Date(), memo: `Cancellation of ${journal.entryNumber}`,
           kind: "CANCELLATION", module: "reservation", sourceId: bookingId, branchId: journal.branchId,
-          lines: journal.lines.map(line => ({ accountId: line.accountId, debit: Number(line.credit), credit: Number(line.debit), partyType: line.partyType || undefined, partyId: line.partyId || undefined })),
+          lines: journal.lines.map(line => ({ accountId: line.accountId, debit: line.credit, credit: line.debit, partyType: line.partyType || undefined, partyId: line.partyId || undefined })),
         });
       }
-      const row = await tx.hotelBooking.update({ where: { id: bookingId }, data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED", balance: money(-Number(booking.paid)) } });
+      const row = await tx.hotelBooking.update({ where: { id: bookingId }, data: { cancelledAt: new Date(), cancelReason: reason.trim(), status: "CANCELLED", balance: money(booking.paid).negated() } });
       await this.audit.log({ userId: user.id, action: "cancel", entity: "HotelBooking", entityId: bookingId, before: booking, after: row, ipAddress: ip, db: tx });
       return row;
     });
@@ -600,7 +600,7 @@ export class ReservationService {
       await tx.$queryRaw`SELECT id FROM "HotelBooking" WHERE id = ${bookingId} FOR UPDATE`;
       const booking = await this.get(user, bookingId, tx);
       if (booking.cancelledAt) throw new BadRequestException("Reservation is cancelled.");
-      if (Number(booking.net) !== 0 || Number(booking.cost) !== 0 || Number(booking.paid) !== 0) throw new BadRequestException("Posted financial reservations cannot be split.");
+      if (!money(booking.net).isZero() || !money(booking.cost).isZero() || !money(booking.paid).isZero()) throw new BadRequestException("Posted financial reservations cannot be split.");
       const ownedIds = new Set(booking.staySegments.flatMap(segment => segment.rooms.map(room => room.id)));
       if (roomIds.some(id => !ownedIds.has(id))) throw new NotFoundException("Room does not belong to this reservation");
       if (roomIds.length >= ownedIds.size) throw new BadRequestException("A split must leave at least one room in the original reservation.");
@@ -628,11 +628,11 @@ export class ReservationService {
             occupancy: r.occupancy,
             status: r.status,
             passengerIds: r.pax.map((p) => p.passengerId),
-            supplierCost: Number(r.supplierCost),
-            sellingPrice: Number(r.sellingPrice),
-            discount: Number(r.discount),
-            tax: Number(r.tax),
-            commission: Number(r.commission),
+            supplierCost: r.supplierCost,
+            sellingPrice: r.sellingPrice,
+            discount: r.discount,
+            tax: r.tax,
+            commission: r.commission,
           })),
         });
       }

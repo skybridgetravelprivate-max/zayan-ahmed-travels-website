@@ -52,8 +52,10 @@ export class ReportsService {
   }
 
   async run(key: string, q: Record<string, string>) {
+    const isCsv = q.format === "csv";
+    const maxPageSize = isCsv ? 50000 : 200;
     const page = Math.max(1, Number(q.page || 1));
-    const pageSize = Math.min(200, Math.max(1, Number(q.pageSize || 50)));
+    const pageSize = Math.min(maxPageSize, Math.max(1, Number(q.pageSize || (isCsv ? 50000 : 50))));
     let rows: Record<string, unknown>[] = [];
     if (key.startsWith("ksa-") || key.startsWith("makkah-") || key.startsWith("madinah-")) {
       rows = await this.ksa(key, q);
@@ -112,30 +114,32 @@ export class ReportsService {
         rooms: { include: { pax: true } },
       },
     });
-    if (segs.length) {
-      return segs.map((s) => ({
-        city: cityKey(s.hotel.city, s.hotel.name),
-        hotel: s.hotel.name,
-        hotelId: s.hotelId,
-        checkIn: s.checkIn,
-        checkOut: s.checkOut,
-        nights: s.nights,
-        rooms: s.rooms.length || 1,
-        pax: s.rooms.reduce((n, r) => n + r.pax.length, 0),
-        roomTypes: s.rooms.map((r) => r.roomTypeId || "Room"),
-        sale: s.rooms.reduce((n, r) => n.plus(r.sellingPrice), new Prisma.Decimal(0)).toNumber(),
-        ref: s.booking.bookingNumber,
-        customer: s.booking.customer?.fullName || "",
-        customerId: s.booking.customerId,
-        passengers: s.rooms.flatMap((r) => r.pax.map((p) => p.passengerId)).join(", "),
-        status: s.status,
-      }));
-    }
+    const segRows = segs.map((s) => ({
+      city: cityKey(s.hotel.city, s.hotel.name),
+      hotel: s.hotel.name,
+      hotelId: s.hotelId,
+      checkIn: s.checkIn,
+      checkOut: s.checkOut,
+      nights: s.nights,
+      rooms: s.rooms.length || 1,
+      pax: s.rooms.reduce((n, r) => n + r.pax.length, 0),
+      roomTypes: s.rooms.map((r) => r.roomTypeId || "Room"),
+      sale: s.rooms.reduce((n, r) => n.plus(r.sellingPrice), new Prisma.Decimal(0)).toNumber(),
+      ref: s.booking.bookingNumber,
+      customer: s.booking.customer?.fullName || "",
+      customerId: s.booking.customerId,
+      passengers: s.rooms.flatMap((r) => r.pax.map((p) => p.passengerId)).join(", "),
+      status: s.status,
+    }));
+    const segBookingIds = [...new Set(segs.map((s) => s.bookingId))];
     const books = await this.prisma.hotelBooking.findMany({
-      where: { cancelledAt: null },
+      where: {
+        cancelledAt: null,
+        ...(segBookingIds.length ? { id: { notIn: segBookingIds } } : {}),
+      },
       include: { hotel: true, customer: true },
     });
-    return books.map((b) => ({
+    const legacyRows = books.map((b) => ({
       city: cityKey(b.hotel.city, b.hotel.name),
       hotel: b.hotel.name,
       hotelId: b.hotelId,
@@ -152,6 +156,7 @@ export class ReportsService {
       passengers: "",
       status: b.status,
     }));
+    return [...segRows, ...legacyRows];
   }
 
   private async ksa(key: string, q: Record<string, string>) {
@@ -233,9 +238,10 @@ export class ReportsService {
           const d = t.toISOString().slice(0, 10);
           if (q.from && d < q.from) continue;
           if (q.to && d > q.to) continue;
-          if (!by[d]) by[d] = { date: d, hotel: s.hotel, rooms: 0, pax: 0 };
-          by[d].rooms += s.rooms;
-          by[d].pax += s.pax;
+          const k = `${s.hotelId || s.hotel}_${d}`;
+          if (!by[k]) by[k] = { date: d, hotel: s.hotel, rooms: 0, pax: 0 };
+          by[k].rooms += s.rooms;
+          by[k].pax += s.pax;
         }
       });
       return Object.values(by);
@@ -276,17 +282,30 @@ export class ReportsService {
       map[k].count += 1;
       map[k].sale = new Prisma.Decimal(map[k].sale).plus(sale).toNumber();
     };
-    const umrah = await this.prisma.umrahBooking.findMany();
+    const dateWhere = q.from || q.to ? {
+      createdAt: {
+        ...(q.from ? { gte: new Date(q.from) } : {}),
+        ...(q.to ? { lte: new Date(q.to + (q.to.length === 10 ? "T23:59:59.999Z" : "")) } : {}),
+      },
+    } : {};
+    const umrah = await this.prisma.umrahBooking.findMany({ where: dateWhere });
     umrah.forEach((u) => bump("UMRAH", u.status, Number(u.net)));
-    const hotels = await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null } });
+    const hotels = await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null, ...dateWhere } });
     hotels.forEach((h) => bump(h.kind === "STAR" ? "STAR" : "RESERVATION", h.status, Number(h.net)));
-    const tickets = await this.prisma.ticketSale.findMany();
+    const tickets = await this.prisma.ticketSale.findMany({ where: dateWhere });
     tickets.forEach((t) => bump("TICKETS", t.status, Number(t.net)));
     return Object.values(map);
   }
 
   private async approvalPax(q: Record<string, string>) {
+    const dateWhere = q.from || q.to ? {
+      createdAt: {
+        ...(q.from ? { gte: new Date(q.from) } : {}),
+        ...(q.to ? { lte: new Date(q.to + (q.to.length === 10 ? "T23:59:59.999Z" : "")) } : {}),
+      },
+    } : {};
     const passengers = await this.prisma.umrahBookingPassenger.findMany({
+      where: dateWhere.createdAt ? { booking: dateWhere } : undefined,
       include: { booking: true, passenger: true },
     });
     const map: Record<string, { status: string; count: number }> = {};
