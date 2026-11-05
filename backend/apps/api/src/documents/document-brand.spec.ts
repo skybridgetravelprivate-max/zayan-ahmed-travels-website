@@ -56,3 +56,29 @@ test("new booking summaries authorize owners before fetching printable details",
   await assert.rejects(controller.visaApplication("v", {} as never, { user } as never));
   assert.equal(draws, 0);
 });
+
+
+test("quotation PDF identifies its stored currency in included and excluded modes", async () => {
+  for (const currency of ["PKR", "USD"]) {
+    for (const mode of ["INCLUDED", "EXCLUDED"]) {
+      const quotation = {
+        id: "q", quotationNumber: "SYN-Q", currency, branchId: null,
+        issuedAt: new Date("2026-11-05"), customer: null, items: [],
+        sellingTotal: { toFixed: () => "500000.50" },
+        discount: { toFixed: () => "0.00" }, tax: { toFixed: () => "0.00" },
+        net: { toFixed: () => "500000.50" },
+      };
+      const values: string[][] = [];
+      const doc = { fontSize() { return this; }, text() { return this; }, moveDown() {} };
+      const pdf = {
+        parseMode: (value: string) => value,
+        pipeA4: (_res: unknown, _reference: string, _mode: string, draw: (document: unknown) => void) => draw(doc),
+        writeKV: (_doc: unknown, rows: string[][]) => values.push(...rows),
+        customerLines: () => [],
+      };
+      const controller = new PdfController({ quotation: { findUnique: async () => quotation } } as never, pdf as never);
+      await controller.quotation("q", mode, {} as never, { user: { isSuperAdmin: true } } as never);
+      assert.ok(values.some(([label, value]) => label === "Currency" && value === currency));
+    }
+  }
+});

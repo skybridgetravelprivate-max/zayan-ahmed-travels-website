@@ -249,6 +249,7 @@ export class PdfController {
       this.pdf.writeKV(doc, [
         ["Document no.", q.quotationNumber],
         ["Date", q.issuedAt?.toDateString?.() || ""],
+        ["Currency", q.currency],
         ["Customer", q.customer?.fullName ?? "-"],
       ]);
       doc.moveDown();
