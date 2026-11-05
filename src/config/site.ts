@@ -40,23 +40,17 @@ export const companyContact = {
 } as const;
 
 export const navItems = [
-  { label: "Home", href: "/" },
   { label: "Flights", href: "/flights" },
-  { label: "Tickets", href: "/tickets" },
-  { label: "Hotels", href: "/hotels" },
-  { label: "Tours", href: "/tours" },
+  { label: "Groups", href: "/group-booking" },
   { label: "Umrah", href: "/umrah" },
+  { label: "Hotels", href: "/hotels" },
+  { label: "Holidays", href: "/tours" },
   { label: "Visas", href: "/visa" },
-  { label: "Transport", href: "/transport" },
-  { label: "Insurance", href: "/insurance" },
   { label: "Offers", href: "/offers" },
   { label: "Guide", href: "/travel-guide" },
   { label: "About", href: "/about" },
   { label: "Contact", href: "/contact" },
-  { label: "Corporate", href: "/corporate" },
-  { label: "Groups", href: "/group-booking" },
   { label: "Account", href: "/account" },
-  { label: "Staff login", href: "/admin/login" },
 ] as const;
 
 export const policyLinks = [

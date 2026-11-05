@@ -69,9 +69,19 @@ test("PG17: reservation split, occupancy and cancellation remain atomic", { skip
       const cancelled = await service.get(actor, booking.id);
       assert.equal(cancelled.balance.toFixed(2), "-30.00");
       assert.equal(await db.journalEntry.count({ where: { sourceId: booking.id, kind: "CANCELLATION" } }), 2);
-      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === customer.id)?.balance, -30);
+      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === customer.id)?.balance, "-30.00");
       const journals = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: true } });
       for (const journal of journals) assert.equal(journal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
+    });
+    await t.test("large string amounts preserve cents in room, booking, sale and cancellation postings", async () => {
+      const booking = await service.save(actor, { ...input([{}]), segments: [{ hotelId: hotel.id, checkIn: "2052-01-01", checkOut: "2052-01-02", rooms: [{ sellingPrice: "99999999999999.99", supplierCost: "123.45" }] }] });
+      assert.equal(booking.net.toFixed(2), "99999999999999.99");
+      assert.equal(booking.staySegments[0].rooms[0].sellingPrice.toFixed(2), "99999999999999.99");
+      const sale = await db.journalEntry.findFirstOrThrow({ where: { sourceId: booking.id, kind: "SALE" }, include: { lines: true } });
+      assert.ok(sale.lines.some(line => line.debit.toFixed(2) === "99999999999999.99"));
+      await service.cancel(actor, booking.id, "Synthetic precision acceptance");
+      const all = await db.journalEntry.findMany({ where: { sourceId: booking.id }, include: { lines: true } });
+      assert.equal(all.flatMap(journal => journal.lines).reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
     });
   } finally { await db.$disconnect(); }
 });

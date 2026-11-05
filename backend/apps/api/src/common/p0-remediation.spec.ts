@@ -130,7 +130,7 @@ function workflowHarness(failCost = false) {
     let locked = false;
     const tx = {
       $queryRaw: async (parts: TemplateStringsArray) => { assert.match(parts.join("?"), /FOR UPDATE/); locked = true; return []; },
-      quotation: { findUnique: async () => { assert.ok(locked); return { id: "quote", branchId: "a", customerId: "customer", status: active.quoteStatus, net: 100, costTotal: 50, sellingTotal: 100, discount: 0, tax: 0 }; }, update: async () => { active.quoteStatus = "CONVERTED"; } },
+      quotation: { findUnique: async () => { assert.ok(locked); return { id: "quote", branchId: "a", customerId: "customer", currency: "PKR", status: active.quoteStatus, net: 100, costTotal: 50, sellingTotal: 100, discount: 0, tax: 0 }; }, update: async () => { active.quoteStatus = "CONVERTED"; } },
       customer: { findUnique: async () => ({ branchId: "a" }) },
       umrahBooking: { findFirst: async () => active.bookings[0], create: async ({ data }: { data: object }) => { const b = { id: "booking", ...data }; active.bookings.push(b); return b; } },
       umrahGroup: { findUnique: async () => { assert.ok(locked); return { branchId: "a", reservedSeats: active.reserved, totalSeats: 5 }; }, update: async ({ data }: { data: { reservedSeats: number } }) => { active.reserved = data.reservedSeats; return data; } },

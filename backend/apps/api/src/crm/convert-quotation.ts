@@ -16,6 +16,7 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
     if (q.leadId) await assertRecordBranch(tx, user, "lead", q.leadId);
     const existing = await tx.umrahBooking.findFirst({ where: { quotationId: id } });
     if (existing) return existing;
+    if (q.currency !== "PKR") throw new BadRequestException("Posting requires PKR under the approved control-account mapping. Review other currencies with finance.");
     if (["CONVERTED", "REJECTED", "EXPIRED"].includes(q.status)) throw new ConflictException("Quotation cannot be converted in its current state");
     const lead = q.leadId ? await tx.lead.findUnique({ where: { id: q.leadId } }) : null;
     const bookingNumber = await seq.next("umrah-bk", "ZAT-UM", tx);
@@ -36,7 +37,7 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
         net: q.net,
         paid: 0,
         balance: q.net,
-        profit: Number(q.net) - Number(q.costTotal),
+        profit: new Prisma.Decimal(q.net).minus(q.costTotal),
         status: "QUOTED",
         workflowStep: "QUOTATION",
       },
@@ -47,7 +48,7 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
       userId: user.id,
       module: "umrah",
       sourceId: booking.id,
-      amount: Number(booking.net),
+      amount: booking.net,
       customerId: booking.customerId,
       branchId: booking.branchId,
       memo: `Umrah ${booking.bookingNumber}`,
@@ -57,7 +58,7 @@ export async function convertQuotationToBooking(tx: Prisma.TransactionClient, se
       userId: user.id,
       module: "umrah",
       sourceId: booking.id,
-      amount: Number(booking.cost),
+      amount: booking.cost,
       branchId: booking.branchId,
       memo: `Umrah cost ${booking.bookingNumber}`,
     });

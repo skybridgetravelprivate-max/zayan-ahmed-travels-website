@@ -20,6 +20,7 @@ export function SiteChrome({
 }) {
   const pathname = usePathname();
   const isStaffRoute =
+    pathname === "/agent" || pathname?.startsWith("/agent/") === true ||
     pathname === "/reset-password" ||
     pathname === "/admin" ||
     pathname?.startsWith("/admin/") === true;

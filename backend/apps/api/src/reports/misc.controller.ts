@@ -9,6 +9,7 @@ import { AuthUser } from "../auth/auth.types";
 import { MailService } from "../common/mail.service";
 import { WhatsAppService } from "../common/whatsapp.service";
 
+import { reportCsv } from "./csv";
 import { ReportsService } from "./reports.service";
 import { StaffAccessService } from "../auth/staff-access.service";
 
@@ -33,16 +34,14 @@ export class ReportsController {
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ) {
-    const data = await this.reports.run(key, query);
+    const data = await this.reports.run(key, query.format === "csv" ? { ...query, page: "1", pageSize: "50000" } : query);
     if (query.format === "csv") {
-      const full = await this.reports.run(key, { ...query, page: "1", pageSize: "50000" });
-      const rows = full.rows as Record<string, unknown>[];
+      const rows = data.rows as Record<string, unknown>[];
       if (!rows.length) {
         res.setHeader("Content-Type", "text/csv");
         return res.send("");
       }
-      const keys = Object.keys(rows[0]);
-      const csv = [keys.join(","), ...rows.map((r) => keys.map((k) => JSON.stringify(r[k] ?? "")).join(","))].join("\n");
+      const csv = reportCsv(rows);
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", `attachment; filename="${key}.csv"`);
       return res.send(csv);
@@ -92,7 +91,7 @@ export class ExportController {
       return res.send("");
     }
     const keys = Object.keys(rows[0]).filter((k) => k !== "passwordHash");
-    const csv = [keys.join(","), ...rows.map((r) => keys.map((k) => JSON.stringify(r[k] ?? "")).join(","))].join("\n");
+    const csv = reportCsv(rows, keys);
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="${resource}.csv"`);
     res.send(csv);

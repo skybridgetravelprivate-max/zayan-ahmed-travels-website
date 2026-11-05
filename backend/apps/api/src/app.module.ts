@@ -1,3 +1,6 @@
+import { AgencyReviewController } from "./agency/agency-review.controller";
+import { AgencyController } from "./agency/agency.controller";
+import { AgencyService } from "./agency/agency.service";
 import {
   WebsiteMediaController,
   PublicWebsiteController,
@@ -71,6 +74,8 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60000, limit: 120 }] }),
   ],
   controllers: [
+    AgencyController,
+    AgencyReviewController,
     WebsiteCmsController,
     WebsiteMediaController,
     PublicWebsiteController,
@@ -103,6 +108,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     HealthController,
   ],
   providers: [
+    AgencyService,
     WebsiteCmsService,
     ManagementService,
     ManagementOriginGuard,

@@ -10,10 +10,10 @@ test("hotel room and approval-group report sales preserve fractional cents witho
   const db = { hotelStaySegment: { findMany: async () => [segment([room("0.10"), room("0.20")]), segment([room("0.10")]), segment([room("0.20")])] }, hotelBooking: empty, ticketSale: empty, umrahBooking: { findMany: async () => [{status:"CONFIRMED",net:"0.10"},{status:"CONFIRMED",net:"0.20"}] } };
   const reports = new ReportsService(db as never, {} as never);
   const hotel = await reports.run("hotel-detail-3", {});
-  assert.equal(hotel.rows[0].sale, 0.6);
+  assert.equal(hotel.rows[0].sale, "0.60");
   assert.equal(hotel.totals.sale, "0.60");
   const approvals = await reports.run("approval-booking", {});
-  assert.equal(approvals.rows[0].sale, 0.3);
+  assert.equal(approvals.rows[0].sale, "0.30");
   assert.equal(approvals.totals.sale, "0.30");
 });
 
@@ -32,10 +32,10 @@ test("transport daily sales use selling value and exact decimal daily/report tot
       { tripDate: new Date("2050-01-02"), sellingPrice: "0.20", cost: "0.04", net: "0.16", paid: "0.02" },
     ] } };
   const result = await new ReportsService(db as never, {} as never).run("daily-sale", {});
-  assert.equal(result.rows[0].sale, 0.1);
-  assert.equal(result.rows[0].profit, 0.07);
+  assert.equal(result.rows[0].sale, "0.10");
+  assert.equal(result.rows[0].profit, "0.07");
   assert.equal(result.totals.sale, "0.30");
-  assert.equal(result.rows[1].profit, 0.16);
+  assert.equal(result.rows[1].profit, "0.16");
 });
 
 test("party ledger running totals preserve exact cents across receipt and credit entries", async () => {

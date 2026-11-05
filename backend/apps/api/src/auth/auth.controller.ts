@@ -19,6 +19,7 @@ import { MailService } from "../common/mail.service";
 import { JwtAuthGuard } from "./jwt.guard";
 import { UseGuards } from "@nestjs/common";
 import { AuthUser } from "./auth.types";
+import { agencyForUser, requireAgencyEnabled } from "../agency/agency-access";
 import { isLoginPortal, loginPortalForRoles } from "./login-portal";
 
 const ACCESS_COOKIE = "access_token";
@@ -51,6 +52,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    if (body.portal === "agent") requireAgencyEnabled();
     const identifier = typeof body.identifier === "string" ? body.identifier.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
     if (body.portal !== undefined && !isLoginPortal(body.portal)) throw new BadRequestException("Invalid sign-in portal");
@@ -74,7 +76,16 @@ export class AuthController {
     const ok = await verifyPassword(password, user.passwordHash);
     // Resolve portal membership from stored roles, never from the client.
     let portalMatches = true;
-    if (ok && body.portal !== undefined) {
+    let isAgency = false;
+    if (ok && process.env.AGENT_PORTAL_ENABLED === "true") {
+      const member = await this.prisma.agencyMembership.findUnique({ where: { userId: user.id } });
+      if (member) {
+        isAgency = true;
+        try { await agencyForUser(this.prisma, user.id); } catch { portalMatches = false; }
+        portalMatches = portalMatches && body.portal === "agent";
+      } else if (body.portal === "agent") portalMatches = false;
+    }
+    if (ok && !isAgency && body.portal !== undefined) {
       const roles = await this.prisma.userRole.findMany({ where: { userId: user.id }, include: { role: true } });
       portalMatches = loginPortalForRoles(roles.map(row => row.role.name)) === body.portal;
     }
@@ -110,6 +121,7 @@ export class AuthController {
     const session = await this.prisma.session.create({
       data: {
         userId: user.id,
+        audience: isAgency ? "agent" : "staff",
         refreshTokenHash: refreshHash,
         userAgent: req.headers["user-agent"],
         ipAddress: ip,
@@ -117,7 +129,7 @@ export class AuthController {
       },
     });
     const access = await this.jwt.signAsync(
-      { sub: user.id, sid: session.id },
+      { sub: user.id, sid: session.id, portal: isAgency ? "agent" : "staff" },
       { secret: process.env.JWT_SECRET, expiresIn: 15 * 60 },
     );
     res.cookie(ACCESS_COOKIE, access, this.cookieOpts(15 * 60 * 1000));
@@ -142,6 +154,7 @@ export class AuthController {
     }
     const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
     if (!user || user.deletedAt || user.status !== "ACTIVE" || (user.lockedUntil && user.lockedUntil > now)) throw new UnauthorizedException();
+    if (session.audience === "agent") await agencyForUser(this.prisma, user.id);
     const refreshRaw = randomBytes(48).toString("hex");
     const refreshTokenHash = createHash("sha256").update(refreshRaw).digest("hex");
     const rotated = await this.prisma.session.updateMany({
@@ -155,7 +168,7 @@ export class AuthController {
       throw new UnauthorizedException("Session must be renewed");
     }
     const access = await this.jwt.signAsync(
-      { sub: session.userId, sid: session.id },
+      { sub: session.userId, sid: session.id, portal: session.audience },
       { secret: process.env.JWT_SECRET, expiresIn: 15 * 60 },
     );
     res.cookie(ACCESS_COOKIE, access, this.cookieOpts(15 * 60 * 1000));

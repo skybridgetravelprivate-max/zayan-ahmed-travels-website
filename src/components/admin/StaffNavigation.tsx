@@ -86,6 +86,7 @@ export function StaffNavigation({
         >
           All modules
         </Link>
+        {modules.some(module => module.key === "agents") && <Link prefetch={false} href="/admin/agencies" onClick={close} className={linkStyle} aria-current={pathname === "/admin/agencies" ? "page" : undefined}>Agency requests</Link>}
         {unavailable && (
           <p role="status" className="p-3 text-sm text-muted">
             Module navigation is unavailable. Reload to retry.

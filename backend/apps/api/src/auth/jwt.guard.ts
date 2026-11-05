@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../common/prisma.service";
+import { agencyForUser } from "../agency/agency-access";
 import { AuthUser } from "./auth.types";
 
 @Injectable()
@@ -20,6 +21,14 @@ export class JwtAuthGuard implements CanActivate {
       const session = await this.prisma.session.findUnique({ where: { id: payload.sid } });
       if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt <= new Date()) {
         throw new UnauthorizedException();
+      }
+      const audience = session.audience || "staff";
+      if ((payload.portal || "staff") !== audience) throw new UnauthorizedException();
+      const agencyPath = /^\/(?:api\/)?v1\/agent(?:\/|$)/.test(req.path || "");
+      if (agencyPath && audience !== "agent") throw new UnauthorizedException();
+      if (audience === "agent") {
+        if (!agencyPath) throw new UnauthorizedException();
+        await agencyForUser(this.prisma, payload.sub);
       }
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },

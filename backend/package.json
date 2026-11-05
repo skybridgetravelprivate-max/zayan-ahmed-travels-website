@@ -38,7 +38,9 @@
     "test:admin:browser": "node scripts/admin-experience-journey.cjs",
     "test:hotel:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/reservation/hotel-operations.pg17.spec.ts",
     "test:hotel:browser": "node scripts/hotel-operations-journey.cjs",
-    "test:recovery:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/password-recovery.pg17.spec.ts"
+    "test:recovery:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/auth/password-recovery.pg17.spec.ts",
+    "test:agency": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test apps/api/src/reports/report-release.spec.ts apps/api/src/reports/reports-completion.spec.ts apps/api/src/auth/login-portal.spec.ts",
+    "test:agency:pg17": "node ./node_modules/tsx/dist/cli.mjs --tsconfig apps/api/tsconfig.json --test --test-concurrency=1 apps/api/src/agency/agency.pg17.spec.ts apps/api/src/reservation/reservation-completion.pg17.spec.ts"
   },
   "engines": {
     "node": ">=20"

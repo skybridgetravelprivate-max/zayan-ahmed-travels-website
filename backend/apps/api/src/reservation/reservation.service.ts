@@ -91,7 +91,9 @@ export class ReservationService {
         commission = commission.plus(money(rm.commission ?? 0));
       }
     }
-    const net = selling.minus(discount).plus(tax);
+    // Validate aggregate precision before any reservation or posting is written.
+    const net = money(selling.minus(discount).plus(tax));
+    for (const amount of [cost, selling, discount, tax, commission]) money(amount);
     const profit = net.minus(cost).minus(commission);
     return { cost, selling, discount, tax, commission, net, profit, rooms };
   }

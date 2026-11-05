@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
 
-export function StaffLoginForm({ portal = "staff", label = "Staff" }: { portal?: "super-admin" | "admin" | "staff"; label?: string }) {
+export function StaffLoginForm({ portal = "staff", label = "Staff" }: { portal?: "super-admin" | "admin" | "staff" | "agent"; label?: string }) {
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
   const active = useRef(false);
@@ -14,7 +14,7 @@ export function StaffLoginForm({ portal = "staff", label = "Staff" }: { portal?:
     try {
       const response = await fetch("/api/auth/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: String(fields.get("identifier") || "").trim(), password: fields.get("password"), rememberMe: fields.get("remember") === "on", portal }) });
       const body = await response.json().catch(() => null);
-      if (response.ok && body?.ok === true) { window.location.assign("/admin"); return; }
+      if (response.ok && body?.ok === true) { window.location.assign(portal === "agent" ? "/agent" : "/admin"); return; }
       setNotice(response.status === 429 ? "Too many attempts. Wait a minute and try again." : response.status === 401 ? "Sign-in failed. Check your credentials and choose the portal for your assigned role, or try later if your account is locked." : "Staff sign-in is temporarily unavailable. Try again later.");
     } catch { setNotice("Could not reach staff sign-in. Try again later."); }
     finally {
@@ -32,7 +32,7 @@ export function StaffLoginForm({ portal = "staff", label = "Staff" }: { portal?:
   </form>;
 }
 
-export function StaffLogoutButton() {
+export function StaffLogoutButton({ destination = "/admin/login" }: { destination?: "/admin/login" | "/agent/login" }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   async function logout() {
@@ -40,7 +40,7 @@ export function StaffLogoutButton() {
     try {
       const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
       if (!response.ok) throw new Error();
-      window.location.assign("/admin/login");
+      window.location.assign(destination);
     } catch { setFailed(true); setPending(false); }
   }
   return <div><button onClick={logout} disabled={pending} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold disabled:opacity-60">{pending ? "Signing out…" : "Sign out"}</button>{failed && <p role="alert">Sign out failed. Please try again.</p>}</div>;

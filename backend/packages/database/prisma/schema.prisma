@@ -236,6 +236,7 @@ model CompanySettings {
 }
 
 model Branch {
+  agencies Agent[]
   id        String   @id @default(cuid())
   name      String
   code      String   @unique
@@ -313,6 +314,8 @@ model RolePermission {
 }
 
 model User {
+  agencyMembership AgencyMembership?
+  agencyRequests AgencyRequest[]
   id              String     @id @default(cuid())
   email           String     @unique
   username        String     @unique
@@ -363,6 +366,7 @@ model UserBranch {
 }
 
 model Session {
+  audience String @default("staff")
   id               String    @id @default(cuid())
   userId           String
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -656,6 +660,7 @@ model Lead {
   customers      Customer[]
   leadNotes      LeadNote[]
   communications Communication[]
+  agencyRequests AgencyRequest[]
 }
 
 model LeadNote {
@@ -1760,6 +1765,10 @@ model VisaApplication {
 }
 
 model Agent {
+  branchId String?
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  members AgencyMembership[]
+  requests AgencyRequest[]
   id        String   @id @default(cuid())
   name      String
   company   String?
@@ -2104,4 +2113,39 @@ model CmsHtmlBlock {
   name      String
   html      String
   updatedAt DateTime @updatedAt
+}
+
+// External agency membership is deliberately separate from internal roles.
+// A user belongs to at most one agency; an agency may have multiple users.
+model AgencyMembership {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  agentId String
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@index([agentId])
+}
+
+// Requests never constitute supplier execution or a financial posting.
+model AgencyRequest {
+  leadId String?
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  id String @id @default(cuid())
+  agentId String
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  requestKey String @db.VarChar(80)
+  fingerprint String @db.VarChar(64)
+  kind String
+  subject String
+  message String
+  status String @default("RECEIVED")
+  reply String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([leadId])
+  @@unique([agentId, requestKey])
+  @@index([agentId, createdAt])
 }

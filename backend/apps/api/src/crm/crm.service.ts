@@ -1,3 +1,4 @@
+import { money } from "../finance/money";
 import { isSerializationConflict } from "../common/serialization-conflict";
 import { RESOURCES, actionPermission } from "../resources/registry";
 import { refreshFollowUpLeads } from "./follow-up-state";
@@ -375,8 +376,7 @@ export class CrmService {
       const lead = await tx.lead.findUnique({ where: { id } });
       if (!lead) throw new NotFoundException();
       assertBranch(user, lead.branchId);
-      const selling = Number(lead.budget ?? 0);
-      if (!Number.isFinite(selling) || selling < 0) throw new BadRequestException("Invalid lead budget");
+      const selling = money(lead.budget ?? "0");
       const customer = await convertLeadToCustomer(this.prisma, this.seq, this.audit, id, user, tx);
       const quotationNumber = await this.seq.next("quotation", "ZAT-QT", tx);
       const q = await tx.quotation.create({
@@ -407,8 +407,7 @@ export class CrmService {
       assertBranch(user, lead.branchId);
       let quote = await tx.quotation.findFirst({ where: { leadId: id }, orderBy: { createdAt: "desc" } });
       if (!quote) {
-        const amount = Number(lead.budget ?? 0);
-        if (!Number.isFinite(amount) || amount < 0) throw new BadRequestException("Invalid lead budget");
+        const amount = money(lead.budget ?? "0");
         quote = await tx.quotation.create({ data: {
           quotationNumber: await this.seq.next("quotation", "ZAT-QT", tx),
           customerId: customer.id, leadId: id, agentId: lead.assignedAgentId,

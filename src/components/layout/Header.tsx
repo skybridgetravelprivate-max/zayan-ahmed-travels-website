@@ -1,4 +1,5 @@
 "use client";
+import { focusedNavigation, primaryServices } from "@/lib/public-navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -26,18 +27,8 @@ export function Header({
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
   }, [open]);
-  const primary = new Set([
-    "Home",
-    "Flights",
-    "Hotels",
-    "Umrah",
-    "Visas",
-    "Tours",
-    "Offers",
-    "About",
-    "Contact",
-  ]);
-  const links = settings.nav;
+  const primary = new Set(primaryServices.map(item => item.href));
+  const links = focusedNavigation(settings.nav);
   const current = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
   const link = (n: { label: string; href: string }) => (
@@ -107,7 +98,7 @@ export function Header({
         <nav aria-label="Primary" className="hidden xl:block">
           <ul className="flex items-center gap-1">
             {links
-              .filter((n) => primary.has(n.label))
+              .filter((n) => primary.has(n.href))
               .map((n) => (
                 <li key={n.href}>{link(n)}</li>
               ))}
@@ -120,7 +111,7 @@ export function Header({
                 </summary>
                 <ul className="absolute right-0 z-50 mt-2 grid w-56 rounded-xl border border-line bg-white p-2 shadow-lg">
                   {links
-                    .filter((n) => !primary.has(n.label))
+                    .filter((n) => !primary.has(n.href))
                     .map((n) => (
                       <li key={n.href}>{link(n)}</li>
                     ))}

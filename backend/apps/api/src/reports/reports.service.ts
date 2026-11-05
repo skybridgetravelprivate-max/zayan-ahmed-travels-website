@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { AccountingService } from "../finance/accounting.service";
@@ -52,10 +52,18 @@ export class ReportsService {
   }
 
   async run(key: string, q: Record<string, string>) {
+    if (!CATALOG.some(report => report.key === key)) throw new BadRequestException("Unknown report");
+    for (const field of ["from", "to"] as const) {
+      if (q[field] && (!/^\d{4}-\d{2}-\d{2}$/.test(q[field]) || Number.isNaN(Date.parse(q[field])) || new Date(q[field]).toISOString().slice(0, 10) !== q[field])) {
+        throw new BadRequestException("Report dates must be valid YYYY-MM-DD values");
+      }
+    }
+    if (q.from && q.to && q.from > q.to) throw new BadRequestException("Report start must not follow its end");
     const isCsv = q.format === "csv";
     const maxPageSize = isCsv ? 50000 : 200;
     const page = Math.max(1, Number(q.page || 1));
     const pageSize = Math.min(maxPageSize, Math.max(1, Number(q.pageSize || (isCsv ? 50000 : 50))));
+    if (!Number.isSafeInteger(page) || !Number.isSafeInteger(pageSize)) throw new BadRequestException("Use positive whole-number pagination");
     let rows: Record<string, unknown>[] = [];
     if (key.startsWith("ksa-") || key.startsWith("makkah-") || key.startsWith("madinah-")) {
       rows = await this.ksa(key, q);
@@ -93,9 +101,11 @@ export class ReportsService {
       totals.pax += Number(r.pax || 0);
       totals.count += Number(r.count || r.bookings || 1);
     }
+    if (isCsv && rows.length > maxPageSize) throw new BadRequestException("Export exceeds 50000 rows; narrow the report filters");
     const start = (page - 1) * pageSize;
     return {
       key,
+      dateBasis: key.startsWith("approval-") ? "booking.createdAt (UTC)" : undefined,
       total: rows.length,
       page,
       pageSize,
@@ -124,7 +134,7 @@ export class ReportsService {
       rooms: s.rooms.length || 1,
       pax: s.rooms.reduce((n, r) => n + r.pax.length, 0),
       roomTypes: s.rooms.map((r) => r.roomTypeId || "Room"),
-      sale: s.rooms.reduce((n, r) => n.plus(r.sellingPrice), new Prisma.Decimal(0)).toNumber(),
+      sale: s.rooms.reduce((n, r) => n.plus(r.sellingPrice), new Prisma.Decimal(0)).toFixed(2),
       ref: s.booking.bookingNumber,
       customer: s.booking.customer?.fullName || "",
       customerId: s.booking.customerId,
@@ -149,7 +159,7 @@ export class ReportsService {
       rooms: b.rooms,
       pax: 0,
       roomTypes: [b.roomTypeId || "Room"],
-      sale: Number(b.net || b.sellingPrice),
+      sale: new Prisma.Decimal(b.net ?? b.sellingPrice).toFixed(2),
       ref: b.bookingNumber,
       customer: b.customer?.fullName || "",
       customerId: b.customerId,
@@ -247,14 +257,14 @@ export class ReportsService {
       return Object.values(by);
     }
     if (key === "hotel-detail-3") {
-      const by: Record<string, { hotel: string; room_type: string; rooms: number; pax: number; sale: number }> = {};
+      const by: Record<string, { hotel: string; room_type: string; rooms: number; pax: number; sale: string }> = {};
       stays.forEach((s) => {
         const type = s.roomTypes[0] || "Room";
         const k = s.hotel + type;
-        if (!by[k]) by[k] = { hotel: s.hotel, room_type: type, rooms: 0, pax: 0, sale: 0 };
+        if (!by[k]) by[k] = { hotel: s.hotel, room_type: type, rooms: 0, pax: 0, sale: "0.00" };
         by[k].rooms += s.rooms;
         by[k].pax += s.pax;
-        by[k].sale = new Prisma.Decimal(by[k].sale).plus(s.sale).toNumber();
+        by[k].sale = new Prisma.Decimal(by[k].sale).plus(s.sale).toFixed(2);
       });
       return Object.values(by);
     }
@@ -274,13 +284,13 @@ export class ReportsService {
   }
 
   private async approvalBooking(q: Record<string, string>) {
-    const map: Record<string, { module: string; status: string; count: number; sale: number }> = {};
-    const bump = (module: string, status: string, sale: number) => {
+    const map: Record<string, { module: string; status: string; count: number; sale: string }> = {};
+    const bump = (module: string, status: string, sale: string) => {
       if (q.status && q.status !== "all" && status !== q.status) return;
       const k = module + status;
-      if (!map[k]) map[k] = { module, status, count: 0, sale: 0 };
+      if (!map[k]) map[k] = { module, status, count: 0, sale: "0.00" };
       map[k].count += 1;
-      map[k].sale = new Prisma.Decimal(map[k].sale).plus(sale).toNumber();
+      map[k].sale = new Prisma.Decimal(map[k].sale).plus(sale).toFixed(2);
     };
     const dateWhere = q.from || q.to ? {
       createdAt: {
@@ -289,11 +299,11 @@ export class ReportsService {
       },
     } : {};
     const umrah = await this.prisma.umrahBooking.findMany({ where: dateWhere });
-    umrah.forEach((u) => bump("UMRAH", u.status, Number(u.net)));
+    umrah.forEach((u) => bump("UMRAH", u.status, String(u.net)));
     const hotels = await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null, ...dateWhere } });
-    hotels.forEach((h) => bump(h.kind === "STAR" ? "STAR" : "RESERVATION", h.status, Number(h.net)));
+    hotels.forEach((h) => bump(h.kind === "STAR" ? "STAR" : "RESERVATION", h.status, String(h.net)));
     const tickets = await this.prisma.ticketSale.findMany({ where: dateWhere });
-    tickets.forEach((t) => bump("TICKETS", t.status, Number(t.net)));
+    tickets.forEach((t) => bump("TICKETS", t.status, String(t.net)));
     return Object.values(map);
   }
 
@@ -319,23 +329,23 @@ export class ReportsService {
   }
 
   private async dailySale(q: Record<string, string>) {
-    const by: Record<string, { date: string; count: number; sale: number; cost: number; paid: number; profit: number }> = {};
-    const add = (date: Date | null, sale: number, cost: number, paid: number) => {
+    const by: Record<string, { date: string; count: number; sale: string; cost: string; paid: string; profit: string }> = {};
+    const add = (date: Date | null, sale: string, cost: string, paid: string) => {
       if (!date) return;
       if (!inRange(date, q.from, q.to)) return;
       const d = date.toISOString().slice(0, 10);
-      if (!by[d]) by[d] = { date: d, count: 0, sale: 0, cost: 0, paid: 0, profit: 0 };
+      if (!by[d]) by[d] = { date: d, count: 0, sale: "0.00", cost: "0.00", paid: "0.00", profit: "0.00" };
       by[d].count += 1;
-      by[d].sale = new Prisma.Decimal(by[d].sale).plus(sale).toNumber();
-      by[d].cost = new Prisma.Decimal(by[d].cost).plus(cost).toNumber();
-      by[d].paid = new Prisma.Decimal(by[d].paid).plus(paid).toNumber();
-      by[d].profit = new Prisma.Decimal(by[d].sale).minus(by[d].cost).toNumber();
+      by[d].sale = new Prisma.Decimal(by[d].sale).plus(sale).toFixed(2);
+      by[d].cost = new Prisma.Decimal(by[d].cost).plus(cost).toFixed(2);
+      by[d].paid = new Prisma.Decimal(by[d].paid).plus(paid).toFixed(2);
+      by[d].profit = new Prisma.Decimal(by[d].sale).minus(by[d].cost).toFixed(2);
     };
-    (await this.prisma.umrahBooking.findMany()).forEach((u) => add(u.departureDate || u.createdAt, Number(u.net), Number(u.cost), Number(u.paid)));
-    (await this.prisma.ticketSale.findMany()).forEach((t) => add(t.createdAt, Number(t.net), Number(t.cost), Number(t.paidAmount || 0)));
-    (await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null } })).forEach((h) => add(h.checkIn, Number(h.net), Number(h.cost), Number(h.paid)));
-    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, Number(t.sellingPrice), Number(t.cost), Number(t.paid || 0)));
-    (await this.prisma.starBooking.findMany()).forEach((s) => add(s.createdAt, Number(s.sellingPrice), Number(s.cost), Number(s.paid)));
+    (await this.prisma.umrahBooking.findMany()).forEach((u) => add(u.departureDate || u.createdAt, String(u.net), String(u.cost), String(u.paid)));
+    (await this.prisma.ticketSale.findMany()).forEach((t) => add(t.createdAt, String(t.net), String(t.cost), String(t.paidAmount || 0)));
+    (await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null } })).forEach((h) => add(h.checkIn, String(h.net), String(h.cost), String(h.paid)));
+    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, String(t.sellingPrice), String(t.cost), String(t.paid || 0)));
+    (await this.prisma.starBooking.findMany()).forEach((s) => add(s.createdAt, String(s.sellingPrice), String(s.cost), String(s.paid)));
     return Object.values(by).sort((a, b) => a.date.localeCompare(b.date));
   }
 

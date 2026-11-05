@@ -1,4 +1,4 @@
-export type LoginPortal = "super-admin" | "admin" | "staff";
+export type LoginPortal = "super-admin" | "admin" | "staff" | "agent";
 
 // Role membership selects an entry point; permissions and branch scope remain
 // owned by the existing request guards. A portal never grants a role.
@@ -9,5 +9,5 @@ export function loginPortalForRoles(names: string[]): LoginPortal {
 }
 
 export function isLoginPortal(value: unknown): value is LoginPortal {
-  return value === "super-admin" || value === "admin" || value === "staff";
+  return value === "super-admin" || value === "admin" || value === "staff" || value === "agent";
 }

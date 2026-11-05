@@ -1,3 +1,4 @@
+import { focusedNavigation } from "@/lib/public-navigation";
 import Link from "next/link";
 import { policyLinks } from "@/config/site";
 import type { WebsiteSettings } from "@/lib/website-content";
@@ -19,7 +20,7 @@ export function Footer({
         <nav aria-label="Footer">
           <h2 className="font-bold">Quick links</h2>
           <ul className="mt-4 grid grid-cols-2 gap-2 text-sm">
-            {settings.nav.map((n) => (
+            {focusedNavigation(settings.nav).map((n) => (
               <li key={n.href}>
                 <Link
                   prefetch={false}
@@ -59,7 +60,9 @@ export function Footer({
           </ul>
         </div>
         <div>
-          <h2 className="font-bold">Stay connected</h2>
+          <h2 className="font-bold">Account access</h2>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm"><Link className="underline" href="/agent/login">Agent access</Link><Link className="underline" href="/admin/login">Staff access</Link></div>
+          <h2 className="mt-6 font-bold">Stay connected</h2>
           {settings.whatsapp && (
             <a
               className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-white/40 px-4 py-2 text-sm font-bold"

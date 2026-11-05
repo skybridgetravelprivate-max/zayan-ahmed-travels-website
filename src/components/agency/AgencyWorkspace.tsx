@@ -1,0 +1,45 @@
+"use client";
+import { AgencyBookingFilters } from "./AgencyBookingFilters";
+import { AgencyRequestForm } from "./AgencyRequestForm";
+import { PackageCatalogue, type CataloguePackage } from "./PackageCatalogue";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { StaffLogoutButton } from "@/components/admin/StaffSessionForm";
+
+type Row = Record<string, string | number | boolean | null>;
+type Data = { rows?: Row[]; total?: number; hasNext?: boolean; notice?: string; availability?: string; umrah?: Row[]; hotels?: Row[]; tickets?: Row[] };
+type Identity = { agency: { id: string; name: string; company: string | null }; userId: string };
+const sections = ["Dashboard", "Catalogue", "Requests", "Quotations", "Bookings", "Documents & statements"] as const;
+type Section = typeof sections[number];
+const labels: Record<string, string> = { operationalReference: "Staff enquiry reference", quotationReferences: "Related quotations", name: "Package", kind: "Request type", subject: "Subject", message: "Your message", status: "Status", reply: "Staff reply", createdAt: "Submitted", quotationNumber: "Quotation", bookingNumber: "Booking", ticketNumber: "Ticket record", departureDate: "Departure", returnDate: "Return", checkIn: "Check-in", checkOut: "Check-out", net: "Selling total", paid: "Recorded paid", paidAmount: "Recorded paid", balance: "Booking balance", currency: "Currency", expiresAt: "Expires", departureCity: "From", arrivalCity: "To", adultPrice: "Adult price", childPrice: "Child price", infantPrice: "Infant price", durationDays: "Days", makkahNights: "Makkah nights", madinahNights: "Madinah nights", roomType: "Room option", includesVisa: "Visa included", includesTransport: "Transport included", includesMeals: "Meals included", includesZiyarat: "Ziyarat included" };
+function Cards({ rows }: { rows: Row[] }) {
+  if (!rows.length) return <p className="rounded-xl border border-line p-5">No records to show.</p>;
+  return <div className="grid gap-4 lg:grid-cols-2">{rows.map((row, i) => <article key={String(row.id || i)} className="min-w-0 rounded-xl border border-line bg-white p-5"><dl className="grid gap-3 sm:grid-cols-2">{Object.entries(row).filter(([key, value]) => key in labels && (value !== null || ["departureDate", "returnDate", "checkIn", "checkOut"].includes(key))).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-xs font-semibold uppercase text-muted">{labels[key]}</dt><dd className="mt-1 break-words text-sm">{value === null ? "Date to be confirmed" : typeof value === "boolean" ? value ? "Yes" : "No" : String(value)}</dd></div>)}</dl></article>)}</div>;
+}
+export function AgencyWorkspace() {
+  const [identity, setIdentity] = useState<Identity | null>(null), [section, setSection] = useState<Section>("Dashboard"), [data, setData] = useState<Data>({}), [page, setPage] = useState(1), [bookingQuery, setBookingQuery] = useState(""), [loading, setLoading] = useState(true), [error, setError] = useState("");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const activeSection = useRef<Section>("Dashboard");
+  useEffect(() => {
+    const abort = new AbortController();
+    fetch("/api/v1/agent/me", { cache: "no-store", signal: abort.signal }).then(async response => { if (!response.ok) throw Error(); const identity: Identity = await response.json();
+      setIdentity(identity); }).catch(() => { if (!abort.signal.aborted) setError("Agent access could not be verified. Sign in with an approved agency account."); }).finally(() => { if (!abort.signal.aborted) setLoading(false); });
+    return () => abort.abort();
+  }, []);
+  useEffect(() => {
+    if (!identity) return;
+    const endpoint = ({ Catalogue: "catalogue", Requests: "requests", Quotations: "quotations", Bookings: "bookings", Dashboard: "requests" } as Record<string, string>)[section];
+    if (!endpoint) return;
+    const abort = new AbortController();
+    fetch(`/api/v1/agent/${endpoint}?page=${page}${section === "Bookings" && bookingQuery ? "&" + bookingQuery : ""}`, { cache: "no-store", signal: abort.signal }).then(async response => { if (!response.ok) throw Error(); setData(await response.json()); }).catch(() => { if (!abort.signal.aborted) setError("Records are unavailable. Retry or sign in again; no submission was made."); }).finally(() => { if (!abort.signal.aborted) setLoading(false); });
+    return () => abort.abort();
+  }, [identity, section, page, bookingQuery]);
+  async function refreshHistory() {
+    const response = await fetch("/api/v1/agent/requests", { cache: "no-store" });
+    if (!response.ok) throw new Error("History unavailable");
+    const latest = await response.json();
+    if (activeSection.current === "Requests") { setPage(1); setData(latest); }
+  }
+  if (!identity) return <section className="mx-auto max-w-lg p-8"><h1 className="text-2xl font-bold">Agent workspace</h1><p role="status" className="mt-5">{loading ? "Checking access…" : error}</p><Link href="/agent/login" className="mt-5 inline-block underline">Agent sign in</Link></section>;
+  return <div className="mx-auto max-w-7xl px-4 py-8"><header className="flex flex-wrap items-center justify-between gap-5"><div><Link href="/" className="text-sm underline">Zayan Ahmed Travels</Link><p className="mt-2 text-xl font-bold text-zayan-blue">{identity.agency.company || identity.agency.name}</p></div><StaffLogoutButton destination="/agent/login" /></header><div className="mt-8 grid gap-6 lg:grid-cols-[220px_1fr]"><nav aria-label="Agent workspace" className="rounded-xl border border-line p-3"><ul className="space-y-2">{sections.map(item => <li key={item}><button className={`min-h-11 w-full rounded-lg p-3 text-left font-semibold ${section === item ? "bg-zayan-blue text-white" : "hover:bg-sky-50"}`} aria-current={section === item ? "page" : undefined} onClick={() => { if (item === section) return; activeSection.current = item; setLoading(item !== "Documents & statements"); setError(""); setData({}); setSection(item); setPage(1); heading.current?.focus(); }}>{item}</button></li>)}</ul></nav><section className="min-w-0" aria-busy={loading}><h1 ref={heading} tabIndex={-1} className="text-3xl font-bold text-zayan-blue">{section}</h1>{section === "Dashboard" && <p className="my-5">Recent agency requests and staff replies. Use the catalogue to explore packages and request a quotation. All bookings require staff confirmation.</p>}{section === "Documents & statements" ? <div className="mt-5 rounded-xl border border-line p-5"><h2 className="font-bold">Publication and reconciliation review required</h2><p className="mt-3">Agent document downloads and a posted agency statement are not available in this candidate. Contact staff for approved documents. Booking balances are shown separately under Bookings.</p><p className="mt-3">Credit, commissions, ticket execution and refund payouts are unavailable.</p></div> : <>{(data.notice || data.availability) && <p className="my-4 rounded-lg bg-sky-50 p-4">{data.notice || data.availability}</p>}{loading && <p role="status" className="my-5">Loading records…</p>}{error && <div role="alert" className="my-5 space-y-3 text-red-700"><p>{error}</p><button type="button" onClick={() => window.location.reload()} className="mr-4 underline">Reload workspace</button><Link href="/agent/login" className="underline">Agent sign in</Link></div>}{section === "Bookings" && <AgencyBookingFilters key={bookingQuery} query={bookingQuery} onApply={query => { if (query === bookingQuery && page === 1) return; setLoading(true); setError(""); setData({}); setPage(1); setBookingQuery(query); }} />}{section === "Requests" && <AgencyRequestForm agencyId={identity.agency.id} userId={identity.userId} refreshHistory={refreshHistory} />}{data.rows && (section === "Catalogue" ? <PackageCatalogue key={page} packages={data.rows as unknown as CataloguePackage[]} /> : <Cards rows={data.rows} />)}{(["umrah", "hotels", "tickets"] as const).map(key => data[key] && <div key={key} className="mt-6"><h2 className="mb-3 text-xl font-bold capitalize">{key}</h2><Cards rows={data[key]!} /></div>)}{data.total !== undefined && <div className="mt-6 flex items-center gap-5"><button disabled={page === 1 || loading} onClick={() => { setLoading(true); setError(""); setData({}); setPage(page - 1); }} className="min-h-11 rounded-lg border px-4 disabled:opacity-40">Previous</button><span>Page {page} · {data.total} records</span><button disabled={(data.hasNext === undefined ? page * 30 >= data.total : !data.hasNext) || loading} onClick={() => { setLoading(true); setError(""); setData({}); setPage(page + 1); }} className="min-h-11 rounded-lg border px-4 disabled:opacity-40">Next</button></div>}</>}</section></div></div>;
+}

@@ -49,7 +49,14 @@ function loadDotEnv(file) {
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
-    if (process.env[key] === undefined || process.env[key] === "") process.env[key] = val;
+    // Any configured maintenance closure wins over inherited or later false values.
+    // Keep the normal environment precedence for secrets and all other settings.
+    const maintenance = key === "BUSINESS_WRITES_DISABLED" || key === "RECEIPT_WRITES_DISABLED";
+    if (maintenance && val && val !== "false") {
+      process.env[key] = val;
+    } else if (process.env[key] === undefined || process.env[key] === "") {
+      process.env[key] = val;
+    }
   }
 }
 

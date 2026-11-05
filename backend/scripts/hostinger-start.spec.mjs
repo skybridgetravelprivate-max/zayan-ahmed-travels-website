@@ -93,3 +93,57 @@ for (const mode of ["api", "all"]) {
     }
   });
 }
+
+test("saved maintenance survives inherited false and a fresh startup reopens only when all sources allow", async () => {
+  const http = await import("node:http");
+  const helper = (await import("./hostinger-api-path.cjs")).default;
+  const source = readFileSync(path.join(scriptsDir, "hostinger-start.cjs"), "utf8");
+  const localEnv = path.resolve(scriptsDir, "..", "..", ".env");
+  const cases = [
+    ["false", "true", true],
+    ["true", "false", true],
+    ["false", "unexpected", true],
+    ["false", "false", false],
+  ];
+  for (const flag of ["BUSINESS_WRITES_DISABLED", "RECEIPT_WRITES_DISABLED"]) {
+    for (const [inherited, saved, closed] of cases) {
+      let server;
+      const dependencies = {
+        http: { createServer(handler) { server = http.createServer(handler); return server; } },
+        fs: {
+          existsSync: file => file === localEnv,
+          statSync: () => ({ isFile: () => true }),
+          readFileSync: () => `${flag}=${saved}\nJWT_SECRET=file-value\n`,
+        },
+        path,
+        url: { parse: () => ({}) },
+        "./hostinger-api-path.cjs": helper,
+        next: () => ({ prepare: async () => {}, getRequestHandler: () => (_req, res) => { res.writeHead(200); res.end("ready"); } }),
+      };
+      const env = { START_MODE: "web", PORT: "0", GATEWAY_HOST: "127.0.0.1", JWT_SECRET: secretMarker, [flag]: inherited };
+      await vm.runInNewContext(source, {
+        require(name) { assert.ok(name in dependencies); return dependencies[name]; },
+        __dirname: scriptsDir, process: { env }, console: { log() {}, error() {} }, URL,
+      });
+      try {
+        if (!server.listening) await new Promise(resolve => server.once("listening", resolve));
+        const base = `http://127.0.0.1:${server.address().port}`;
+        const response = await fetch(`${base}/api/v1/finance/receipts`, { method: "POST" });
+        assert.equal(response.status, 503);
+        assert.equal(response.headers.get("retry-after"), closed ? "60" : "3", `${flag}: inherited=${inherited}, saved=${saved}`);
+        assert.equal(response.headers.get("cache-control"), closed ? "private, no-store" : "no-store");
+        await response.text();
+        const page = await fetch(`${base}/admin`);
+        assert.equal(page.status, 200);
+        await page.text();
+        const read = await fetch(`${base}/api/v1/finance/receipts`);
+        assert.equal(read.headers.get("retry-after"), "3", "reads bypass maintenance and reach API dispatch");
+        await read.text();
+        assert.equal(env.JWT_SECRET, secretMarker, "normal secret precedence is preserved");
+      } finally {
+        server.closeAllConnections();
+        await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      }
+    }
+  }
+});

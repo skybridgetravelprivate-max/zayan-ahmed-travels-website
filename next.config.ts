@@ -38,6 +38,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/reset-password", headers: [...privateNoStore, { key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/admin", headers: privateNoStore },
+      { source: "/agent", headers: privateNoStore },
+      { source: "/agent/:path*", headers: privateNoStore },
       { source: "/admin/:path*", headers: privateNoStore },
       { source: "/account", headers: privateNoStore },
       { source: "/my-bookings", headers: privateNoStore },
