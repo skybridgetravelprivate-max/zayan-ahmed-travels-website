@@ -16,7 +16,7 @@ export class DocumentPdfService {
   async company() { return this.prisma.companySettings.findFirst(); }
   parseMode(raw?: string): PriceMode { return String(raw || "").toUpperCase() === "EXCLUDED" ? "EXCLUDED" : "INCLUDED"; }
 
-  async pipeA4(res: Response, filename: string, mode: PriceMode, draw: (doc: PDFKit.PDFDocument, co: Brand) => void) {
+  async pipeA4(res: Response, filename: string, mode: PriceMode, draw: (doc: PDFKit.PDFDocument, co: Brand) => void, options: { includeCompanyTerms?: boolean; download?: boolean } = {}) {
     const co = await this.company();
     const brand: Brand = {
       name: co?.companyName?.trim() || agencyBrand.name,
@@ -43,7 +43,7 @@ export class DocumentPdfService {
     header(); doc.on("pageAdded", header);
     try {
       draw(doc, brand);
-      if (brand.terms) {
+      if (brand.terms && options.includeCompanyTerms !== false) {
         doc.moveDown().font("Helvetica-Bold").fontSize(9).fillColor(blue).text("Terms & instructions");
         doc.font("Helvetica").fontSize(8).fillColor("#455668").text(String(brand.terms).slice(0, 1200));
       }
@@ -66,7 +66,7 @@ export class DocumentPdfService {
       }
     } catch (error) { doc.destroy(); throw error; }
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${safeDownloadName(filename)}.pdf"`);
+    res.setHeader("Content-Disposition", `${options.download ? "attachment" : "inline"}; filename="${safeDownloadName(filename)}.pdf"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     doc.on("error", () => res.destroy());

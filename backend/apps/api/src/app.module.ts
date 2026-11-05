@@ -1,3 +1,4 @@
+import { AgencyDocumentsController } from "./agency/agency-documents.controller";
 import { AgencyReviewController } from "./agency/agency-review.controller";
 import { AgencyController } from "./agency/agency.controller";
 import { AgencyService } from "./agency/agency.service";
@@ -75,6 +76,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
   ],
   controllers: [
     AgencyController,
+    AgencyDocumentsController,
     AgencyReviewController,
     WebsiteCmsController,
     WebsiteMediaController,

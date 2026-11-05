@@ -40,7 +40,7 @@ export class AgencyService {
 
   async identity(userId: string) {
     const agency = await agencyForUser(this.db, userId);
-    return { userId, agency: { id: agency.id, name: agency.name, company: agency.company }, capabilities: ["catalogue", "requests", "quotations", "bookings"] };
+    return { userId, documentsEnabled: process.env.AGENT_DOCUMENTS_ENABLED === "true", agency: { id: agency.id, name: agency.name, company: agency.company }, capabilities: ["catalogue", "requests", "quotations", "bookings"] };
   }
 
   async catalogue(userId: string, page?: string) {
