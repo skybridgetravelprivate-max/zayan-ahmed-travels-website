@@ -16,6 +16,7 @@ import {
 } from "@/config/site";
 import { siteGraph } from "@/lib/structured-data";
 import "./globals.css";
+import "./public-travel.css";
 
 const jakarta = localFont({
   src: "./fonts/plus-jakarta-sans-latin.woff2",
@@ -50,7 +51,7 @@ const defaultMetadata: Metadata = {
     locale: "en",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
   },
 };
 

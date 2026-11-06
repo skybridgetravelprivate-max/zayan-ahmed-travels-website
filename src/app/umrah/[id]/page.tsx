@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { TravelIllustration } from "@/components/home/TravelIllustration";
+import { TravelIcon } from "@/components/ui/TravelIcon";
 import { UmrahInquiry } from "@/components/umrah/UmrahInquiry";
 import { Button } from "@/components/ui/Button";
 import type { PublicUmrahPackage } from "@/lib/public-umrah";
 import { site } from "@/config/site";
 import { getPublicUmrahPackages } from "@/server/crm-umrah";
+import type { TravelPreferences } from "@/lib/travel-inquiry";
 
 type PackagePageProps = {
   params: Promise<{ id: string }>;
@@ -24,6 +25,10 @@ function publishedRows(item: PublicUmrahPackage) {
     ["Arrival", item.arrivalCity],
     ["Departure date", item.departureDate],
     ["Return date", item.returnDate],
+    ["Makkah hotel", item.makkahHotel?.name || ""],
+    ["Makkah distance (desk-listed)", item.makkahHotel?.distance || ""],
+    ["Madinah hotel", item.madinahHotel?.name || ""],
+    ["Madinah distance (desk-listed)", item.madinahHotel?.distance || ""],
     [
       "Makkah nights",
       item.makkahNights === null ? "" : String(item.makkahNights),
@@ -72,6 +77,14 @@ export default async function UmrahPackagePage({ params }: PackagePageProps) {
         intro="Published package details. Nothing is reserved from this page."
         rows={publishedRows(item)}
         description={item.description}
+        reference={`/umrah/${encodeURIComponent(item.id)}`}
+        initialJourney={{
+          from: item.departureCity,
+          departure: item.departureDate,
+          ...(item.makkahNights !== null && item.madinahNights !== null
+            ? { nights: String(item.makkahNights + item.madinahNights) }
+            : {}),
+        }}
       />
     );
   }
@@ -85,12 +98,18 @@ function PackageDetail({
   intro,
   rows,
   description,
+  reference,
+  initialJourney,
 }: {
   eyebrow: string;
   name: string;
   intro: string;
   rows: readonly [string, string][];
   description: string;
+  reference: string;
+  initialJourney: Partial<
+    Pick<TravelPreferences, "from" | "departure" | "nights">
+  >;
 }) {
   return (
     <>
@@ -115,8 +134,8 @@ function PackageDetail({
       <div className="px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.4fr_0.8fr]">
           <div className="space-y-8">
-            <div className="overflow-hidden rounded-3xl">
-              <TravelIllustration />
+            <div className="travel-card-art overflow-hidden rounded-3xl">
+              <TravelIcon name="umrah" />
             </div>
             {description ? (
               <section>
@@ -147,7 +166,11 @@ function PackageDetail({
         </div>
       </div>
 
-      <UmrahInquiry />
+      <UmrahInquiry
+        destination={name}
+        reference={reference}
+        initialJourney={initialJourney}
+      />
     </>
   );
 }

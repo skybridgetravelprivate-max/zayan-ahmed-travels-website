@@ -1,5 +1,6 @@
 import { getWebsitePages } from "@/server/website-content";
 import type { MetadataRoute } from "next";
+import { getPublicUmrahPackages } from "@/server/crm-umrah";
 import {
   allowSearchIndexing,
   navItems,
@@ -8,6 +9,8 @@ import {
 } from "@/config/site";
 
 const staticPaths = [
+  "/",
+  "/get-free-quote",
   ...navItems
     .filter(
       (item) => item.href !== "/account" && !item.href.startsWith("/admin"),
@@ -20,11 +23,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (!allowSearchIndexing()) return [];
 
   const origin = siteOrigin();
-  const published = await getWebsitePages();
+  const [published, packages] = await Promise.all([
+    getWebsitePages(),
+    getPublicUmrahPackages(),
+  ]);
   const builtin = new Set<string>(staticPaths);
   const paths = [
     ...new Set([
       ...staticPaths,
+      ...packages.map((p) => `/umrah/${encodeURIComponent(p.id)}`),
       ...published
         .filter((p) => p.slug !== "site-settings")
         .map((p) =>

@@ -15,12 +15,25 @@ function dateField(value: unknown) {
 }
 
 function nightCount(value: unknown) {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 60) return null;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > 60
+  )
+    return null;
   return value;
 }
 
 function flag(value: unknown) {
   return typeof value === "boolean" ? value : null;
+}
+
+function publicHotel(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const hotel = value as Record<string, unknown>;
+  const name = textField(hotel.name, 200);
+  return name ? { name, distance: textField(hotel.distance, 200) } : null;
 }
 
 function readPackage(row: unknown): PublicUmrahPackage | null {
@@ -42,12 +55,14 @@ function readPackage(row: unknown): PublicUmrahPackage | null {
     flightInfo: textField(record.flightInfo, 200),
     makkahNights: nightCount(record.makkahNights),
     madinahNights: nightCount(record.madinahNights),
+    makkahHotel: publicHotel(record.makkahHotel),
+    madinahHotel: publicHotel(record.madinahHotel),
     roomType: textField(record.roomType, 80),
     includesTransport: flag(record.includesTransport),
     includesVisa: flag(record.includesVisa),
     includesMeals: flag(record.includesMeals),
     includesZiyarat: flag(record.includesZiyarat),
-    description: textField(record.description, 400),
+    description: textField(record.description, 20000),
   };
 }
 

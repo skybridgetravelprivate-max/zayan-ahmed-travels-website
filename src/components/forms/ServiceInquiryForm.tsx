@@ -7,6 +7,7 @@ import {
   type InquiryNotice,
 } from "@/components/forms/inquiry-notice";
 import type { InquiryType } from "@/lib/inquiries";
+import type { PreparedInquiry } from "@/lib/travel-inquiry";
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-white/30 bg-white px-3 py-2.5 text-sm text-foreground focus:border-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange";
@@ -15,20 +16,25 @@ export function ServiceInquiryForm({
   type,
   submitLabel,
   context,
+  details,
 }: {
   type: InquiryType;
   submitLabel: string;
   context?: string;
+  details?: PreparedInquiry;
 }) {
   const baseId = useId();
   const pendingRef = useRef(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<InquiryNotice | null>(null);
+  const [confirmedContext, setConfirmedContext] = useState<string | null>(null);
+  const contextKey = context ?? "";
+  const received = confirmedContext === contextKey;
   const fieldErrors = notice?.tone === "error" ? notice.fields : {};
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pendingRef.current) return;
+    if (pendingRef.current || received) return;
     pendingRef.current = true;
     setPending(true);
     setNotice(null);
@@ -50,22 +56,22 @@ export function ServiceInquiryForm({
             : {}),
           ...(type === "umrah"
             ? {
-                destination: data.get("destination"),
-                travelDate: data.get("travelDate"),
-                travellers: data.get("travellers"),
+                destination: details?.destination ?? data.get("destination"),
+                travelDate: details?.travelDate ?? data.get("travelDate"),
+                travellers: details?.travellers ?? data.get("travellers"),
               }
             : {}),
           ...(type === "visa"
             ? {
-                destination: data.get("destination"),
-                travelDate: data.get("travelDate"),
+                destination: details?.destination ?? data.get("destination"),
+                travelDate: details?.travelDate ?? data.get("travelDate"),
               }
             : {}),
           ...(type === "tour"
             ? {
-                destination: data.get("destination"),
-                travelDate: data.get("travelDate"),
-                travellers: data.get("travellers"),
+                destination: details?.destination ?? data.get("destination"),
+                travelDate: details?.travelDate ?? data.get("travelDate"),
+                travellers: details?.travellers ?? data.get("travellers"),
               }
             : {}),
           ...(type === "transport"
@@ -81,11 +87,14 @@ export function ServiceInquiryForm({
             : data.get("message"),
         }),
       });
-      setNotice(await readInquiryNotice(response));
+      const result = await readInquiryNotice(response);
+      setNotice(result);
+      if (result.tone === "success") setConfirmedContext(contextKey);
     } catch {
       setNotice({
         tone: "error",
-        message: "The inquiry could not be sent. Try again later.",
+        message:
+          "Delivery was not confirmed. Your details are preserved. Check with the travel desk before resending.",
         fields: {},
       });
     } finally {
@@ -154,7 +163,7 @@ export function ServiceInquiryForm({
           />
         </label>
       ) : null}
-      {type === "umrah" ? (
+      {type === "umrah" && !details ? (
         <>
           <label
             htmlFor={`${baseId}-destination`}
@@ -213,7 +222,7 @@ export function ServiceInquiryForm({
           </label>
         </>
       ) : null}
-      {type === "visa" ? (
+      {type === "visa" && !details ? (
         <>
           <label
             htmlFor={`${baseId}-destination`}
@@ -252,7 +261,7 @@ export function ServiceInquiryForm({
           </label>
         </>
       ) : null}
-      {type === "tour" ? (
+      {type === "tour" && !details ? (
         <>
           <label
             htmlFor={`${baseId}-destination`}
@@ -391,11 +400,15 @@ export function ServiceInquiryForm({
         htmlFor={`${baseId}-message`}
         className="block text-sm font-medium sm:col-span-2"
       >
-        {type === "corporate" ? "Request details" : "Message"}
+        {context
+          ? "Additional notes (optional)"
+          : type === "corporate"
+            ? "Request details"
+            : "Message"}
         <textarea
           id={`${baseId}-message`}
           name="message"
-          required
+          required={!context}
           rows={4}
           maxLength={4000 - (context ? context.length + 2 : 0)}
           className={fieldClass}
@@ -407,10 +420,10 @@ export function ServiceInquiryForm({
         />
       </label>
       <div className="sm:col-span-2">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Sending…" : submitLabel}
+        <Button type="submit" disabled={pending || received}>
+          {pending ? "Sending…" : received ? "Inquiry received" : submitLabel}
         </Button>
-        {notice ? (
+        {notice && (notice.tone === "error" || received) ? (
           <p
             role={notice.tone === "success" ? "status" : "alert"}
             className="mt-3 text-sm font-medium text-white"
@@ -418,6 +431,18 @@ export function ServiceInquiryForm({
             {notice.message}
           </p>
         ) : null}
+        {received && (
+          <button
+            type="button"
+            className="mt-3 block min-h-11 text-sm underline"
+            onClick={() => {
+              setConfirmedContext(null);
+              setNotice(null);
+            }}
+          >
+            Prepare another inquiry
+          </button>
+        )}
       </div>
     </form>
   );

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { policyLinks } from "@/config/site";
 import type { WebsiteSettings } from "@/lib/website-content";
 import { defaultWebsiteSettings } from "@/config/website";
+import { telephoneLink, whatsappLink } from "@/lib/travel-inquiry";
 export function Footer({
   settings = defaultWebsiteSettings,
 }: {
@@ -38,10 +39,7 @@ export function Footer({
           <ul className="mt-4 space-y-3 text-sm leading-6">
             {settings.phones.map((p) => (
               <li key={p}>
-                <a
-                  href={`tel:${p.replace(/[^+0-9]/g, "")}`}
-                  className="hover:underline"
-                >
+                <a href={telephoneLink(p)} className="hover:underline">
                   {p}
                 </a>
               </li>
@@ -61,14 +59,24 @@ export function Footer({
         </div>
         <div>
           <h2 className="font-bold">Account access</h2>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm"><Link className="underline" href="/agent/login">Agent access</Link><Link className="underline" href="/admin/login">Staff access</Link></div>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm">
+            <Link className="underline" href="/account">
+              Customer account
+            </Link>
+            <Link className="underline" href="/agent/login">
+              Agent access
+            </Link>
+            <Link className="underline" href="/admin/login">
+              Staff access
+            </Link>
+          </div>
           <h2 className="mt-6 font-bold">Stay connected</h2>
           {settings.whatsapp && (
             <a
               className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-white/40 px-4 py-2 text-sm font-bold"
               target="_blank"
               rel="noopener noreferrer"
-              href={`https://wa.me/${settings.whatsapp}`}
+              href={whatsappLink(settings.whatsapp)}
             >
               Chat on WhatsApp ↗
             </a>

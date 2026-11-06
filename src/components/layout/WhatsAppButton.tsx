@@ -1,5 +1,6 @@
 import { defaultWebsiteSettings } from "@/config/website";
 import type { WebsiteSettings } from "@/lib/website-content";
+import { whatsappLink } from "@/lib/travel-inquiry";
 /** Shared by public and staff pages. Only opens WhatsApp when clicked. */
 export function WhatsAppButton({
   settings = defaultWebsiteSettings,
@@ -10,14 +11,14 @@ export function WhatsAppButton({
   return (
     <aside
       aria-label="WhatsApp contact"
-      className="shrink-0 border-t border-line bg-surface px-4 py-4 print:hidden"
+      className="travel-contact-bar shrink-0 print:hidden"
     >
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-medium text-foreground">
+      <div className="travel-container">
+        <p className="text-sm font-medium">
           Chat with our travel desk · +{settings.whatsapp}
         </p>
         <a
-          href={`https://wa.me/${settings.whatsapp}`}
+          href={whatsappLink(settings.whatsapp)}
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`Chat with ${settings.companyName} on WhatsApp at +${settings.whatsapp} (opens in a new tab)`}

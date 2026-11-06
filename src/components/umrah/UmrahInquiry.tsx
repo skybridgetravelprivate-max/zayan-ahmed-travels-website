@@ -1,21 +1,36 @@
-import { ServiceInquiryForm } from "@/components/forms/ServiceInquiryForm";
-import { site } from "@/config/site";
+import { SearchCard } from "@/components/home/SearchCard";
+import { getWebsiteSettings } from "@/server/website-content";
+import type { TravelPreferences } from "@/lib/travel-inquiry";
 
-export function UmrahInquiry() {
+export async function UmrahInquiry({
+  destination,
+  reference,
+  initialJourney,
+}: {
+  destination?: string;
+  reference?: string;
+  initialJourney?: Partial<
+    Pick<TravelPreferences, "from" | "departure" | "nights">
+  >;
+}) {
+  const settings = await getWebsiteSettings();
   return (
-    <section
-      id="inquiry"
-      className="scroll-mt-24 bg-zayan-blue px-4 py-16 text-white sm:px-6 sm:py-20 lg:px-8"
-    >
-      <div className="mx-auto flex max-w-6xl flex-col items-start gap-6">
+    <section id="inquiry" className="travel-inquiry-section scroll-mt-24">
+      <div className="travel-container">
         <h2 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
           Ready to ask about Umrah?
         </h2>
-        <p className="max-w-2xl text-base leading-7 text-white/85">
-          {site.legalName} can walk through a sample package with you. This
-          inquiry is checked on the website, then sent to the travel desk.
+        <p className="my-5 max-w-2xl text-base leading-7">
+          Share your preferences and request current details from the travel
+          desk.
         </p>
-        <ServiceInquiryForm type="umrah" submitLabel="Send Umrah inquiry" />
+        <SearchCard
+          initialService="Umrah"
+          destination={destination}
+          reference={reference}
+          initialJourney={initialJourney}
+          whatsapp={settings.whatsapp}
+        />
       </div>
     </section>
   );

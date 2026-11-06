@@ -10,6 +10,8 @@ export type PublicUmrahPackage = {
   flightInfo: string;
   makkahNights: number | null;
   madinahNights: number | null;
+  makkahHotel?: { name: string; distance: string } | null;
+  madinahHotel?: { name: string; distance: string } | null;
   roomType: string;
   includesTransport: boolean | null;
   includesVisa: boolean | null;

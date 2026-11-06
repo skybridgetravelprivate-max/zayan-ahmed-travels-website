@@ -199,8 +199,8 @@ export class PublicController {
   }
 
   @Get("umrah-packages")
-  packages() {
-    return this.prisma.umrahPackage.findMany({
+  async packages() {
+    const packages = await this.prisma.umrahPackage.findMany({
       where: { isPublic: true, status: "ACTIVE" },
       orderBy: { createdAt: "desc" },
       select: {
@@ -213,6 +213,12 @@ export class PublicController {
         departureDate: true,
         returnDate: true,
         flightInfo: true,
+        makkahHotel: {
+          select: { name: true, distance: true, status: true, deletedAt: true },
+        },
+        madinahHotel: {
+          select: { name: true, distance: true, status: true, deletedAt: true },
+        },
         makkahNights: true,
         madinahNights: true,
         roomType: true,
@@ -226,5 +232,18 @@ export class PublicController {
         description: true,
       },
     });
+    const publicHotel = (hotel: {
+      name: string;
+      distance: string | null;
+      status: string;
+      deletedAt: Date | null;
+    } | null) => hotel?.status === "ACTIVE" && !hotel.deletedAt
+      ? { name: hotel.name, distance: hotel.distance }
+      : null;
+    return packages.map(item => ({
+      ...item,
+      makkahHotel: publicHotel(item.makkahHotel),
+      madinahHotel: publicHotel(item.madinahHotel),
+    }));
   }
 }

@@ -16,11 +16,15 @@ export function siteGraph(settings?: WebsiteSettings) {
   const description = settings?.seoDescription || siteDescription;
   const url = absoluteUrl("/");
   const organization = {
-    "@type": "Organization",
+    "@type": "TravelAgency",
+    "@id": `${url}#agency`,
     name,
     alternateName: site.shortName,
     url,
     description,
+    ...(settings?.address ? { address: settings.address } : {}),
+    ...(settings?.phones[0] ? { telephone: settings.phones[0] } : {}),
+    ...(settings?.email ? { email: settings.email } : {}),
   };
 
   return {
@@ -34,9 +38,7 @@ export function siteGraph(settings?: WebsiteSettings) {
         url,
         description,
         publisher: {
-          "@type": "Organization",
-          name,
-          url,
+          "@id": `${url}#agency`,
         },
       },
     ],

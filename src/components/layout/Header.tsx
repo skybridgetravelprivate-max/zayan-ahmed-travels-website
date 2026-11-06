@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { defaultWebsiteSettings } from "@/config/website";
 import type { WebsiteSettings } from "@/lib/website-content";
+import { TravelIcon } from "@/components/ui/TravelIcon";
 const focus =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zayan-blue";
 export function Header({
@@ -16,18 +17,26 @@ export function Header({
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
+  const header = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!open) return;
     const escape = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") {
-        setOpen(false);
-        toggle.current?.focus();
+        if (open) {
+          setOpen(false);
+          toggle.current?.focus();
+        }
+        const expanded =
+          header.current?.querySelector<HTMLDetailsElement>("details[open]");
+        if (expanded) {
+          expanded.open = false;
+          expanded.querySelector("summary")?.focus();
+        }
       }
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
   }, [open]);
-  const primary = new Set(primaryServices.map(item => item.href));
+  const primary = new Set(primaryServices.map((item) => item.href));
   const links = focusedNavigation(settings.nav);
   const current = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
@@ -35,7 +44,11 @@ export function Header({
     <Link
       prefetch={false}
       href={n.href}
-      onClick={() => setOpen(false)}
+      onClick={(e) => {
+        setOpen(false);
+        const details = e.currentTarget.closest("details");
+        if (details) details.open = false;
+      }}
       aria-current={current(n.href) ? "page" : undefined}
       className={`${focus} block rounded-lg px-2 py-3 text-sm font-semibold ${current(n.href) ? "text-[#b84c08] underline decoration-2 underline-offset-8" : "text-zayan-blue hover:bg-sky-50"}`}
     >
@@ -43,8 +56,11 @@ export function Header({
     </Link>
   );
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
-      <div className="hidden border-b border-line bg-sky-50/70 lg:block">
+    <header
+      ref={header}
+      className="travel-header sticky top-0 z-40 border-b border-line bg-white"
+    >
+      <div className="sr-only">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-8 py-2 text-xs text-zayan-blue">
           <span>{settings.address}</span>
           <div className="flex flex-wrap gap-5">
@@ -65,7 +81,7 @@ export function Header({
           </div>
         </div>
       </div>
-      <div className="mx-auto flex min-h-20 max-w-7xl items-center justify-between gap-5 px-4 sm:px-8">
+      <div className="travel-container flex min-h-20 items-center justify-between gap-4">
         <Link
           prefetch={false}
           href="/"
@@ -84,53 +100,64 @@ export function Header({
               />
             </>
           ) : (
-            <span
-              aria-hidden="true"
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-zayan-orange text-lg font-extrabold text-zayan-blue"
-            >
+            <span aria-hidden="true" className="travel-brand-mark">
               ZA
             </span>
           )}
-          <span className="max-w-[14rem] text-sm font-extrabold leading-tight text-zayan-blue sm:text-base">
-            {settings.companyName}
-          </span>
+          <span className="travel-brand-name">{settings.companyName}</span>
         </Link>
-        <nav aria-label="Primary" className="hidden xl:block">
+        <nav aria-label="Primary" className="hidden lg:block">
           <ul className="flex items-center gap-1">
             {links
               .filter((n) => primary.has(n.href))
               .map((n) => (
+                <li key={n.href} className="travel-nav-service">
+                  <details>
+                    <summary>
+                      <TravelIcon
+                        name={
+                          n.href === "/flights"
+                            ? "flight"
+                            : n.href === "/visa"
+                              ? "visa"
+                              : n.href === "/tours"
+                                ? "tour"
+                                : "umrah"
+                        }
+                      />
+                      {n.label}
+                      <span aria-hidden="true">⌄</span>
+                    </summary>
+                    <ul>
+                      <li>{link(n)}</li>
+                      <li>
+                        {link({
+                          label: "Request a quotation",
+                          href: `/get-free-quote?service=${n.href.slice(1)}`,
+                        })}
+                      </li>
+                    </ul>
+                  </details>
+                </li>
+              ))}
+            {links
+              .filter((n) => !primary.has(n.href))
+              .map((n) => (
                 <li key={n.href}>{link(n)}</li>
               ))}
-            <li>
-              <details className="relative">
-                <summary
-                  className={`${focus} cursor-pointer rounded-lg px-2 py-3 text-sm font-semibold text-zayan-blue`}
-                >
-                  More
-                </summary>
-                <ul className="absolute right-0 z-50 mt-2 grid w-56 rounded-xl border border-line bg-white p-2 shadow-lg">
-                  {links
-                    .filter((n) => !primary.has(n.href))
-                    .map((n) => (
-                      <li key={n.href}>{link(n)}</li>
-                    ))}
-                </ul>
-              </details>
-            </li>
           </ul>
         </nav>
         <Link
           prefetch={false}
-          href="/contact"
-          className="website-cta hidden shrink-0 2xl:inline-flex"
+          href="/get-free-quote"
+          className="travel-quote-link hidden shrink-0 xl:inline-flex"
         >
-          Travel inquiry →
+          Get a free travel quote
         </Link>
         <button
           ref={toggle}
           type="button"
-          className={`${focus} flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line text-2xl text-zayan-blue xl:hidden`}
+          className={`${focus} flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line text-2xl text-zayan-blue lg:hidden`}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
           aria-controls="mobile-navigation"
@@ -151,12 +178,18 @@ export function Header({
         <nav
           id="mobile-navigation"
           aria-label="Menu"
-          className="max-h-[65vh] overflow-y-auto border-t border-line bg-white p-4 xl:hidden"
+          className="max-h-[65vh] overflow-y-auto border-t border-line bg-white p-4 lg:hidden"
         >
           <ul className="mx-auto grid max-w-7xl gap-1 sm:grid-cols-2">
             {links.map((n) => (
               <li key={n.href}>{link(n)}</li>
             ))}
+            <li>
+              {link({
+                label: "Get a free travel quote",
+                href: "/get-free-quote",
+              })}
+            </li>
           </ul>
         </nav>
       )}

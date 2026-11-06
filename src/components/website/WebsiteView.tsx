@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import type { WebsiteContent, WebsiteSection } from "@/lib/website-content";
 import { TravelIllustration } from "@/components/home/TravelIllustration";
 import { SearchCard } from "@/components/home/SearchCard";
+import { TravelIcon } from "@/components/ui/TravelIcon";
+import type { WebsiteSettings } from "@/lib/website-content";
 export function WebsiteSections({
   sections,
   packageContent,
@@ -21,7 +23,7 @@ export function WebsiteSections({
           <section
             id={s.id}
             key={s.id}
-            className={`website-section ${s.layout === "banner" ? "website-banner" : ""}`}
+            className={`website-section travel-section-${s.id} ${s.layout === "banner" ? "website-banner" : ""}`}
           >
             <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
               <div>
@@ -62,12 +64,26 @@ export function WebsiteSections({
                           className="h-full w-full object-cover"
                         />
                       </div>
+                    ) : s.id === "offers" ? (
+                      <div className="travel-card-art">
+                        <TravelIcon name="flight" />
+                      </div>
                     ) : s.id === "services" ? (
                       <div
                         className="mx-5 mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-sky-50 text-xl font-bold text-zayan-blue"
                         aria-hidden="true"
                       >
-                        {["✈", "▥", "◈", "▤", "↔", "◎"][i % 6]}
+                        <TravelIcon
+                          name={
+                            c.href === "/umrah"
+                              ? "umrah"
+                              : c.href === "/visa"
+                                ? "visa"
+                                : c.href === "/tours"
+                                  ? "tour"
+                                  : "flight"
+                          }
+                        />
                       </div>
                     ) : null}
                     <div className="p-5">
@@ -92,7 +108,8 @@ export function WebsiteSections({
               </div>
             ) : s.layout === "testimonials" && !testimonialContent ? (
               <p className="rounded-xl border border-line bg-white p-5 text-sm text-muted">
-                No traveller feedback is currently published.
+                Traveller stories will appear here when shared with permission.
+                In the meantime, talk to our Abbottabad desk about your journey.
               </p>
             ) : null}
           </section>
@@ -103,18 +120,18 @@ export function WebsiteSections({
 export function WebsiteHero({
   content: c,
   home = false,
+  settings,
 }: {
   content: WebsiteContent;
   home?: boolean;
+  settings?: WebsiteSettings;
 }) {
   return (
     <section className={`website-hero ${home ? "website-hero-home" : ""}`}>
-      <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-8 px-5 py-12 sm:px-8 sm:py-16 lg:grid-cols-[1.05fr_1fr] lg:py-20">
+      <div className="travel-container travel-hero-grid">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[.16em] text-zayan-blue">
-            {c.eyebrow}
-          </p>
-          <h1 className="mt-4 max-w-2xl text-4xl font-extrabold leading-[1.1] tracking-tight text-zayan-blue sm:text-5xl lg:text-6xl">
+          <p className="travel-eyebrow">{c.eyebrow}</p>
+          <h1 className="travel-hero-title">
             {home && c.title === "Umrah made easier with us" ? (
               <>
                 Umrah made
@@ -125,10 +142,8 @@ export function WebsiteHero({
               c.title
             )}
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-zayan-blue/90 sm:text-lg">
-            {c.summary}
-          </p>
-          {c.actionHref && (
+          <p className="travel-hero-description">{c.summary}</p>
+          {c.actionHref && !home && (
             <Link
               prefetch={false}
               className="website-cta mt-7"
@@ -137,11 +152,19 @@ export function WebsiteHero({
               {c.actionLabel} →
             </Link>
           )}
-          <p className="mt-5 text-xs leading-5 text-muted">
-            Personalised inquiries · Availability confirmed by the travel desk
+          <p className="travel-hero-note">
+            Personalised planning · Written quotations · Abbottabad travel desk
           </p>
         </div>
-        {c.image ? (
+        {home && c.searchEnabled !== false ? (
+          <SearchCard
+            title={c.searchTitle}
+            initialService={
+              c.actionHref.startsWith("/umrah") ? "Umrah" : "Flights"
+            }
+            whatsapp={settings?.whatsapp}
+          />
+        ) : c.image ? (
           <div className="overflow-hidden rounded-[2rem] shadow-xl">
             <Image
               unoptimized
@@ -167,18 +190,37 @@ export function WebsiteView({
   home = false,
   packageContent,
   testimonialContent,
+  settings,
 }: {
   content: WebsiteContent;
   home?: boolean;
   packageContent?: ReactNode;
   testimonialContent?: ReactNode;
+  settings?: WebsiteSettings;
 }) {
   return (
     <>
-      <WebsiteHero content={content} home={home} />
-      {home && content.searchEnabled !== false && (
-        <div className="relative z-20 mx-auto -mt-6 max-w-7xl px-4 sm:-mt-8 sm:px-8">
-          <SearchCard title={content.searchTitle} />
+      <WebsiteHero content={content} home={home} settings={settings} />
+      {home && (
+        <div className="travel-container">
+          <ul className="travel-proof-strip">
+            {(
+              [
+                ["pin", "Abbottabad", "Visit our travel desk"],
+                ["quote", "Written quotes", "Review before you decide"],
+                ["umrah", "Tailored planning", "Your dates and preferences"],
+                ["phone", "Personal support", "Phone, WhatsApp and email"],
+              ] as const
+            ).map(([icon, label, text]) => (
+              <li key={label}>
+                <TravelIcon name={icon} />
+                <div>
+                  <strong>{label}</strong>
+                  <span>{text}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {content.body && (
@@ -186,7 +228,7 @@ export function WebsiteView({
           {content.body}
         </div>
       )}
-      <div className="mx-auto max-w-7xl px-4 sm:px-8">
+      <div className="travel-container">
         <WebsiteSections
           sections={content.sections}
           packageContent={packageContent}

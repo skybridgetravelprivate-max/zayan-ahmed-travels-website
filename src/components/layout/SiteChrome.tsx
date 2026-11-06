@@ -20,7 +20,8 @@ export function SiteChrome({
 }) {
   const pathname = usePathname();
   const isStaffRoute =
-    pathname === "/agent" || pathname?.startsWith("/agent/") === true ||
+    pathname === "/agent" ||
+    pathname?.startsWith("/agent/") === true ||
     pathname === "/reset-password" ||
     pathname === "/admin" ||
     pathname?.startsWith("/admin/") === true;
@@ -30,13 +31,21 @@ export function SiteChrome({
   }
 
   return (
-    <>
+    <div className="public-site flex min-h-screen flex-1 flex-col">
       {structuredData}
       {notice}
       {header}
-      <main className="flex-1">{children}</main>
+      <a
+        href="#main-content"
+        className="sr-only z-50 bg-white p-3 text-zayan-blue focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to content
+      </a>
+      <main id="main-content" className="flex-1">
+        {children}
+      </main>
       {footer}
       {contact}
-    </>
+    </div>
   );
 }
