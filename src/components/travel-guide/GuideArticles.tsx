@@ -1,45 +1,32 @@
-"use client";
-
-import { useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import type { GuideArticle } from "@/config/travel-guide";
 
-export function GuideArticles({ articles }: { articles: readonly GuideArticle[] }) {
-  const [openTitle, setOpenTitle] = useState<string | null>(null);
-
+export function GuideArticles({
+  articles,
+}: {
+  articles: readonly GuideArticle[];
+}) {
   return (
-    <ul className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-6 md:grid-cols-2">
       {articles.map((article) => {
-        const open = openTitle === article.title;
-
         return (
-          <li key={article.title}>
-            <Card
-              title={article.title}
-              description={article.excerpt}
-              className={open ? "ring-2 ring-zayan-orange" : ""}
-            >
-              <p className="text-xs font-semibold tracking-wide text-zayan-orange uppercase">
-                Demo article
+          <article
+            key={article.title}
+            className="rounded-2xl border border-line bg-white p-6 sm:p-8"
+          >
+            <h2 className="text-xl font-bold text-zayan-blue">
+              {article.title}
+            </h2>
+            <p className="mt-3 font-medium leading-7 text-zayan-blue">
+              {article.excerpt}
+            </p>
+            {article.body.map((paragraph) => (
+              <p key={paragraph} className="mt-4 leading-7 text-muted">
+                {paragraph}
               </p>
-              <Button
-                className="mt-4"
-                variant={open ? "secondary" : "primary"}
-                aria-pressed={open}
-                onClick={() => setOpenTitle(open ? null : article.title)}
-              >
-                Read More
-              </Button>
-              {open ? (
-                <p role="status" className="mt-3 text-sm text-zayan-blue">
-                  Demo only. The full article is not available yet.
-                </p>
-              ) : null}
-            </Card>
-          </li>
+            ))}
+          </article>
         );
       })}
-    </ul>
+    </div>
   );
 }

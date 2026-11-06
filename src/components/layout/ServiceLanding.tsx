@@ -11,9 +11,11 @@ import { TravelIcon } from "@/components/ui/TravelIcon";
 import { SearchCard } from "@/components/home/SearchCard";
 import { servicePages, type ServicePageKey } from "@/config/service-pages";
 import { site } from "@/config/site";
+import { getGuideCategory } from "@/config/travel-guide";
 
 export async function ServiceLanding({ service }: { service: ServicePageKey }) {
   const content = servicePages[service];
+  const guide = getGuideCategory(service);
   const [page, entries, settings] = await Promise.all([
     getWebsitePage(service),
     getWebsitePages(),
@@ -152,6 +154,27 @@ export async function ServiceLanding({ service }: { service: ServicePageKey }) {
           </div>
         )}
       </section>
+      {guide && (
+        <section
+          className="travel-container pb-12"
+          aria-labelledby="service-guide"
+        >
+          <div className="rounded-2xl border border-line bg-white p-6 sm:p-8">
+            <h2 id="service-guide" className="text-2xl font-bold">
+              {guide.title}
+            </h2>
+            <p className="mt-3 max-w-3xl leading-7 text-muted">
+              {guide.summary}
+            </p>
+            <Link
+              className="mt-4 inline-flex min-h-11 items-center font-bold underline"
+              href={`/travel-guide/${guide.slug}`}
+            >
+              Read the planning guide →
+            </Link>
+          </div>
+        </section>
+      )}
       <section
         id="inquiry"
         className={

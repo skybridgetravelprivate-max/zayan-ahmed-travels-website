@@ -1,6 +1,7 @@
 import { getWebsitePages } from "@/server/website-content";
 import type { MetadataRoute } from "next";
 import { getPublicUmrahPackages } from "@/server/crm-umrah";
+import { guideCategories } from "@/config/travel-guide";
 import {
   allowSearchIndexing,
   navItems,
@@ -11,6 +12,7 @@ import {
 const staticPaths = [
   "/",
   "/get-free-quote",
+  ...guideCategories.map((guide) => `/travel-guide/${guide.slug}`),
   ...navItems
     .filter(
       (item) => item.href !== "/account" && !item.href.startsWith("/admin"),

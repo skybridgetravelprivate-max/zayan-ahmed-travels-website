@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { InfoHero, InfoSection } from "@/components/layout/InfoPage";
 import { TravelIllustration } from "@/components/home/TravelIllustration";
+import { guideCategories } from "@/config/travel-guide";
 const fallbackMetadata: Metadata = {
   title: "Travel planning guide",
   description:
@@ -29,14 +30,42 @@ const tips = [
 ];
 export default async function GuidePage() {
   const publishedWebsitePage = await getWebsitePage("travel-guide");
-  if (publishedWebsitePage)
-    return <WebsiteView content={publishedWebsitePage.content} />;
   return (
     <>
-      <InfoHero
-        title="Prepare for your next journey"
-        intro="Use this checklist when discussing your trip with the travel desk."
-      />
+      {publishedWebsitePage ? (
+        <WebsiteView content={publishedWebsitePage.content} />
+      ) : (
+        <InfoHero
+          title="Prepare for your next journey"
+          intro="Use this checklist when discussing your trip with the travel desk."
+        />
+      )}
+      <section
+        className="travel-container py-12"
+        aria-labelledby="planning-guides"
+      >
+        <h2 id="planning-guides" className="text-3xl font-bold">
+          Explore our planning guides
+        </h2>
+        <p className="mt-3 max-w-3xl leading-7 text-muted">
+          Original guidance from Zayan Ahmed Travels to help you ask the right
+          questions and review your travel arrangements.
+        </p>
+        <div className="travel-catalogue-grid mt-7">
+          {guideCategories.map((guide) => (
+            <article key={guide.slug} className="travel-catalogue-card p-6">
+              <h3 className="text-xl font-bold">{guide.title}</h3>
+              <p className="mt-3 leading-7 text-muted">{guide.summary}</p>
+              <Link
+                className="mt-4 inline-flex min-h-11 items-center font-bold underline"
+                href={`/travel-guide/${guide.slug}`}
+              >
+                Read {guide.title.toLowerCase()} →
+              </Link>
+            </article>
+          ))}
+        </div>
+      </section>
       <InfoSection title="Plan with confidence">
         <div className="mx-auto max-w-md">
           <TravelIllustration />

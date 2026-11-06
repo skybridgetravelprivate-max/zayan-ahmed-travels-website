@@ -214,6 +214,12 @@ export default async function UmrahPage() {
             special requirements before accepting a quote.
           </p>
         </div>
+        <Link
+          className="mt-5 inline-flex min-h-11 items-center font-semibold text-zayan-blue underline"
+          href="/travel-guide/umrah"
+        >
+          Read the Umrah planning guide →
+        </Link>
       </Section>
       <UmrahPlanner />
       <Section

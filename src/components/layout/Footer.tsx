@@ -32,6 +32,15 @@ export function Footer({
                 </Link>
               </li>
             ))}
+            <li>
+              <Link
+                prefetch={false}
+                className="inline-flex min-h-9 items-center hover:underline"
+                href="/travel-guide"
+              >
+                Travel guide
+              </Link>
+            </li>
           </ul>
         </nav>
         <div>

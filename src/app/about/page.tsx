@@ -4,12 +4,11 @@ import type { Metadata } from "next";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Section } from "@/components/ui/Section";
-import { reasons } from "@/config/home";
 import { site } from "@/config/site";
 
 const fallbackMetadata: Metadata = {
-  title: "About",
-  description: `${site.legalName} ${site.tagline}`,
+  title: "Your travel desk in Abbottabad",
+  description: `Meet ${site.shortName}, your Abbottabad desk for flight, Umrah, visa, stay and holiday planning enquiries.`,
 };
 
 const services = [
@@ -47,6 +46,29 @@ const services = [
   },
 ] as const;
 
+const planningSteps = [
+  {
+    title: "Share your priorities",
+    description:
+      "Tell us your dates, destination, group and preferences so the conversation starts with the journey you want to make.",
+  },
+  {
+    title: "Review the details",
+    description:
+      "Compare the proposed itinerary, inclusions, exclusions, selling currency and quotation validity before deciding.",
+  },
+  {
+    title: "Check the conditions",
+    description:
+      "Discuss travel-document requirements, service availability and the written booking and payment conditions.",
+  },
+  {
+    title: "Bring the plan together",
+    description:
+      "Check the final itinerary, accommodation, transfers and travel documents against the agreed arrangements.",
+  },
+];
+
 export default async function AboutPage() {
   const publishedWebsitePage = await getWebsitePage("about");
   if (publishedWebsitePage)
@@ -54,38 +76,42 @@ export default async function AboutPage() {
 
   return (
     <>
-      <section className="bg-zayan-blue text-white">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+      <section className="travel-service-hero">
+        <div className="travel-container">
           <p className="text-sm font-semibold tracking-wide text-zayan-orange uppercase">
             {site.legalName}
           </p>
           <h1 className="mt-2 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
-            About {site.shortName}
+            Your travel desk in Abbottabad
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">
-            {site.legalName} plans flights, stays, Umrah, visas, tours, and
-            transport with one promise: {site.tagline}.
+            Bring your flight, Umrah, visa or holiday plans to {site.shortName}.
+            Start with your dates and priorities, then review the details in a
+            written quotation.
           </p>
+          <Button className="mt-6" href="/get-free-quote">
+            Start planning your journey
+          </Button>
         </div>
       </section>
 
       <Section
         id="mission"
-        eyebrow="Purpose"
-        title="Mission and values"
-        description={site.tagline}
+        eyebrow="Our approach"
+        title="A conversation built around your journey"
+        description="From a single route to a family itinerary, clear information helps you make the next decision."
       >
         <ul className="grid gap-4 sm:grid-cols-2">
           <li>
             <Card
               title="Mission"
-              description="Help travellers understand a plan before they decide, from the first question through departure."
+              description="Help travellers understand the proposed journey and its conditions before making a decision."
             />
           </li>
           <li>
             <Card
               title="Values"
-              description="Clear language, careful Umrah planning, and the same team staying with the journey."
+              description="Clear questions, careful itinerary review and written details that you can refer to throughout planning."
             />
           </li>
         </ul>
@@ -113,12 +139,12 @@ export default async function AboutPage() {
 
       <Section
         id="why"
-        eyebrow={site.shortName}
-        title={`Why choose ${site.shortName}`}
-        description={`What travellers can expect from ${site.shortName}.`}
+        eyebrow="Plan step by step"
+        title="From your first question to the final itinerary"
+        description="Use these four steps when discussing the arrangements with our desk."
       >
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {reasons.map((reason) => (
+          {planningSteps.map((reason) => (
             <li key={reason.title}>
               <Card title={reason.title} description={reason.description} />
             </li>
@@ -132,10 +158,13 @@ export default async function AboutPage() {
             Talk with {site.shortName}
           </h2>
           <p className="max-w-2xl text-base leading-7 text-white/85">
-            The contact form is checked on this website, then sent to the travel
-            desk. It is not emailed from that page.
+            Share your destination, dates and travel preferences, or read our
+            planning guides to prepare the questions you want to discuss.
           </p>
           <Button href="/contact">Contact us</Button>
+          <Button href="/travel-guide" variant="inverse">
+            Explore the travel guides
+          </Button>
         </div>
       </section>
     </>
