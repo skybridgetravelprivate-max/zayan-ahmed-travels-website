@@ -95,8 +95,13 @@ export class WorkflowsController {
       assertBranch(req.user, g.branchId);
       const prior = await tx.auditLog.findUnique({ where: { id: auditId }, select: { after: true } });
       if (prior) {
-        const saved = prior.after as { seats: number; group: typeof g };
-        if (saved.seats !== body.seats) throw new ConflictException("Idempotency key was already used for a different seat count");
+        const saved = prior.after;
+        if (!saved || typeof saved !== "object" || Array.isArray(saved) || saved.seats !== body.seats) {
+          throw new ConflictException("Idempotency key was already used for a different seat count");
+        }
+        if (!saved.group || typeof saved.group !== "object" || Array.isArray(saved.group)) {
+          throw new ConflictException("The earlier seat allocation could not be replayed");
+        }
         return saved.group;
       }
       const next = g.reservedSeats + body.seats;
