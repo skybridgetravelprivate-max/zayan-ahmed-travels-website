@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { PassThrough } from "node:stream";
+import { buffer } from "node:stream/consumers";
+import type { Response } from "express";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { ReceiptOperations } from "./receipt-operations";
 import { AccountingService } from "./accounting.service";
@@ -11,6 +14,9 @@ import { ReservationService } from "../reservation/reservation.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import type { AuthUser } from "../auth/auth.types";
+import { PdfController } from "../documents/documents.controller";
+import { DocumentPdfService } from "../documents/document-pdf.service";
+import { ManagementService } from "../management/management.service";
 
 const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
 test("Gate A PG17: typed allocations and atomic initial/module receipts", { skip: !url }, async t => {
@@ -83,6 +89,46 @@ test("Gate A PG17: typed allocations and atomic initial/module receipts", { skip
       assert.equal(await db.ticketSale.count({ where: { ticketNumber: body.ticketNumber } }), 1);
       const issued = await db.ticketSale.findUniqueOrThrow({ where: { ticketNumber: body.ticketNumber } });
       assert.equal(await db.receipt.count({ where: { ticketSaleId: issued.id } }), 0);
+    });
+    await t.test("staff can open an in-branch invoice PDF and cannot list or render foreign tickets", async () => {
+      const other = await db.branch.create({ data: { code: randomUUID(), name: "Foreign invoice branch" } });
+      const foreignCustomer = await db.customer.create({ data: {
+        customerNumber: randomUUID(), fullName: "Foreign invoice customer", branchId: other.id,
+      } });
+      const reference = randomUUID();
+      const own = await db.ticketSale.create({ data: {
+        ticketNumber: reference + "-OWN", status: "ISSUED", branchId: branch.id, currency: "USD", net: "19.99",
+      } });
+      const foreign = await db.ticketSale.create({ data: {
+        ticketNumber: reference + "-OTHER", status: "ISSUED", branchId: other.id,
+      } });
+      const foreignLink = await db.ticketSale.create({ data: {
+        ticketNumber: reference + "-LINK", status: "ISSUED", branchId: branch.id, customerId: foreignCustomer.id,
+      } });
+      const viewer: AuthUser = { ...user, isSuperAdmin: false, permissions: ["ticket.view", "document.view"] };
+      const management = new ManagementService(db as never, seq);
+      const list = await management.issuedTicketInvoices(viewer, { reference });
+      assert.equal(list.total, 1);
+      assert.deepEqual(list.data.map(ticket => ticket.id), [own.id]);
+      const pdf = new PdfController(db as never, new DocumentPdfService(db as never));
+      const request = { user: viewer } as never;
+      for (const id of [foreign.id, foreignLink.id]) {
+        await assert.rejects(pdf.ticketInvoice(id, "INCLUDED", {} as Response, request), { status: 404 });
+      }
+      await assert.rejects(pdf.ticketInvoice(own.id, "INCLUDED", {} as Response, {
+        user: { ...viewer, permissions: ["document.view"] },
+      } as never), { status: 403 });
+      const headers = new Map<string, string>();
+      const stream = Object.assign(new PassThrough(), {
+        setHeader: (name: string, value: string) => headers.set(name, value),
+      });
+      const output = buffer(stream);
+      await pdf.ticketInvoice(own.id, "INCLUDED", stream as unknown as Response, request);
+      assert.equal(headers.get("Content-Type"), "application/pdf");
+      assert.equal(headers.get("Cache-Control"), "private, no-store");
+      const bytes = await output;
+      assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
+      assert.match(bytes.subarray(-20).toString(), /%%EOF/);
     });
     await t.test("transport receipt uses selling value, not profit, and later reviewed payments reconcile", async () => {
       const party = await customer(), key = randomUUID();

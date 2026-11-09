@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { AuthUser, can } from "./auth.types";
 import { PrismaService } from "../common/prisma.service";
 export function branchIds(user: AuthUser) {
@@ -27,6 +28,17 @@ export function customerBranchWhere(user: AuthUser) {
   return user.isSuperAdmin ? {} : {
     ...branchWhere(user),
     AND: [{ OR: [{ leadId: null }, { lead: branchWhere(user) }] }],
+  };
+}
+export function ticketInvoiceWhere(user: AuthUser): Prisma.TicketSaleWhereInput {
+  if (user.isSuperAdmin) return {};
+  const people = customerBranchWhere(user);
+  return {
+    ...branchWhere(user),
+    AND: [
+      { OR: [{ customerId: null }, { customer: people }] },
+      { OR: [{ passengerId: null }, { passenger: { customer: people } }] },
+    ],
   };
 }
 export async function assertRecordBranch(db: ScopeDb, user: AuthUser, model: keyof ScopeDb, id: unknown) {

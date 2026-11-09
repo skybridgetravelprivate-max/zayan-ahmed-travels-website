@@ -25,6 +25,7 @@ import { AuditService } from "../common/audit.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
+import { requirePermission, ticketInvoiceWhere } from "../auth/record-scope";
 import {
   authorizeDocumentOwner,
   authorizeStoredDocument,
@@ -457,12 +458,12 @@ export class PdfController {
     @Res() res: Response,
     @Req() req: Request & { user: AuthUser },
   ) {
-    await authorizeDocumentOwner(this.prisma, req.user, "ticketSale", id);
+    requirePermission(req.user, "ticket.view");
     const t = await this.prisma.ticketSale.findUnique({
-      where: { id },
+      where: { id, AND: ticketInvoiceWhere(req.user) },
       include: { customer: true, passenger: true, airline: true, pnr: { select: { pnr: true } } },
     });
-    if (!t) return res.status(404).send("Not found");
+    if (!t) throw new NotFoundException();
     const m = this.pdf.parseMode(mode);
     return this.pdf.pipeA4(res, t.ticketNumber || t.id, m, (doc) => {
       doc.fontSize(16).text(`Ticket Invoice ${t.ticketNumber || t.id}`);
