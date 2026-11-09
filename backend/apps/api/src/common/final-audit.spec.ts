@@ -56,7 +56,7 @@ test("downloads and every sensitive PDF resolve owner authorization before readi
   for (const [method, model, permission] of [["quotation", "quotation", "quotation"], ["umrahBooking", "umrahBooking", "booking"], ["hotelReservation", "hotelBooking", "hotel"], ["ticketInvoice", "ticketSale", "ticket"], ["receipt", "receipt", "account"], ["serviceInvoice", "serviceInvoice", "account"]]) {
     db[model] = { findUnique: async (query) => {
       if (model !== "ticketSale") return { branchId: "b" };
-      assert.deepEqual(query?.where.branchId, { in: ["a"] });
+      assert.deepEqual((query?.where.AND as Record<string, unknown>)?.branchId, { in: ["a"] });
       return null;
     } };
     await assert.rejects((pdf as unknown as Record<string, (id: string, mode: string, res: unknown, request: unknown) => Promise<unknown>>)[method]("b", "", {}, req({ ...user, permissions: [permission + ".view"] })), { status: 404 });

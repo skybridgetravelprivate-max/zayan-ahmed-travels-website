@@ -460,7 +460,7 @@ export class PdfController {
   ) {
     requirePermission(req.user, "ticket.view");
     const t = await this.prisma.ticketSale.findUnique({
-      where: { id, ...ticketInvoiceWhere(req.user) },
+      where: { id, AND: ticketInvoiceWhere(req.user) },
       include: { customer: true, passenger: true, airline: true, pnr: { select: { pnr: true } } },
     });
     if (!t) throw new NotFoundException();
