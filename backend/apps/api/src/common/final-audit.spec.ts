@@ -44,7 +44,7 @@ test("OCR authorizes the target entity permission and customer branch before wri
 
 test("downloads and every sensitive PDF resolve owner authorization before reading storage or rendering", async () => {
   let reads = 0;
-  const db: Record<string, { findUnique: () => Promise<Record<string, unknown>> }> = { storedDocument: { findUnique: async () => ({ entityType: "customer", entityId: "b", uploadedById: user.id }) }, customer: { findUnique: async () => ({ branchId: "b" }) } };
+  const db: Record<string, { findUnique: (query?: { where: Record<string, unknown> }) => Promise<Record<string, unknown> | null> }> = { storedDocument: { findUnique: async () => ({ entityType: "customer", entityId: "b", uploadedById: user.id }) }, customer: { findUnique: async () => ({ branchId: "b" }) } };
   const ctrl = new DocumentsController(
     db as never,
     { get: async () => { reads++; } } as never,
@@ -54,7 +54,11 @@ test("downloads and every sensitive PDF resolve owner authorization before readi
   const pdf = new PdfController(db as never, { pipeA4: () => { reads++; } } as never);
   await assert.rejects(pdf.salary("salary", "", {} as never, req()), { status: 403 });
   for (const [method, model, permission] of [["quotation", "quotation", "quotation"], ["umrahBooking", "umrahBooking", "booking"], ["hotelReservation", "hotelBooking", "hotel"], ["ticketInvoice", "ticketSale", "ticket"], ["receipt", "receipt", "account"], ["serviceInvoice", "serviceInvoice", "account"]]) {
-    db[model] = { findUnique: async () => ({ branchId: "b" }) };
+    db[model] = { findUnique: async (query) => {
+      if (model !== "ticketSale") return { branchId: "b" };
+      assert.deepEqual(query?.where.branchId, { in: ["a"] });
+      return null;
+    } };
     await assert.rejects((pdf as unknown as Record<string, (id: string, mode: string, res: unknown, request: unknown) => Promise<unknown>>)[method]("b", "", {}, req({ ...user, permissions: [permission + ".view"] })), { status: 404 });
   }
   assert.equal(reads, 0);

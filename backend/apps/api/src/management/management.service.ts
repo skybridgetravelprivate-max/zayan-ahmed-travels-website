@@ -3,7 +3,7 @@ import { isSerializationConflict } from "../common/serialization-conflict";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuthUser, can } from "../auth/auth.types";
-import { branchIds, customerBranchWhere } from "../auth/record-scope";
+import { branchIds, ticketInvoiceWhere } from "../auth/record-scope";
 import { AuditService } from "../common/audit.service";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -400,14 +400,9 @@ export class ManagementService {
     const passenger = search("passenger");
     const customer = search("customer");
     const supplier = search("supplier");
-    const peopleScope = customerBranchWhere(user);
     const where: Prisma.TicketSaleWhereInput = {
-      ...this.scope(user, "tickets"),
+      ...ticketInvoiceWhere(user),
       status,
-      ...(!user.isSuperAdmin && { AND: [
-        { OR: [{ customerId: null }, { customer: peopleScope }] },
-        { OR: [{ passengerId: null }, { passenger: { customer: peopleScope } }] },
-      ] }),
       ...(reference && { ticketNumber: reference }),
       ...(passenger && { passenger: { fullName: passenger } }),
       ...(customer && { customer: { fullName: customer } }),
