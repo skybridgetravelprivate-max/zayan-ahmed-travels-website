@@ -46,7 +46,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createInquiryLead(parsed.data);
+    const key = request.headers.get("idempotency-key");
+    if (key !== null && !/^[A-Za-z0-9_-]{8,100}$/.test(key)) {
+      return Response.json({ ok: false, error: "Invalid inquiry submission key." }, { status: 400 });
+    }
+    await createInquiryLead(parsed.data, key ?? undefined);
   } catch (error) {
     if (error instanceof CrmNotConfiguredError) {
       return Response.json(

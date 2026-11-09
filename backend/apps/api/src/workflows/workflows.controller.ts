@@ -14,6 +14,7 @@ import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
 import { assertBranch, assertPeopleLinks, assertPeopleLinksInBranch, assertRecordBranch, branchWhere, customerBranchWhere } from "../auth/record-scope";
 import { NotifyService } from "../common/notify.service";
+import { submissionId } from "../common/submission-id";
 
 const UMRAH_STEPS = [
   "LEAD",
@@ -61,34 +62,55 @@ export class WorkflowsController {
     @Body() body: { step?: string },
     @Req() req: Request & { user: AuthUser },
   ) {
-    const b = await this.prisma.umrahBooking.findUnique({ where: { id } });
-    if (!b) throw new BadRequestException();
-    assertBranch(req.user, b.branchId);
-    const step = body.step && UMRAH_STEPS.includes(body.step) ? body.step : "ADVANCE_PAYMENT";
-    let status = b.status;
-    if (step === "CUSTOMER_CONFIRMATION") status = "CONFIRMED";
-    if (step === "DEPARTURE") status = "TRAVELING";
-    if (step === "COMPLETED") status = "COMPLETED";
-    if (["VISA", "FLIGHT", "HOTEL", "TRANSPORT", "DOCUMENTS"].includes(step)) status = "PROCESSING";
-    if (step === "VOUCHERS") status = "READY";
-    return this.prisma.umrahBooking.update({ where: { id }, data: { workflowStep: step, status } });
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "UmrahBooking" WHERE id = ${id} FOR UPDATE`;
+      const booking = await tx.umrahBooking.findUnique({ where: { id } });
+      if (!booking) throw new NotFoundException();
+      assertBranch(req.user, booking.branchId);
+      if (booking.status === "CANCELLED") throw new BadRequestException("Cancelled bookings cannot change status.");
+      const step = body?.step ?? "ADVANCE_PAYMENT";
+      if (!UMRAH_STEPS.includes(step)) throw new BadRequestException("Unknown workflow step.");
+      let status = booking.status;
+      if (step === "CUSTOMER_CONFIRMATION") status = "CONFIRMED";
+      if (step === "DEPARTURE") status = "TRAVELING";
+      if (step === "COMPLETED") status = "COMPLETED";
+      if (["VISA", "FLIGHT", "HOTEL", "TRANSPORT", "DOCUMENTS"].includes(step)) status = "PROCESSING";
+      if (step === "VOUCHERS") status = "READY";
+      if (booking.workflowStep === step && booking.status === status) return booking;
+      const row = await tx.umrahBooking.update({ where: { id }, data: { workflowStep: step, status } });
+      await this.audit.log({ db: tx, userId: req.user.id, action: "lifecycle", entity: "UmrahBooking", entityId: id, before: booking, after: row });
+      return row;
+    });
   }
 
   @Post("umrah-groups/:id/allocate")
   @RequirePermission("umrah.edit")
-  async allocateSeats(@Param("id") id: string, @Body() body: { seats: number }, @Req() req: Request & { user: AuthUser }) {
-    if (typeof body.seats !== "number" || !Number.isSafeInteger(body.seats) || body.seats <= 0) throw new BadRequestException("Seats must be a positive integer");
+  async allocateSeats(@Param("id") id: string, @Body() body: { seats: number }, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    if (typeof body?.seats !== "number" || !Number.isSafeInteger(body.seats) || body.seats <= 0) throw new BadRequestException("Seats must be a positive integer");
+    const auditId = submissionId("seat-allocation", [req.user.id, id], key);
     return this.prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "UmrahGroup" WHERE id = ${id} FOR UPDATE`;
       const g = await tx.umrahGroup.findUnique({ where: { id } });
       if (!g) throw new NotFoundException();
       assertBranch(req.user, g.branchId);
+      const prior = await tx.auditLog.findUnique({ where: { id: auditId }, select: { after: true } });
+      if (prior) {
+        const saved = prior.after;
+        if (!saved || typeof saved !== "object" || Array.isArray(saved) || saved.seats !== body.seats) {
+          throw new ConflictException("Idempotency key was already used for a different seat count");
+        }
+        if (!saved.group || typeof saved.group !== "object" || Array.isArray(saved.group)) {
+          throw new ConflictException("The earlier seat allocation could not be replayed");
+        }
+        return saved.group;
+      }
       const next = g.reservedSeats + body.seats;
       if (g.reservedSeats < 0 || !Number.isSafeInteger(next) || next > g.totalSeats) throw new BadRequestException("Overselling seats is not allowed");
       const row = await tx.umrahGroup.update({ where: { id }, data: { reservedSeats: next } });
-      await this.audit.log({ db: tx, userId: req.user.id, action: "ALLOCATE_SEATS", entity: "UmrahGroup", entityId: id, after: { seats: body.seats, reservedSeats: next } });
+      const group = JSON.parse(JSON.stringify(row)) as Prisma.JsonObject;
+      await this.audit.log({ id: auditId, db: tx, userId: req.user.id, action: "ALLOCATE_SEATS", entity: "UmrahGroup", entityId: id, after: { seats: body.seats, reservedSeats: next, group } });
       return row;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
   @Post("tickets")

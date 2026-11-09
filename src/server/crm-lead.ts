@@ -103,12 +103,13 @@ async function login(config: CrmConfig) {
   return token;
 }
 
-async function postLead(config: CrmConfig, token: string, input: InquiryInput) {
+async function postLead(config: CrmConfig, token: string, input: InquiryInput, key?: string) {
   return fetch(`${config.url}/api/v1/website/leads`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
+      ...(key && { "Idempotency-Key": key }),
     },
     body: JSON.stringify({
       fullName: input.name,
@@ -122,7 +123,7 @@ async function postLead(config: CrmConfig, token: string, input: InquiryInput) {
 }
 
 /** Creates one CRM lead. Call this only from the website server, after validation. */
-export async function createInquiryLead(input: InquiryInput) {
+export async function createInquiryLead(input: InquiryInput, key?: string) {
   const internalToken = process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN?.trim() ?? "";
   const origin = process.env.CRM_API_URL?.trim();
   if (origin && internalToken.length >= 32) {
@@ -131,7 +132,7 @@ export async function createInquiryLead(input: InquiryInput) {
       if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new CrmNotConfiguredError();
       const response = await fetch(new URL("/api/v1/website/inquiries", url.origin), {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Zat-Internal-Token": internalToken },
+        headers: { "Content-Type": "application/json", "X-Zat-Internal-Token": internalToken, ...(key && { "Idempotency-Key": key }) },
         body: JSON.stringify({ fullName: input.name, mobile: input.phone, email: input.email, notes: leadNotes(input) }),
         cache: "no-store",
         signal: AbortSignal.timeout(15000),
@@ -157,11 +158,11 @@ export async function createInquiryLead(input: InquiryInput) {
 
   let response: Response;
   try {
-    response = await postLead(config, token, input);
+    response = await postLead(config, token, input, key);
     if (response.status === 401) {
       cachedToken = null;
       token = await login(config);
-      response = await postLead(config, token, input);
+      response = await postLead(config, token, input, key);
     }
   } catch (error) {
     cachedToken = null;

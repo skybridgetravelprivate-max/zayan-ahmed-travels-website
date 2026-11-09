@@ -8,6 +8,7 @@ import {
 } from "@/components/forms/inquiry-notice";
 import type { InquiryType } from "@/lib/inquiries";
 import type { PreparedInquiry } from "@/lib/travel-inquiry";
+import { submitInquiry } from "./inquiry-submit";
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-white/30 bg-white px-3 py-2.5 text-sm text-foreground focus:border-zayan-orange focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zayan-orange";
@@ -25,6 +26,7 @@ export function ServiceInquiryForm({
 }) {
   const baseId = useId();
   const pendingRef = useRef(false);
+  const submission = useRef<Parameters<typeof submitInquiry>[0]["current"]>(null);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<InquiryNotice | null>(null);
   const [confirmedContext, setConfirmedContext] = useState<string | null>(null);
@@ -41,10 +43,7 @@ export function ServiceInquiryForm({
     const data = new FormData(event.currentTarget);
     const company = data.get("company");
     try {
-      const response = await fetch("/api/inquiries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await submitInquiry(submission, JSON.stringify({
           type,
           name: data.get("name"),
           email: data.get("email"),
@@ -85,11 +84,13 @@ export function ServiceInquiryForm({
           message: context
             ? `${context}\n\n${data.get("message") || ""}`
             : data.get("message"),
-        }),
-      });
+        }));
       const result = await readInquiryNotice(response);
       setNotice(result);
-      if (result.tone === "success") setConfirmedContext(contextKey);
+      if (result.tone === "success") {
+        submission.current = null;
+        setConfirmedContext(contextKey);
+      }
     } catch {
       setNotice({
         tone: "error",

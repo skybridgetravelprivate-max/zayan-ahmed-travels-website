@@ -38,6 +38,35 @@ type Ticket = {
 
 type TicketList = { data: Ticket[]; total: number; page: number; pageSize: number };
 
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nullableText(value: unknown) {
+  return value === null || typeof value === "string";
+}
+
+function validDate(value: unknown) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+function relation(value: unknown, label: string) {
+  return value === null || (record(value) && typeof value[label] === "string");
+}
+
+function isTicketList(value: unknown): value is TicketList {
+  return record(value) && typeof value.total === "number" && Number.isSafeInteger(value.total) && value.total >= 0 &&
+    typeof value.page === "number" && Number.isSafeInteger(value.page) && value.page > 0 && value.page <= 10000 &&
+    typeof value.pageSize === "number" && Number.isSafeInteger(value.pageSize) && value.pageSize > 0 &&
+    Array.isArray(value.data) && value.data.every(ticket =>
+      record(ticket) && typeof ticket.id === "string" && ticket.id.length > 0 &&
+      nullableText(ticket.ticketNumber) && nullableText(ticket.sector) && validDate(ticket.createdAt) &&
+      (ticket.departureAt === null || validDate(ticket.departureAt)) &&
+      typeof ticket.net === "string" && typeof ticket.currency === "string" &&
+      typeof ticket.status === "string" && Object.hasOwn(statuses, ticket.status) &&
+      relation(ticket.passenger, "fullName") && relation(ticket.customer, "fullName") && relation(ticket.supplier, "name"));
+}
+
 export default async function IssuedTicketInvoicesPage({
   searchParams,
 }: {
@@ -71,10 +100,16 @@ export default async function IssuedTicketInvoicesPage({
   let list: TicketList | null = null;
   try {
     const response = await staffRequest(`/api/v1/management/issued-ticket-invoices?${query}`);
-    if (response?.ok) list = await response.json();
+    if (response?.ok) {
+      const data: unknown = await response.json();
+      if (isTicketList(data)) list = data;
+    }
   } catch {
     // The filters remain available when the ticket service is unavailable.
   }
+
+  const lastPage = list ? Math.min(10000, Math.max(1, Math.ceil(list.total / list.pageSize))) : 1;
+  const outOfRange = list !== null && list.page > lastPage;
 
   return (
     <section>
@@ -110,11 +145,15 @@ export default async function IssuedTicketInvoicesPage({
         </p>
       ) : (
         <>
-          <p className="mt-5 text-sm text-muted">{list.total} records · Page {list.page} of {Math.max(1, Math.ceil(list.total / list.pageSize))}</p>
-          {!list.data.length ? (
+          <p className="mt-5 text-sm text-muted">{list.total} records{!outOfRange && ` · Page ${list.page} of ${lastPage}`}</p>
+          {outOfRange ? (
+            <p role="status" className="mt-4 rounded-xl border border-line bg-surface p-4">
+              There are no invoices on this page. <Link className="underline" href={pageUrl(lastPage)}>Go to page {lastPage}</Link>
+            </p>
+          ) : !list.data.length ? (
             <p role="status" className="mt-4 rounded-xl border border-line bg-surface p-4">
               {list.total > 0
-                ? "There are no invoices on this page. Use Previous to return to the results."
+                ? "There are no invoices on this page. Refresh to see the latest results."
                 : hasFilters
                   ? "No ticket invoices match your search. Clear Filters to start again."
                   : "No issued ticket invoices yet. Invoices appear here after a ticket is issued."}
@@ -154,8 +193,8 @@ export default async function IssuedTicketInvoicesPage({
             </div>
           )}
           <nav aria-label="Ticket invoice pagination" className="mt-5 flex gap-3">
-            {list.page > 1 && <Link className={button} href={pageUrl(list.page - 1)}>Previous</Link>}
-            {list.page < 10000 && list.page * list.pageSize < list.total && <Link className={button} href={pageUrl(list.page + 1)}>Next</Link>}
+            {!outOfRange && list.page > 1 && <Link className={button} href={pageUrl(list.page - 1)}>Previous</Link>}
+            {!outOfRange && list.page < lastPage && <Link className={button} href={pageUrl(list.page + 1)}>Next</Link>}
           </nav>
         </>
       )}

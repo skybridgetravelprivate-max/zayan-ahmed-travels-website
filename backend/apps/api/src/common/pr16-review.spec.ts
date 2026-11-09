@@ -143,7 +143,7 @@ test("all workflow source mutations and passenger attachment writes deny foreign
   const db = { umrahBooking: { findUnique: async () => foreign }, ticketSale: { findUnique: async () => foreign }, umrahGroup: { findUnique: async () => foreign }, starBooking: { findUnique: async () => foreign }, customer: { findUnique: async () => ({ branchId: "a" }) }, passenger: { findUnique: async () => ({ customerId: "b" }) } };
   const ctrl = new WorkflowsController({ ...db, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ ...db, $queryRaw: async () => [] }) } as never, {} as never, audit as never, {} as never, {} as never);
   await assert.rejects(ctrl.umrahStep("b", {}, request), { status: 404 });
-  await assert.rejects(ctrl.allocateSeats("b", { seats: 1 }, request), { status: 404 });
+  await assert.rejects(ctrl.allocateSeats("b", { seats: 1 }, request, "foreign-key"), { status: 404 });
   await assert.rejects(ctrl.reissue("b", {}, request), { status: 404 });
   await assert.rejects(ctrl.getStar("b", request), { status: 404 });
   await assert.rejects(ctrl.allocateStar("b", { rooms: [] }, request), { status: 404 });

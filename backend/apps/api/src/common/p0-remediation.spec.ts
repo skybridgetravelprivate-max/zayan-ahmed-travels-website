@@ -134,6 +134,7 @@ function workflowHarness(failCost = false) {
       customer: { findUnique: async () => ({ branchId: "a" }) },
       umrahBooking: { findFirst: async () => active.bookings[0], create: async ({ data }: { data: object }) => { const b = { id: "booking", ...data }; active.bookings.push(b); return b; } },
       umrahGroup: { findUnique: async () => { assert.ok(locked); return { branchId: "a", reservedSeats: active.reserved, totalSeats: 5 }; }, update: async ({ data }: { data: { reservedSeats: number } }) => { active.reserved = data.reservedSeats; return data; } },
+      auditLog: { findUnique: async () => null },
       ticketSale: {
         findUnique: async () => { assert.ok(locked); return { id: "ticket", branchId: "a", status: active.ticketStatus, fare: 100, net: 100, cost: 50, profit: 50, tax: 0, paidAmount: 100, paymentStatus: "PAID", currency: "PKR" }; },
         create: async ({ data }: { data: object }) => { const t = { id: "new-ticket", ...data }; active.tickets.push(t); return t; },
@@ -185,7 +186,7 @@ test("reissue failure rolls back the new ticket, and repeated successful request
 
 test("seat allocations serialize capacity checks and reject negative, fractional and zero inputs", async () => {
   const h = workflowHarness();
-  const result = await Promise.allSettled([h.ctrl.allocateSeats("group", { seats: 3 }, req), h.ctrl.allocateSeats("group", { seats: 3 }, req)]);
+  const result = await Promise.allSettled([h.ctrl.allocateSeats("group", { seats: 3 }, req, "seat-key-one"), h.ctrl.allocateSeats("group", { seats: 3 }, req, "seat-key-two")]);
   assert.equal(result.filter(r => r.status === "fulfilled").length, 1);
   assert.equal(h.state().reserved, 3);
   for (const seats of [-1, 0, 0.5, NaN]) await assert.rejects(h.ctrl.allocateSeats("group", { seats }, req), { status: 400 });
