@@ -67,14 +67,23 @@ function harness(failCost = false) {
   const state = { records: [] as unknown[], journals: [] as unknown[], audits: [] as unknown[], vouchers: [] as unknown[] };
   const tx = {
     customer: { findUnique: async () => ({ id: "customer-a", branchId: "a", leadId: null }) },
-    ticketSale: { create: async ({ data }: { data: object }) => { const row = { id: "ticket-a", ...data }; state.records.push(row); return row; } },
+    ticketSale: { create: async ({ data }: { data: { ticketNumber?: string } }) => {
+      if (state.records.some(row => (row as { ticketNumber?: string }).ticketNumber === data.ticketNumber)) {
+        throw new Prisma.PrismaClientKnownRequestError("Synthetic duplicate ticket", { code: "P2002", clientVersion: "test" });
+      }
+      const row = { id: "ticket-a", ...data };
+      state.records.push(row);
+      return row;
+    } },
     transportBooking: { create: async ({ data }: { data: object }) => { const row = { id: "transport-a", ...data }; state.records.push(row); return row; } },
     transportVoucher: { create: async (data: unknown) => { state.vouchers.push(data); return {}; } },
     umrahBooking: { create: async ({ data }: { data: object }) => { const row = { id: "umrah-a", ...data }; state.records.push(row); return row; }, findUniqueOrThrow: async () => state.records[0], findUnique: async () => state.records[0] },
   };
   const prisma = { umrahBooking: tx.umrahBooking, $transaction: async (run: (db: typeof tx) => Promise<unknown>, options: { isolationLevel: string }) => {
     assert.equal(options.isolationLevel, "Serializable");
-    const snapshot = structuredClone(state);
+    const snapshot = {
+      records: [...state.records], journals: [...state.journals], audits: [...state.audits], vouchers: [...state.vouchers],
+    };
     try { return await run(tx); } catch (e) { Object.assign(state, snapshot); throw e; }
   } };
   const seq = { next: async (_key: string, _prefix: string, db: unknown) => { assert.equal(db, tx); return "SYNTHETIC-001"; } };
@@ -99,16 +108,40 @@ test("unpaid ticket issue posts sale, cost and audit in one transaction", async 
 });
 test("failed ticket cost journal rolls back its ticket and sale journal", async () => {
   const h = harness(true);
-  await assert.rejects(h.controller.sellTicket({ fare: 100, cost: 60 }, req), /synthetic ledger failure/);
+  await assert.rejects(h.controller.sellTicket({ ticketNumber: "SYN-ROLLBACK", fare: 100, cost: 60 }, req), /synthetic ledger failure/);
   assert.equal(h.state.records.length, 0);
   assert.equal(h.state.journals.length, 0);
 });
 test("invalid ticket amounts and protected fields are rejected before insertion", async () => {
   for (const body of [{ fare: -1 }, { fare: 10, paidAmount: 11 }, { fare: 10, id: "forged" }, { fare: "NaN" }, { fare: 10, customer: { create: { fullName: "nested" } } }]) {
     const h = harness();
-    await assert.rejects(h.controller.sellTicket(body, req));
+    await assert.rejects(h.controller.sellTicket({ ticketNumber: "SYN-INVALID", ...body }, req));
     assert.equal(h.state.records.length, 0);
   }
+});
+
+test("unpaid issuance requires a ticket number and duplicate numbers do not post twice", async () => {
+  const h = harness();
+  for (const ticketNumber of [undefined, "", "   ", 123]) {
+    await assert.rejects(h.controller.sellTicket({ ticketNumber, fare: 100 }, req), { status: 400 });
+  }
+  assert.equal(h.state.records.length, 0);
+  const ticket = await h.controller.sellTicket({ ticketNumber: " SYN-RETRY ", fare: 100 }, req);
+  assert.equal(ticket.ticketNumber, "SYN-RETRY");
+  await assert.rejects(h.controller.sellTicket({ ticketNumber: "SYN-RETRY", fare: 100 }, req), { status: 409 });
+  assert.equal(h.state.records.length, 1);
+  assert.equal(h.state.journals.length, 1);
+  assert.equal(h.state.audits.length, 1);
+});
+
+test("ticket issuance keeps exact cents in sale, cost, and profit", async () => {
+  const h = harness();
+  const ticket = await h.controller.sellTicket({ ticketNumber: "SYN-CENTS", fare: "0.10", tax: "0.20", cost: "0.11" }, req);
+  assert.equal(ticket.net.toFixed(2), "0.30");
+  assert.equal(ticket.profit.toFixed(2), "0.19");
+  const [sale, cost] = h.state.journals as { lines: { debit: Prisma.Decimal }[] }[];
+  assert.equal(sale.lines[0].debit.toFixed(2), "0.30");
+  assert.equal(cost.lines[0].debit.toFixed(2), "0.11");
 });
 
 test("ticket issuance rejects malformed request bodies with 400", async () => {

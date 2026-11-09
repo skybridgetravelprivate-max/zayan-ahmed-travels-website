@@ -1,4 +1,5 @@
 import { ReceiptOperations } from "../finance/receipt-operations";
+import { money } from "../finance/money";
 import { convertLeadToCustomer } from "../crm/convert-lead";
 import { convertQuotationToBooking } from "../crm/convert-quotation";
 import { BadRequestException, ConflictException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
@@ -102,6 +103,13 @@ export class WorkflowsController {
     }
     const paymentSubmission = { ...body };
     const initialPaid = body.paidAmount;
+    const ticketNumber = typeof body.ticketNumber === "string" ? body.ticketNumber : undefined;
+    if (money(initialPaid ?? 0).isZero()) {
+      if (!ticketNumber?.trim()) {
+        throw new BadRequestException("Ticket number is required when issuing without an initial payment");
+      }
+      body = { ...body, ticketNumber: ticketNumber.trim() };
+    }
     body = { ...body, paidAmount: 0 };
     delete body.paymentMethod;
     const allowed = new Set("ticketNumber customerId passengerId pnrId airlineId flightNumber sector departureAt arrivalAt fare tax commission discount net cost paidAmount cabin baggage currency exchangeRate agentId branchId supplierId groupId".split(" "));
@@ -113,27 +121,37 @@ export class WorkflowsController {
       assertBranch(req.user, body.branchId || req.user.defaultBranchId);
       await assertPeopleLinks(tx, req.user, body);
       await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
-      const net = Number(body.net ?? Number(body.fare ?? 0) + Number(body.tax ?? 0) - Number(body.discount ?? 0));
-      const cost = Number(body.cost ?? 0);
-      const profit = net - cost;
-      const paidAmount = Number(body.paidAmount ?? 0);
-      if (![net, cost, paidAmount, Number(body.fare ?? 0), Number(body.tax ?? 0), Number(body.discount ?? 0)].every(n => Number.isFinite(n) && n >= 0) || paidAmount > net) throw new BadRequestException("Invalid ticket amounts");
+      const fare = money(body.fare ?? 0);
+      const tax = money(body.tax ?? 0);
+      const discount = money(body.discount ?? 0);
+      const net = money(body.net ?? fare.plus(tax).minus(discount));
+      const cost = money(body.cost ?? 0);
+      const profit = net.minus(cost);
       const ticket = await tx.ticketSale.create({
         data: {
           ...body,
+          fare,
+          tax,
+          discount,
           net,
+          cost,
           profit,
-          paidAmount,
+          paidAmount: 0,
           branchId: (body.branchId as string) || req.user.defaultBranchId,
-          paymentStatus: paidAmount >= net && net > 0 ? "PAID" : paidAmount > 0 ? "PARTIAL" : "UNPAID",
+          paymentStatus: "UNPAID",
           status: "ISSUED",
         } as never,
+      }).catch((error: unknown) => {
+        if (ticketNumber && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          throw new ConflictException("This ticket number has already been issued");
+        }
+        throw error;
       });
       const ar = await this.accounting.accountByCode("1300", tx);
       const rev = await this.accounting.accountByCode("4200", tx);
       const cogs = await this.accounting.accountByCode("5100", tx);
       const ap = await this.accounting.accountByCode("2100", tx);
-      if (net > 0) {
+      if (!net.isZero()) {
         await this.accounting.postJournal({
           db: tx,
           date: new Date(),
@@ -149,7 +167,7 @@ export class WorkflowsController {
           ],
         });
       }
-      if (cost > 0) {
+      if (!cost.isZero()) {
         await this.accounting.postJournal({
           db: tx,
           date: new Date(),

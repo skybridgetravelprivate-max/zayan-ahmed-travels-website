@@ -460,14 +460,14 @@ export class PdfController {
     await authorizeDocumentOwner(this.prisma, req.user, "ticketSale", id);
     const t = await this.prisma.ticketSale.findUnique({
       where: { id },
-      include: { customer: true, passenger: true, airline: true },
+      include: { customer: true, passenger: true, airline: true, pnr: { select: { pnr: true } } },
     });
     if (!t) return res.status(404).send("Not found");
     const m = this.pdf.parseMode(mode);
     return this.pdf.pipeA4(res, t.ticketNumber || t.id, m, (doc) => {
       doc.fontSize(16).text(`Ticket Invoice ${t.ticketNumber || t.id}`);
       this.pdf.writeKV(doc, [
-        ["PNR / ticket", `${t.pnrId || "-"} / ${t.ticketNumber || "-"}`],
+        ["PNR / ticket", `${t.pnr?.pnr || "-"} / ${t.ticketNumber || "-"}`],
         ["Customer", t.customer?.fullName ?? t.passenger?.fullName ?? "-"],
         ["Airline", t.airline?.name || t.flightNumber || "-"],
         ["Sector", t.sector || "-"],

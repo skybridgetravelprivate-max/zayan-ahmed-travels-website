@@ -93,3 +93,13 @@ jobs:
           createdb --host=127.0.0.1 --port=55463 --username=zat_synthetic zat_synthetic_crm_ci
           npm run db:migrate:deploy --prefix backend
           npm run test:crm:pg17 --prefix backend
+
+      - name: Verify isolated PostgreSQL 17 payment and ticket concurrency
+        env:
+          PGPASSWORD: synthetic_ci_only
+          DATABASE_URL: postgresql://zat_synthetic:synthetic_ci_only@127.0.0.1:55463/zat_synthetic_payment_integration
+          ZAT_SYNTHETIC_DATABASE_URL: postgresql://zat_synthetic:synthetic_ci_only@127.0.0.1:55463/zat_synthetic_payment_integration
+        run: |
+          createdb --host=127.0.0.1 --port=55463 --username=zat_synthetic zat_synthetic_payment_integration
+          npm run db:migrate:deploy --prefix backend
+          node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/finance/payment-integration.pg17.spec.ts
