@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Prisma } from "@prisma/client";
 import { ReportsService } from "./reports.service";
 import { ReportsController } from "./misc.controller";
 import { reportCsv } from "./csv";
@@ -20,6 +21,16 @@ test("oversized CSV rejects explicitly; invalid dates/report names/pagination ca
   await assert.rejects(service.run("receivables", { format: "csv" }), /50000/);
   for (const q of [{ from: "2026-02-30" }, { from: "2026-12-10", to: "2026-01-01" }, { page: "NaN" }]) await assert.rejects(service.run("receivables", q));
   await assert.rejects(service.run("unknown", {}));
+});
+
+test("CSV serializes dates and exact decimals without adding JSON quotes", () => {
+  const result = reportCsv([{
+    date: new Date("2026-11-09T08:00:00.000Z"),
+    account: "001234",
+    amount: new Prisma.Decimal("99999999999999.99"),
+    invalid: new Date(NaN),
+  }]);
+  assert.equal(result, '"date","account","amount","invalid"\r\n"2026-11-09T08:00:00.000Z","001234","99999999999999.99",""');
 });
 
 test("mixed stay representations include legacy rows once and keep hotels separate", async () => {

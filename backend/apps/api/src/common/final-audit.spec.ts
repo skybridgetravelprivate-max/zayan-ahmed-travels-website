@@ -67,6 +67,26 @@ test("foreign lead and quotation conversion stop before sequences, customer, boo
   await assert.rejects(ctrl.convertQuote("b", req()), { status: 404 });
 });
 
+test("ticket invoice uses the airline PNR and handles a missing PNR", async () => {
+  let pnr: { pnr: string } | null = { pnr: "AB12CD" };
+  const pnrLines: string[] = [];
+  const pdf = new PdfController({
+    ticketSale: { findUnique: async () => ({ id: "ticket-a", branchId: "a", ticketNumber: "TKT-A", pnrId: "internal-row", pnr }) },
+  } as never, {
+    parseMode: () => "EXCLUDED",
+    pipeA4: (_res: unknown, _name: string, _mode: string, draw: (doc: unknown) => void) => {
+      draw({ fontSize: () => ({ text() {} }) });
+    },
+    writeKV: (_doc: unknown, rows: [string, string][]) => { pnrLines.push(rows.find(([label]) => label === "PNR / ticket")![1]); },
+    customerLines: () => [],
+  } as never);
+  const staff = req({ ...user, permissions: ["ticket.view", "document.view"] });
+  await pdf.ticketInvoice("ticket-a", "EXCLUDED", {} as never, staff);
+  pnr = null;
+  await pdf.ticketInvoice("ticket-a", "EXCLUDED", {} as never, staff);
+  assert.deepEqual(pnrLines, ["AB12CD / TKT-A", "- / TKT-A"]);
+});
+
 // No database access: model transaction rollback and lock scheduling, while asserting
 // the controller issues the PostgreSQL row lock before reading availability.
 function refundsHarness(fail = false) {

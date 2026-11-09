@@ -72,8 +72,17 @@ test("Gate A PG17: typed allocations and atomic initial/module receipts", { skip
       await assert.rejects(workflows.sellTicket({ ...body, paymentMethod: "CASH" }, req), { status: 400 });
       await assert.rejects(workflows.sellTicket({ ...body, paymentMethod: "CASH" }, { user: { ...user, isSuperAdmin: false } } as never, randomUUID()), { status: 403 });
       assert.deepEqual(await snapshot(), before);
-      const unpaid = await workflows.sellTicket({ customerId: party.id, fare: 50, paidAmount: 0 }, req);
+      const unpaid = await workflows.sellTicket({ ticketNumber: randomUUID(), customerId: party.id, fare: 50, paidAmount: 0 }, req);
       assert.equal(unpaid.paidAmount.toFixed(2), "0.00");
+    });
+    await t.test("concurrent unpaid submissions issue only one ticket for the same number", async () => {
+      const party = await customer();
+      const body = { ticketNumber: randomUUID(), customerId: party.id, fare: 50, paidAmount: 0 };
+      const results = await Promise.allSettled([workflows.sellTicket(body, req), workflows.sellTicket(body, req)]);
+      assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+      assert.equal(await db.ticketSale.count({ where: { ticketNumber: body.ticketNumber } }), 1);
+      const issued = await db.ticketSale.findUniqueOrThrow({ where: { ticketNumber: body.ticketNumber } });
+      assert.equal(await db.receipt.count({ where: { ticketSaleId: issued.id } }), 0);
     });
     await t.test("transport receipt uses selling value, not profit, and later reviewed payments reconcile", async () => {
       const party = await customer(), key = randomUUID();
