@@ -8,6 +8,7 @@ export class AuditService {
   constructor(private prisma: PrismaService) {}
 
   async log(params: {
+    id?: string;
     userId?: string;
     action: string;
     reason?: string;
@@ -21,6 +22,7 @@ export class AuditService {
     const db = params.db ?? this.prisma;
     await db.auditLog.create({
       data: {
+        id: params.id,
         userId: params.userId,
         action: params.action,
         reason: params.reason,

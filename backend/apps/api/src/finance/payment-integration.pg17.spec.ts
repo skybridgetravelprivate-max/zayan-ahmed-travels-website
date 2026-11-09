@@ -17,6 +17,7 @@ import type { AuthUser } from "../auth/auth.types";
 import { PdfController } from "../documents/documents.controller";
 import { DocumentPdfService } from "../documents/document-pdf.service";
 import { ManagementService } from "../management/management.service";
+import { WebsiteInquiriesController } from "../website/website-inquiries.controller";
 
 const url = process.env.ZAT_SYNTHETIC_DATABASE_URL;
 test("Gate A PG17: typed allocations and atomic initial/module receipts", { skip: !url }, async t => {
@@ -41,6 +42,46 @@ test("Gate A PG17: typed allocations and atomic initial/module receipts", { skip
     const hotel = await db.hotel.create({ data: { hotelNumber: randomUUID(), name: "Synthetic payment hotel", city: "Makkah", country: "Saudi Arabia" } });
     const snapshot = async () => ({ tickets: await db.ticketSale.count(), receipts: await db.receipt.count(), journals: await db.journalEntry.count(), reissues: await db.ticketReissue.count() });
     let paidTicketId = "", paidUmrahId = "";
+
+    await t.test("cancelled bookings stay closed and concurrent seat retries reserve once", async () => {
+      const booking = await db.umrahBooking.create({ data: {
+        bookingNumber: randomUUID(), customerId: (await customer()).id, branchId: branch.id,
+        status: "CANCELLED", workflowStep: "Cancelled",
+      } });
+      await assert.rejects(workflows.umrahStep(booking.id, { step: "CUSTOMER_CONFIRMATION" }, req), { status: 400 });
+      assert.equal((await db.umrahBooking.findUniqueOrThrow({ where: { id: booking.id } })).status, "CANCELLED");
+
+      const group = await db.umrahGroup.create({ data: {
+        groupNumber: randomUUID(), name: "Synthetic group", branchId: branch.id, totalSeats: 5,
+      } });
+      const key = randomUUID();
+      const submit = () => workflows.allocateSeats(group.id, { seats: 1 }, req, key);
+      const results = await Promise.all([submit(), submit()]);
+      assert.deepEqual(results.map(result => result.reservedSeats), [1, 1]);
+      await assert.rejects(workflows.allocateSeats(group.id, { seats: 2 }, req, key), { status: 409 });
+      assert.equal((await db.umrahGroup.findUniqueOrThrow({ where: { id: group.id } })).reservedSeats, 1);
+      assert.equal(await db.auditLog.count({ where: { entityId: group.id, action: "ALLOCATE_SEATS" } }), 1);
+    });
+
+    await t.test("concurrent website inquiry retries create one lead", async () => {
+      const prior = process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN;
+      const token = randomUUID();
+      process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN = token;
+      try {
+        const service = new WebsiteInquiriesController(db as never, seq);
+        const key = randomUUID();
+        const body = { fullName: "Synthetic inquiry", mobile: "+923001234567", notes: randomUUID() };
+        const submit = () => service.create(body, token, key);
+        const [first, retry] = await Promise.all([submit(), submit()]);
+        assert.equal(first.id, retry.id);
+        await assert.rejects(service.create({ ...body, notes: "different" }, token, key), { status: 409 });
+        assert.equal(await db.lead.count({ where: { notes: body.notes } }), 1);
+        assert.equal(await db.auditLog.count({ where: { entityId: first.id, action: "INQUIRY_SUBMITTED" } }), 1);
+      } finally {
+        if (prior === undefined) delete process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN;
+        else process.env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN = prior;
+      }
+    });
 
     await t.test("receipt maintenance blocks initial payments, direct receipts and review without writes", async () => {
       const previous = process.env.RECEIPT_WRITES_DISABLED;

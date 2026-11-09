@@ -4,6 +4,7 @@ import { createContext, useContext, useRef, useState, type FormEvent, type React
 import { Button } from "@/components/ui/Button";
 import { readInquiryNotice, type InquiryFieldErrors, type InquiryNotice } from "@/components/forms/inquiry-notice";
 import type { InquiryType } from "@/lib/inquiries";
+import { submitInquiry } from "./inquiry-submit";
 
 const FieldErrorContext = createContext<InquiryFieldErrors>({});
 
@@ -21,6 +22,7 @@ type DemoFormProps = {
 
 export function DemoForm({ children, submitLabel, inquiryType, toPayload, fieldIds = {} }: DemoFormProps) {
   const pendingRef = useRef(false);
+  const submission = useRef<Parameters<typeof submitInquiry>[0]["current"]>(null);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<InquiryNotice | null>(null);
   const apiFields = notice?.tone === "error" ? notice.fields : {};
@@ -38,12 +40,10 @@ export function DemoForm({ children, submitLabel, inquiryType, toPayload, fieldI
     setPending(true);
     setNotice(null);
     try {
-      const response = await fetch("/api/inquiries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: inquiryType, ...toPayload(new FormData(event.currentTarget)) }),
-      });
-      setNotice(await readInquiryNotice(response));
+      const response = await submitInquiry(submission, JSON.stringify({ type: inquiryType, ...toPayload(new FormData(event.currentTarget)) }));
+      const result = await readInquiryNotice(response);
+      if (result.tone === "success") submission.current = null;
+      setNotice(result);
     } catch {
       setNotice({
         tone: "error",
