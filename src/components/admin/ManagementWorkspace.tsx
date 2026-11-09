@@ -654,6 +654,7 @@ export function ManagementWorkspace({
   isSuperAdmin,
   initialId,
   initialLeadId,
+  issueTicket,
 }: {
   resource: string;
   staffUsername: string;
@@ -662,6 +663,7 @@ export function ManagementWorkspace({
   isSuperAdmin: boolean;
   initialId?: string;
   initialLeadId?: string;
+  issueTicket?: boolean;
 }) {
   const { modules, error: catalogError } = useCatalog();
   const contract = modules?.find((m) => m.key === resource);
@@ -720,7 +722,11 @@ export function ManagementWorkspace({
     { id: string; fullName: string }[]
   >([]);
   const [assigning, setAssigning] = useState(false);
-  const [workflow, setWorkflow] = useState<StaffWorkflow | null>(null);
+  const [workflow, setWorkflow] = useState<StaffWorkflow | null>(() =>
+    issueTicket
+      ? workflowsFor("tickets", false, permissions, isSuperAdmin).find(action => action.key === "create") ?? null
+      : null,
+  );
   const supplierPayment = resource === "payments";
   const settlementResource = supplierPayment ? "payments" : "receipts";
   const retryIdentity = supplierPayment ? `supplier-payment:${staffUsername}` : staffUsername;

@@ -1,6 +1,7 @@
 import type { ManagementModule } from "./staff-management";
 import { workflowsFor } from "./staff-workflows";
 export function moduleHref(key: string) {
+  if (key === "issued-ticket-invoices") return "/admin/ticket-invoices/issued";
   return key === "cms-pages"
     ? "/admin/website"
     : key === "umrah-packages"

@@ -17,6 +17,7 @@ export type StaffApiPath =
   | "/api/v1/dashboard/workspace"
   | "/api/v1/management/modules"
   | "/api/v1/crm/today"
+  | `/api/v1/management/issued-ticket-invoices?${string}`
   | `/api/v1/leads${string}`
   | `/api/v1/website/pages${string}`;
 
@@ -52,6 +53,7 @@ export async function staffRequest(path: StaffApiPath) {
     path !== "/api/v1/dashboard/workspace" &&
     path !== "/api/v1/management/modules" &&
     path !== "/api/v1/crm/today" &&
+    !(path.length <= 5000 && /^\/api\/v1\/management\/issued-ticket-invoices\?[A-Za-z0-9%&=._~*+-]*$/.test(path)) &&
     (path.length > 600 ||
       (!leadApiPath.test(path) &&
         !/^\/api\/v1\/website\/pages(?:\/[a-z][a-z0-9-]{0,79})?$/.test(path)))

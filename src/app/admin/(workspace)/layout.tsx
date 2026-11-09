@@ -39,6 +39,9 @@ export default async function StaffWorkspaceLayout({
     unavailable = true;
   }
   const links = modules.map(({ key, title, group }) => ({ key, title, group }));
+  if (user.isSuperAdmin || user.permissions.includes("ticket.view")) {
+    links.push({ key: "issued-ticket-invoices", title: "Issued Ticket Invoices", group: "Flights" });
+  }
   return (
     <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:px-8">
       <a
