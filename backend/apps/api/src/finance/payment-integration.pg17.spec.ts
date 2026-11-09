@@ -59,7 +59,7 @@ test("Gate A PG17: typed allocations and atomic initial/module receipts", { skip
       assert.equal(first.paidAmount.toFixed(2), "30.00");
       assert.equal(first.paymentStatus, "PARTIAL");
       assert.equal(await db.receipt.count({ where: { ticketSaleId: first.id } }), 1);
-      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === party.id)?.balance, 70);
+      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === party.id)?.balance, "70.00");
       await assert.rejects(workflows.sellTicket({ ...body, sector: "changed" }, req, key), { status: 409 });
       const before = await snapshot();
       await assert.rejects(workflows.sellTicket({ ...body, ticketNumber: randomUUID() }, req, randomUUID()), { status: 409 });
