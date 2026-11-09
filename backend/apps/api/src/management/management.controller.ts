@@ -16,6 +16,11 @@ export class ManagementController {
   }
   @Get("umrah/catalog")
   umrahCatalog(@Req() req: Request & { user: AuthUser }) { return this.management.umrahCatalog(req.user); }
+  @Get("issued-ticket-invoices")
+  issuedTicketInvoices(@Query() query: Record<string, unknown>, @Req() req: Request & { user: AuthUser }, @Res({ passthrough: true }) res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    return this.management.issuedTicketInvoices(req.user, query);
+  }
   @Get("options/:resource")
   options(@Param("resource") resource: string, @Query("q") q: string | undefined, @Req() req: Request & { user: AuthUser }) { return this.management.options(req.user, resource, q); }
   @Get("leads/:id/assignees")

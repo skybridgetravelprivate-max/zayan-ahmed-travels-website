@@ -20,7 +20,7 @@ export default async function ResourcePage({
   searchParams,
 }: {
   params: Promise<{ resource: string }>;
-  searchParams: Promise<{ record?: string; lead?: string }>;
+  searchParams: Promise<{ record?: string; lead?: string; action?: string }>;
 }) {
   const identity = await getStaffIdentity();
   if (identity.status === "signed-out") redirect("/admin/login");
@@ -50,12 +50,14 @@ export default async function ResourcePage({
     typeof selected === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(selected)
       ? selected
       : undefined;
+  const issueTicket = resource === "tickets" && !initialId && query.action === "issue";
   return (
     <ManagementWorkspace
-      key={`${resource}-${initialId || ""}-${initialLeadId || ""}`}
+      key={`${resource}-${initialId || ""}-${initialLeadId || ""}-${issueTicket}`}
       resource={resource}
       staffUsername={identity.user.username}
       initialId={initialId}
+      issueTicket={issueTicket}
       initialLeadId={initialLeadId}
       canAssign={
         identity.user.isSuperAdmin ||

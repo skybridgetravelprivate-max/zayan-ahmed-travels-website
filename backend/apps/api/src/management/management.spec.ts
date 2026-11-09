@@ -63,6 +63,34 @@ test("foreign or missing detail fails closed and no privileged relation payload 
   const db = { lead: { findMany: async () => [] } };
   await assert.rejects(service(db).detail(user, "leads", "foreign"), NotFoundException);
 });
+test("ticket invoice filters and counts preserve branch and linked people scope", async () => {
+  let args: Record<string, unknown> | undefined;
+  let countArgs: unknown;
+  const db = { ticketSale: {
+    findMany: async (input: Record<string, unknown>) => { args = input; return []; },
+    count: async (input: unknown) => { countArgs = input; return 0; },
+  } };
+  const staff = { ...user, permissions: ["ticket.view"] };
+  await assert.rejects(service(db).issuedTicketInvoices(user, {}), ForbiddenException);
+  assert.equal(args, undefined);
+  await assert.rejects(service(db).issuedTicketInvoices(staff, { status: "BOOKED" }), { status: 400 });
+  await assert.rejects(service(db).issuedTicketInvoices(staff, { reference: ["a", "b"] }), { status: 400 });
+  await service(db).issuedTicketInvoices(staff, {
+    page: "2", reference: "TKT_123", passenger: "Traveller", customer: "Customer", supplier: "Supplier", branchId: "b",
+  });
+  const where = args?.where as Record<string, unknown>;
+  assert.deepEqual(where.branchId, { in: ["a"] });
+  assert.equal(where.status, "ISSUED");
+  assert.deepEqual(where.ticketNumber, { contains: "TKT\\_123", mode: "insensitive" });
+  assert.deepEqual(where.passenger, { fullName: { contains: "Traveller", mode: "insensitive" } });
+  assert.deepEqual(where.customer, { fullName: { contains: "Customer", mode: "insensitive" } });
+  assert.deepEqual(where.supplier, { name: { contains: "Supplier", mode: "insensitive" } });
+  assert.match(JSON.stringify(where.AND), /customerId.*branchId.*passengerId.*branchId/);
+  assert.deepEqual(countArgs, { where });
+  assert.equal(args?.skip, 20);
+  assert.equal((args?.select as Record<string, unknown>).cost, undefined);
+  await assert.rejects(service(db).detail(staff, "tickets", "foreign"), NotFoundException);
+});
 test("stale edit is rejected inside the transaction before any mutation", async () => {
   let writes = 0;
   const tx = { lead: { findMany: async () => [{ id: "lead-a", branchId: "a", updatedAt: new Date(version) }], update: async () => { writes++; } } };

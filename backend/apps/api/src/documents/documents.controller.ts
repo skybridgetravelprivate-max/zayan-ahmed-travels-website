@@ -471,6 +471,7 @@ export class PdfController {
         ["Customer", t.customer?.fullName ?? t.passenger?.fullName ?? "-"],
         ["Airline", t.airline?.name || t.flightNumber || "-"],
         ["Sector", t.sector || "-"],
+        ["Currency", t.currency],
       ]);
       this.pdf
         .customerLines(m, [

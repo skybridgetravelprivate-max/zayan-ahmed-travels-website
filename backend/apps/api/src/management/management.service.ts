@@ -3,7 +3,7 @@ import { isSerializationConflict } from "../common/serialization-conflict";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuthUser, can } from "../auth/auth.types";
-import { branchIds } from "../auth/record-scope";
+import { branchIds, customerBranchWhere } from "../auth/record-scope";
 import { AuditService } from "../common/audit.service";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -377,6 +377,60 @@ export class ManagementService {
     const rows = await this.delegate(db, resource).findMany({ where: { AND: [this.scope(user, resource), { id }] }, take: 1 });
     if (!rows[0]) throw new NotFoundException();
     return this.projection(resource, rows[0]);
+  }
+  async issuedTicketInvoices(user: AuthUser, query: Record<string, unknown>) {
+    this.spec(user, "tickets");
+    const page = typeof query.page === "string" ? Number(query.page) : query.page === undefined ? 1 : NaN;
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10000) throw new BadRequestException("Invalid page");
+
+    const status = query.status || "ISSUED";
+    if (status !== "ISSUED" && status !== "REFUNDED" && status !== "REISSUED") {
+      throw new BadRequestException("Invalid ticket status");
+    }
+    function search(key: string) {
+      const value = query[key];
+      if (value === undefined || value === "") return undefined;
+      if (typeof value !== "string" || value.length > 100 || value.includes("\0")) {
+        throw new BadRequestException("Invalid search");
+      }
+      const term = value.trim();
+      return term ? { contains: term.replace(/[\\%_]/g, "\\$&"), mode: "insensitive" as const } : undefined;
+    }
+    const reference = search("reference");
+    const passenger = search("passenger");
+    const customer = search("customer");
+    const supplier = search("supplier");
+    const peopleScope = customerBranchWhere(user);
+    const where: Prisma.TicketSaleWhereInput = {
+      ...this.scope(user, "tickets"),
+      status,
+      ...(!user.isSuperAdmin && { AND: [
+        { OR: [{ customerId: null }, { customer: peopleScope }] },
+        { OR: [{ passengerId: null }, { passenger: { customer: peopleScope } }] },
+      ] }),
+      ...(reference && { ticketNumber: reference }),
+      ...(passenger && { passenger: { fullName: passenger } }),
+      ...(customer && { customer: { fullName: customer } }),
+      ...(supplier && { supplier: { name: supplier } }),
+    };
+    const pageSize = 20;
+    const [data, total] = await Promise.all([
+      this.prisma.ticketSale.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true, ticketNumber: true, createdAt: true, sector: true, departureAt: true,
+          net: true, currency: true, status: true,
+          passenger: { select: { fullName: true } },
+          customer: { select: { fullName: true } },
+          supplier: { select: { name: true } },
+        },
+      }),
+      this.prisma.ticketSale.count({ where }),
+    ]);
+    return { data, total, page, pageSize };
   }
   private async checkLinks(db: PrismaService, user: AuthUser, resource: string, data: Record<string, unknown>, before?: Record<string, unknown>) {
     return validateResourceLinks(db, user, resource, data, before);
