@@ -57,6 +57,7 @@ export default async function IssuedTicketInvoicesPage({
     if (typeof value === "string" && value.trim()) query.set(name, value.trim().slice(0, 100));
   }
   if (typeof input.status === "string" && Object.hasOwn(statuses, input.status)) query.set("status", input.status);
+  const hasFilters = fields.some(({ name }) => query.has(name)) || (query.get("status") ?? "ISSUED") !== "ISSUED";
   const page = typeof input.page === "string" ? Number(input.page) : 1;
   if (Number.isSafeInteger(page) && page > 1 && page <= 10000) query.set("page", String(page));
 
@@ -110,7 +111,15 @@ export default async function IssuedTicketInvoicesPage({
       ) : (
         <>
           <p className="mt-5 text-sm text-muted">{list.total} records · Page {list.page} of {Math.max(1, Math.ceil(list.total / list.pageSize))}</p>
-          {!list.data.length ? <p role="status" className="mt-4">No ticket invoices match these filters.</p> : (
+          {!list.data.length ? (
+            <p role="status" className="mt-4 rounded-xl border border-line bg-surface p-4">
+              {list.total > 0
+                ? "There are no invoices on this page. Use Previous to return to the results."
+                : hasFilters
+                  ? "No ticket invoices match your search. Clear Filters to start again."
+                  : "No issued ticket invoices yet. Invoices appear here after a ticket is issued."}
+            </p>
+          ) : (
             <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-surface">
               <table className="w-full text-left text-sm">
                 <caption className="sr-only">Ticket invoices</caption>
