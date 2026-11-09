@@ -1,7 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
 import { createPostgresConnectionConfig } from "@zat/config/postgres-tls";
 
 function databaseUrl() {
@@ -31,12 +30,11 @@ function prismaOptions() {
   const url = databaseUrl();
   if (!url) return {};
   const postgresConfig = createPostgresConnectionConfig(url);
-  const pool = new Pool({
+  return { adapter: new PrismaPg({
     ...postgresConfig,
     max: 5,
     connectionTimeoutMillis: 15000,
-  });
-  return { adapter: new PrismaPg(pool) };
+  }) };
 }
 
 export function sanitizeDbError(err: unknown) {
@@ -73,7 +71,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async ping() {
     const problem = databaseUrlProblem();
     if (problem) throw new Error(problem);
-    await this.$queryRawUnsafe("SELECT 1");
+    await this.$queryRaw`SELECT 1`;
     return true;
   }
 }

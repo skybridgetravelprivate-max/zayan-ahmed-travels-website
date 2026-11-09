@@ -97,12 +97,15 @@ export class WorkflowsController {
     @Req() req: Request & { user: AuthUser },
     @Headers("idempotency-key") requestKey?: string,
   ) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new BadRequestException("Expected a ticket object");
+    }
     const paymentSubmission = { ...body };
     const initialPaid = body.paidAmount;
     body = { ...body, paidAmount: 0 };
     delete body.paymentMethod;
     const allowed = new Set("ticketNumber customerId passengerId pnrId airlineId flightNumber sector departureAt arrivalAt fare tax commission discount net cost paidAmount cabin baggage currency exchangeRate agentId branchId supplierId groupId".split(" "));
-    if (!body || Object.keys(body).some(key => !allowed.has(key) || (body[key] !== null && !["string", "number"].includes(typeof body[key])))) throw new BadRequestException("Unsupported ticket field");
+    if (Object.keys(body).some(key => !allowed.has(key) || (body[key] !== null && !["string", "number"].includes(typeof body[key])))) throw new BadRequestException("Unsupported ticket field");
     for (const [key, value] of Object.entries(body)) {
       if (typeof value === "string" && (value.length > 300 || (key.endsWith("Id") && !/^[A-Za-z0-9_-]{1,80}$/.test(value)))) throw new BadRequestException("Invalid ticket field");
     }

@@ -110,6 +110,13 @@ test("invalid ticket amounts and protected fields are rejected before insertion"
     assert.equal(h.state.records.length, 0);
   }
 });
+
+test("ticket issuance rejects malformed request bodies with 400", async () => {
+  const h = harness();
+  for (const body of [null, undefined, [], "ticket"]) {
+    await assert.rejects(h.controller.sellTicket(body as unknown as Record<string, unknown>, req), { status: 400 });
+  }
+});
 test("transport creation commits voucher and both journals together; ledger failure rolls back", async () => {
   const body = { customerId: "customer-a", sellingPrice: 100, cost: 50, tripDate: "2026-10-19T00:00:00Z", paxCount: 1 };
   const ok = harness();
