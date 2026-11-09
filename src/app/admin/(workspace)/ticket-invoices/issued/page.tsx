@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AgencyMasthead } from "@/components/admin/AgencyMasthead";
 import { bookingDocumentUrl } from "@/lib/booking-presentation";
 import { getStaffIdentity, staffRequest } from "@/server/staff-api";
+import { ClearInvoiceFilters } from "./ClearInvoiceFilters";
 
 export const metadata: Metadata = { title: "Issued Ticket Invoices", robots: { index: false, follow: false } };
 
@@ -99,7 +100,7 @@ export default async function IssuedTicketInvoicesPage({
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button className={button}>Search</button>
-          <Link className={button} href={path}>Clear Filters</Link>
+          <ClearInvoiceFilters className={button} href={path} />
         </div>
       </Form>
       {!list ? (
@@ -131,9 +132,9 @@ export default async function IssuedTicketInvoicesPage({
                         <td className="whitespace-nowrap">{ticket.currency} {ticket.net}</td>
                         <td>{statuses[ticket.status]}</td>
                         <td>{pdf ? (
-                          <div className="flex flex-wrap gap-2 whitespace-nowrap">
+                          <div className="whitespace-nowrap">
                             <a className="text-zayan-blue underline" href={pdf} target="_blank" rel="noopener noreferrer">View Invoice</a>
-                            <a className="text-zayan-blue underline" href={`${pdf}#toolbar=1`} target="_blank" rel="noopener noreferrer" title="Open the PDF and use the viewer’s Print command">Print PDF</a>
+                            <p className="mt-1 text-xs text-muted">Print from the PDF viewer</p>
                           </div>
                         ) : "—"}</td>
                       </tr>
