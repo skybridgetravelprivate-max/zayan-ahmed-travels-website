@@ -103,3 +103,4 @@ jobs:
           createdb --host=127.0.0.1 --port=55463 --username=zat_synthetic zat_synthetic_payment_integration
           npm run db:migrate:deploy --prefix backend
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/finance/payment-integration.pg17.spec.ts
+          node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test --test-concurrency=1 backend/apps/api/src/finance/payment-repair.pg17.spec.ts backend/apps/api/src/finance/receipt-recovery.pg17.spec.ts
