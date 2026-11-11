@@ -18,8 +18,8 @@ const fields = [
 ];
 const statuses = { ISSUED: "Issued", REFUNDED: "Refunded", REISSUED: "Reissued" } as const;
 const columns = ["Ticket number", "Record created", "Passenger", "Route", "Departure date", "Customer", "Supplier", "Total", "Status", "Actions"];
-const control = "mt-1 block w-full rounded-lg border border-line bg-white px-3 py-2";
-const button = "inline-block rounded-lg border border-line px-3 py-2 text-sm font-medium hover:border-zayan-blue";
+const control = "mt-1 block w-full rounded-lg border border-crm-border bg-crm-surface px-3 py-2 text-crm-body font-normal";
+const button = "inline-block rounded-lg border border-crm-border px-3 py-2 text-crm-label font-semibold hover:underline";
 const date = new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeZone: "Asia/Karachi" });
 
 type Ticket = {
@@ -50,6 +50,11 @@ function validDate(value: unknown) {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
+function invoiceTotal(net: string) {
+  const [whole, fraction = ""] = net.split(".");
+  return `${whole}.${fraction.padEnd(2, "0")}`;
+}
+
 function relation(value: unknown, label: string) {
   return value === null || (record(value) && typeof value[label] === "string");
 }
@@ -62,7 +67,7 @@ function isTicketList(value: unknown): value is TicketList {
       record(ticket) && typeof ticket.id === "string" && ticket.id.length > 0 &&
       nullableText(ticket.ticketNumber) && nullableText(ticket.sector) && validDate(ticket.createdAt) &&
       (ticket.departureAt === null || validDate(ticket.departureAt)) &&
-      typeof ticket.net === "string" && typeof ticket.currency === "string" &&
+      typeof ticket.net === "string" && /^-?\d+(?:\.\d{1,2})?$/.test(ticket.net) && typeof ticket.currency === "string" &&
       typeof ticket.status === "string" && Object.hasOwn(statuses, ticket.status) &&
       relation(ticket.passenger, "fullName") && relation(ticket.customer, "fullName") && relation(ticket.supplier, "name"));
 }
@@ -114,90 +119,92 @@ export default async function IssuedTicketInvoicesPage({
   return (
     <section>
       <AgencyMasthead />
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold text-zayan-blue">Issued Ticket Invoices</h1>
-        {can("ticket.create") && <Link className={`${button} bg-zayan-blue text-white`} href="/admin/manage/tickets?action=issue">Create Invoice</Link>}
-      </div>
-      <p className="mt-2 text-sm text-muted">Search ticket sales and open their invoice PDFs. Dates are shown in Pakistan time.</p>
-      <Form key={query.toString()} action={path} className="mt-5 rounded-2xl border border-line bg-surface p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {fields.map(({ name, label }) => (
-            <label key={name} className="text-sm font-medium">
-              {label}
-              <input name={name} type="search" maxLength={100} defaultValue={query.get(name) ?? ""} className={control} />
+      <div className="crm-type-surface rounded-2xl bg-crm-canvas p-4 text-crm-primary sm:p-5">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-crm-title font-bold lg:text-crm-title-lg">Issued Ticket Invoices</h1>
+          {can("ticket.create") && <Link className={`${button} bg-zayan-blue text-white`} href="/admin/manage/tickets?action=issue">Create Invoice</Link>}
+        </div>
+        <p className="mt-2 text-crm-body text-crm-muted">Search ticket sales and open their invoice PDFs. Dates are shown in Pakistan time.</p>
+        <Form key={query.toString()} action={path} className="mt-5 rounded-2xl border border-crm-border bg-crm-surface p-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {fields.map(({ name, label }) => (
+              <label key={name} className="text-crm-label font-semibold">
+                {label}
+                <input name={name} type="search" maxLength={100} defaultValue={query.get(name) ?? ""} className={control} />
+              </label>
+            ))}
+            <label className="text-crm-label font-semibold">
+              Status
+              <select name="status" defaultValue={query.get("status") ?? "ISSUED"} className={control}>
+                {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
             </label>
-          ))}
-          <label className="text-sm font-medium">
-            Status
-            <select name="status" defaultValue={query.get("status") ?? "ISSUED"} className={control}>
-              {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button className={button}>Search</button>
-          <ClearInvoiceFilters className={button} href={path} />
-        </div>
-      </Form>
-      {!list ? (
-        <p role="alert" className="mt-5 rounded-xl border border-red-300 p-4">
-          Ticket invoices could not be loaded. <a className="underline" href={pageUrl(Number(query.get("page") ?? 1))}>Retry</a>
-        </p>
-      ) : (
-        <>
-          <p className="mt-5 text-sm text-muted">{list.total} records{!outOfRange && ` · Page ${list.page} of ${lastPage}`}</p>
-          {outOfRange ? (
-            <p role="status" className="mt-4 rounded-xl border border-line bg-surface p-4">
-              There are no invoices on this page. <Link className="underline" href={pageUrl(lastPage)}>Go to page {lastPage}</Link>
-            </p>
-          ) : !list.data.length ? (
-            <p role="status" className="mt-4 rounded-xl border border-line bg-surface p-4">
-              {list.total > 0
-                ? "There are no invoices on this page. Refresh to see the latest results."
-                : hasFilters
-                  ? "No ticket invoices match your search. Clear Filters to start again."
-                  : "No issued ticket invoices yet. Invoices appear here after a ticket is issued."}
-            </p>
-          ) : (
-            <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-surface">
-              <table className="w-full text-left text-sm">
-                <caption className="sr-only">Ticket invoices</caption>
-                <thead className="bg-zayan-blue/5">
-                  <tr>{columns.map(column => <th key={column} scope="col" className="whitespace-nowrap px-3 py-3">{column}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {list.data.map(ticket => {
-                    const pdf = can("document.view") ? bookingDocumentUrl("tickets", ticket.id, true) : null;
-                    return (
-                      <tr key={ticket.id} className="border-t border-line align-top [&>td]:px-3 [&>td]:py-3">
-                        <td><Link className="font-medium text-zayan-blue underline" href={`/admin/manage/tickets?record=${encodeURIComponent(ticket.id)}`}>{ticket.ticketNumber || "View ticket"}</Link></td>
-                        <td className="whitespace-nowrap">{date.format(new Date(ticket.createdAt))}</td>
-                        <td>{ticket.passenger?.fullName || "—"}</td>
-                        <td>{ticket.sector || "—"}</td>
-                        <td className="whitespace-nowrap">{ticket.departureAt ? date.format(new Date(ticket.departureAt)) : "—"}</td>
-                        <td>{ticket.customer?.fullName || "—"}</td>
-                        <td>{ticket.supplier?.name || "—"}</td>
-                        <td className="whitespace-nowrap">{ticket.currency} {ticket.net}</td>
-                        <td>{statuses[ticket.status]}</td>
-                        <td>{pdf ? (
-                          <div className="whitespace-nowrap">
-                            <a className="text-zayan-blue underline" href={pdf} target="_blank" rel="noopener noreferrer">View Invoice</a>
-                            <p className="mt-1 text-xs text-muted">Print from the PDF viewer</p>
-                          </div>
-                        ) : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <nav aria-label="Ticket invoice pagination" className="mt-5 flex gap-3">
-            {!outOfRange && list.page > 1 && <Link className={button} href={pageUrl(list.page - 1)}>Previous</Link>}
-            {!outOfRange && list.page < lastPage && <Link className={button} href={pageUrl(list.page + 1)}>Next</Link>}
-          </nav>
-        </>
-      )}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className={button}>Search</button>
+            <ClearInvoiceFilters className={button} href={path} />
+          </div>
+        </Form>
+        {!list ? (
+          <p role="alert" className="mt-5 rounded-xl border border-crm-border bg-crm-surface p-4 text-crm-alert">
+            Ticket invoices could not be loaded. <a className="underline" href={pageUrl(Number(query.get("page") ?? 1))}>Retry</a>
+          </p>
+        ) : (
+          <>
+            <p className="crm-figures mt-5 text-crm-meta text-crm-muted">{list.total} records{!outOfRange && ` · Page ${list.page} of ${lastPage}`}</p>
+            {outOfRange ? (
+              <p role="status" className="mt-4 rounded-xl border border-crm-border bg-crm-surface p-4">
+                There are no invoices on this page. <Link className="underline" href={pageUrl(lastPage)}>Go to page {lastPage}</Link>
+              </p>
+            ) : !list.data.length ? (
+              <p role="status" className="mt-4 rounded-xl border border-crm-border bg-crm-surface p-4">
+                {list.total > 0
+                  ? "There are no invoices on this page. Refresh to see the latest results."
+                  : hasFilters
+                    ? "No ticket invoices match your search. Clear Filters to start again."
+                    : "No issued ticket invoices yet. Invoices appear here after a ticket is issued."}
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-crm-border bg-crm-surface">
+                <table className="w-full text-start text-crm-table">
+                  <caption className="sr-only">Ticket invoices</caption>
+                  <thead className="bg-crm-canvas text-crm-label">
+                    <tr>{columns.map(column => <th key={column} scope="col" className={`whitespace-nowrap px-3 py-3 font-semibold ${column === "Total" ? "text-end" : ""}`}>{column}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {list.data.map(ticket => {
+                      const pdf = can("document.view") ? bookingDocumentUrl("tickets", ticket.id, true) : null;
+                      return (
+                        <tr key={ticket.id} className="border-t border-crm-border align-top [&>td]:px-3 [&>td]:py-3">
+                          <td><Link className="crm-reference font-medium text-crm-link underline" href={`/admin/manage/tickets?record=${encodeURIComponent(ticket.id)}`}>{ticket.ticketNumber || "View ticket"}</Link></td>
+                          <td className="crm-figures whitespace-nowrap">{date.format(new Date(ticket.createdAt))}</td>
+                          <td>{ticket.passenger?.fullName || "—"}</td>
+                          <td>{ticket.sector || "—"}</td>
+                          <td className="crm-figures whitespace-nowrap">{ticket.departureAt ? date.format(new Date(ticket.departureAt)) : "—"}</td>
+                          <td>{ticket.customer?.fullName || "—"}</td>
+                          <td>{ticket.supplier?.name || "—"}</td>
+                          <td className="crm-figures whitespace-nowrap text-end font-crm-data font-semibold">{ticket.currency} {invoiceTotal(ticket.net)}</td>
+                          <td><span className="inline-block whitespace-nowrap rounded-md bg-crm-canvas px-2 py-0.5 text-crm-micro font-semibold">{statuses[ticket.status]}</span></td>
+                          <td>{pdf ? (
+                            <div className="whitespace-nowrap">
+                              <a className="text-crm-link underline" href={pdf} target="_blank" rel="noopener noreferrer">View Invoice</a>
+                              <p className="mt-1 text-crm-meta text-crm-muted">Print from the PDF viewer</p>
+                            </div>
+                          ) : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <nav aria-label="Ticket invoice pagination" className="mt-5 flex gap-3">
+              {!outOfRange && list.page > 1 && <Link className={button} href={pageUrl(list.page - 1)}>Previous</Link>}
+              {!outOfRange && list.page < lastPage && <Link className={button} href={pageUrl(list.page + 1)}>Next</Link>}
+            </nav>
+          </>
+        )}
+      </div>
     </section>
   );
 }

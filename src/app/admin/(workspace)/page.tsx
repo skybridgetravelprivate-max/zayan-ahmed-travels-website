@@ -87,7 +87,7 @@ export default async function StaffDashboard() {
         <p className="text-sm font-semibold uppercase tracking-wide text-zayan-orange">
           Your work today
         </p>
-        <h1 className="mt-2 text-3xl font-bold text-zayan-blue">
+        <h1 className="mt-2 text-crm-title font-bold text-zayan-blue lg:text-crm-title-lg">
           Welcome, {user.fullName}
         </h1>
         <p className="mt-2 text-sm text-muted">
@@ -119,15 +119,15 @@ export default async function StaffDashboard() {
                       key={metric.key}
                       className="rounded-xl border border-line bg-surface p-4"
                     >
-                      <h3 className="text-sm font-semibold text-zayan-blue">
+                      <h3 className="text-crm-label font-semibold text-zayan-blue">
                         {metric.label}
                       </h3>
-                      <p className="mt-2 text-3xl font-bold">
+                      <p className="crm-figures mt-2 font-crm-data text-crm-balance font-bold">
                         {Number.isSafeInteger(metric.value)
                           ? metric.value
                           : "Unavailable"}
                       </p>
-                      <p className="mt-2 text-xs text-muted">{metric.basis}</p>
+                      <p className="mt-2 text-crm-meta text-crm-muted">{metric.basis}</p>
                     </article>
                   ))}
               </div>
