@@ -6,6 +6,17 @@ import {
   type ManagementField,
   type ManagementRow,
 } from "@/lib/staff-management";
+
+function isNumeric(field: ManagementField) {
+  return ["Int", "Float", "Decimal"].includes(field.type) && !field.reference;
+}
+
+function valueTypography(field: ManagementField) {
+  if (isNumeric(field)) return "font-crm-data crm-figures";
+  if (/^(pnr|ticketNumber)$/i.test(field.name)) return "crm-reference";
+  return "";
+}
+
 function Value({ field, row }: { field: ManagementField; row: ManagementRow }) {
   const reference = row.presentation?.references[field.name];
   const text = formatRecordValue(field, row);
@@ -37,7 +48,7 @@ export function RecordSummary({
   const groups = [...new Set(visible.map(recordSection))];
   return (
     <>
-      <p className="mt-2 text-xs text-muted">
+      <p className="mt-2 text-crm-meta text-crm-muted">
         Dates shown in {row.presentation?.timeZone || "company time"}. Amounts
         use the record currency where recorded.
       </p>
@@ -56,10 +67,10 @@ export function RecordSummary({
                     key={field.name}
                     className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3"
                   >
-                    <dt className="text-sm text-muted">
+                    <dt className="text-crm-label text-crm-muted">
                       {field.label.replace(/ id$/i, "")}
                     </dt>
-                    <dd className="min-w-0 break-words whitespace-pre-wrap text-sm font-medium">
+                    <dd className={`min-w-0 break-words whitespace-pre-wrap text-crm-table font-medium ${valueTypography(field)}`}>
                       <Value field={field} row={row} />
                     </dd>
                   </div>
@@ -72,17 +83,17 @@ export function RecordSummary({
         <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">
           Technical references
         </summary>
-        <dl className="space-y-2 text-xs">
+        <dl className="space-y-2 text-crm-meta">
           <div>
             <dt>Record ID</dt>
-            <dd className="break-all">{row.id}</dd>
+            <dd className="crm-code break-all font-crm-code">{row.id}</dd>
           </div>
           {fields
             .filter((field) => field.reference && row[field.name])
             .map((field) => (
               <div key={field.name}>
                 <dt>{field.label}</dt>
-                <dd className="break-all">{String(row[field.name])}</dd>
+                <dd className="crm-code break-all font-crm-code">{String(row[field.name])}</dd>
               </div>
             ))}
         </dl>
@@ -121,15 +132,15 @@ export function RecordResults({
   return (
     <>
       <div className="mt-4 hidden overflow-x-auto rounded-xl border border-line md:block">
-        <table className="w-full text-left text-sm">
+        <table className="w-full text-start text-crm-table">
           <caption className="sr-only">Authorized filtered records</caption>
-          <thead className="bg-slate-50">
+          <thead className="bg-crm-canvas text-crm-label">
             <tr>
               {columns.map((field) => (
                 <th
                   key={field.name}
                   scope="col"
-                  className="px-4 py-3 font-semibold"
+                  className={`px-4 py-3 font-semibold ${isNumeric(field) ? "text-end" : ""}`}
                 >
                   {field.label.replace(/ id$/i, "")}
                 </th>
@@ -145,7 +156,7 @@ export function RecordResults({
                 {columns.map((field) => (
                   <td
                     key={field.name}
-                    className="max-w-xs break-words px-4 py-3"
+                    className={`max-w-xs break-words px-4 py-3 ${valueTypography(field)} ${isNumeric(field) ? "text-end" : ""}`}
                   >
                     {formatRecordValue(field, row)}
                   </td>
@@ -179,10 +190,10 @@ export function RecordResults({
             <dl className="space-y-2">
               {columns.map((field) => (
                 <div key={field.name}>
-                  <dt className="text-xs text-muted">
+                  <dt className="text-crm-meta text-crm-muted">
                     {field.label.replace(/ id$/i, "")}
                   </dt>
-                  <dd className="break-words text-sm font-medium">
+                  <dd className={`break-words text-crm-table font-medium ${valueTypography(field)}`}>
                     {formatRecordValue(field, row)}
                   </dd>
                 </div>

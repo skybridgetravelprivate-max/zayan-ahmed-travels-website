@@ -259,8 +259,9 @@ function Field({
   const value = row?.[field.name];
   const initial = value == null ? "" : String(value);
   const required = field.required && create;
+  const numeric = ["Int", "Float", "Decimal"].includes(field.type);
   const base = {
-    className: control,
+    className: `${control} text-crm-body font-normal disabled:bg-crm-canvas disabled:text-crm-disabled disabled:opacity-100${numeric ? " font-crm-data crm-figures" : ""}`,
     name: field.name,
     disabled,
     required,
@@ -269,7 +270,7 @@ function Field({
   return (
     <div className="min-w-0">
       <label
-        className="block text-sm font-semibold"
+        className="block text-crm-label font-semibold"
         htmlFor={`field-${field.name}`}
       >
         {field.label}
@@ -314,7 +315,7 @@ function Field({
           type={
             field.type === "DateTime"
               ? "datetime-local"
-              : ["Int", "Float", "Decimal"].includes(field.type)
+              : numeric
                 ? "number"
                 : /email/i.test(field.name)
                   ? "email"
@@ -322,7 +323,7 @@ function Field({
           }
           min={
             field.min ??
-            (["Int", "Float", "Decimal"].includes(field.type) ? 0 : undefined)
+            (numeric ? 0 : undefined)
           }
           step={field.type === "Int" ? "1" : "any"}
           maxLength={300}
