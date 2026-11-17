@@ -41,6 +41,25 @@ test("email and total limits deny before password work; database failures fail c
   assert.equal(attempts, 0);
 });
 
+test("recovery limits hash email or reset tokens and count successful email requests", async () => {
+  const emailPool = pool();
+  const emailResult = await reserveCustomerAuthAttempt("forgot-password", { email: " PERSON@EXAMPLE.TEST " }, emailPool.value as never);
+  assert.ok(emailResult.allowed);
+  const emailQuery = emailPool.calls.find(c => c.sql.startsWith("SELECT COUNT"))!;
+  assert.match(String(emailQuery.args?.[0]), /^zat-customer:forgot-password:[a-f0-9]{64}$/);
+  assert.match(emailQuery.sql, /'forgot-password' OR success = false/);
+  assert.equal(emailQuery.args?.[2], "forgot-password");
+  assert.doesNotMatch(JSON.stringify(emailPool.calls), /PERSON@|person@/);
+
+  const rawToken = "synthetic-reset-token";
+  const resetPool = pool();
+  const resetResult = await reserveCustomerAuthAttempt("reset-password", { token: rawToken }, resetPool.value as never);
+  assert.ok(resetResult.allowed);
+  const resetQuery = resetPool.calls.find(c => c.sql.startsWith("SELECT COUNT"))!;
+  assert.match(String(resetQuery.args?.[0]), /^zat-customer:reset-password:[a-f0-9]{64}$/);
+  assert.doesNotMatch(JSON.stringify(resetPool.calls), /synthetic-reset-token/);
+});
+
 test("reservation errors roll back and release the connection", async () => {
   const p = pool(0, 0, true);
   await assert.rejects(reserveCustomerAuthAttempt("register", {}, p.value as never), /database down/);

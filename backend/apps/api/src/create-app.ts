@@ -16,6 +16,8 @@ export async function createNestApp(): Promise<INestApplication> {
     exclude: [
       { path: "v1/customer/bookings", method: RequestMethod.GET },
       { path: "v1/customer/upsert-by-email", method: RequestMethod.POST },
+      { path: "v1/customer/forgot-password", method: RequestMethod.POST },
+      { path: "v1/customer/reset-password", method: RequestMethod.POST },
     ],
   });
   app.getHttpAdapter().getInstance().set("trust proxy", 1);

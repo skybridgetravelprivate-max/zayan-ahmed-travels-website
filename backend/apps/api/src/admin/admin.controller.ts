@@ -13,6 +13,7 @@ import {
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
+import { GlobalFinanceGuard } from "../auth/global-finance.guard";
 import { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../common/prisma.service";
 import { AuditService } from "../common/audit.service";
@@ -75,6 +76,7 @@ export class AdminController {
   }
 
   @Post("manual-journal")
+  @UseGuards(GlobalFinanceGuard)
   @RequirePermission("account.adjust")
   journal(
     @Body()
@@ -105,6 +107,7 @@ export class AdminController {
   }
 
   @Get("audit")
+  @UseGuards(GlobalFinanceGuard)
   @RequirePermission("audit.view")
   auditLog(@Query() q: { q?: string }) {
     return this.prisma.auditLog.findMany({

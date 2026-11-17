@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LoginForm } from "@/components/account/LoginForm";
 import {
   ProfileSummary,
@@ -54,6 +55,11 @@ export function AccountHome({
               Use your website account email and password.
             </p>
             <LoginForm />
+            <p className="mt-4 text-sm">
+              <Link href="/account/forgot-password" className="underline">
+                Forgot your password?
+              </Link>
+            </p>
           </div>
         </section>
       )}
