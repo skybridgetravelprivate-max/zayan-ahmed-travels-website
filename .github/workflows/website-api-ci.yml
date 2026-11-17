@@ -48,12 +48,6 @@ jobs:
       - name: Install website dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Verify root dependency audit
-        run: npm audit --audit-level=moderate --legacy-peer-deps
-
-      - name: Verify backend dependency audit
-        run: npm audit --prefix backend --audit-level=moderate --legacy-peer-deps
-
       - name: Build website and API
         run: npm run build
 
@@ -114,3 +108,9 @@ jobs:
           createdb --host=127.0.0.1 --port=55463 --username=zat_synthetic zat_synthetic_release_http
           npm run db:migrate:deploy --prefix backend
           node backend/scripts/quotation-http-journey.cjs
+
+      - name: Verify root dependency audit
+        run: npm audit --audit-level=moderate --legacy-peer-deps
+
+      - name: Verify backend dependency audit
+        run: npm audit --prefix backend --audit-level=moderate --legacy-peer-deps
