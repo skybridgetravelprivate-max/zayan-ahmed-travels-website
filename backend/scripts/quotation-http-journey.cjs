@@ -273,13 +273,25 @@ async function journey() {
     const storedResetToken = await db.websiteCustomerPasswordResetToken.findFirstOrThrow({ where: { tokenHash: recoveryTokenHash } });
     assert.notEqual(storedResetToken.tokenHash, recoveryToken);
     assert.ok(storedResetToken.expiresAt > new Date());
+    const expiredToken = randomBytes(32).toString("hex");
+    await db.websiteCustomerPasswordResetToken.create({
+      data: {
+        customerId: website.id,
+        tokenHash: createHash("sha256").update(expiredToken).digest("hex"),
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
     const newCustomerPassword = `Synthetic-reset-${randomBytes(12).toString("hex")}!`;
-    const resetResponse = await request("/api/account/reset-password", {
+    const reset = token => request("/api/account/reset-password", {
       actor: "customer",
       method: "POST",
-      body: { token: recoveryToken, password: newCustomerPassword },
+      body: { token, password: newCustomerPassword },
     });
-    assert.equal(resetResponse.status, 200);
+    assert.equal((await reset(expiredToken)).status, 400);
+    assert.equal((await request("/api/account/bookings", { actor: "customer" })).status, 200);
+    const attempts = await Promise.all([reset(recoveryToken), reset(recoveryToken)]);
+    assert.deepEqual(attempts.map(response => response.status).sort(), [200, 400]);
+    const resetResponse = attempts.find(response => response.status === 200);
     assert.deepEqual(await resetResponse.json(), { ok: true, message: "Your password was reset. Existing sessions have been revoked; please sign in again." });
     assert.ok((await db.websiteCustomerPasswordResetToken.findUniqueOrThrow({ where: { id: storedResetToken.id } })).usedAt);
     assert.equal(await db.websiteCustomerSession.count({ where: { customerId: website.id, revokedAt: null } }), 0);
