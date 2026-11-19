@@ -221,37 +221,44 @@ export class StorageService {
       key,
       config ?? (await this.assertPrivateBucket()),
     );
-    const response = await fetch(
-      method === "DELETE" ? target.bucketUrl : target.url,
-      {
-        method,
-        headers: {
-          apikey: target.serviceKey,
-          Authorization: `Bearer ${target.serviceKey}`,
-          ...(body
+    let response: Response;
+    try {
+      response = await fetch(
+        method === "DELETE" ? target.bucketUrl : target.url,
+        {
+          method,
+          headers: {
+            apikey: target.serviceKey,
+            Authorization: `Bearer ${target.serviceKey}`,
+            ...(body
+              ? {
+                  "Content-Type": mimeType ?? "application/octet-stream",
+                  "Cache-Control": "no-store",
+                  "x-upsert": "false",
+                }
+              : {}),
+            ...(method === "DELETE"
+              ? { "Content-Type": "application/json" }
+              : {}),
+          },
+          ...(body ? { body } : {}),
+          ...(method === "DELETE"
             ? {
-                "Content-Type": mimeType ?? "application/octet-stream",
-                "Cache-Control": "no-store",
-                "x-upsert": "false",
+                body: JSON.stringify({
+                  prefixes: [key.slice(PRIVATE_KEY_PREFIX.length)],
+                }),
               }
             : {}),
-          ...(method === "DELETE"
-            ? { "Content-Type": "application/json" }
-            : {}),
+          signal: AbortSignal.timeout(15000),
+          cache: "no-store",
+          redirect: "error",
         },
-        ...(body ? { body } : {}),
-        ...(method === "DELETE"
-          ? {
-              body: JSON.stringify({
-                prefixes: [key.slice(PRIVATE_KEY_PREFIX.length)],
-              }),
-            }
-          : {}),
-        signal: AbortSignal.timeout(15000),
-        cache: "no-store",
-        redirect: "error",
-      },
-    );
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        "Private document storage could not be reached.",
+      );
+    }
     if (!response.ok) {
       throw new ServiceUnavailableException(
         `Private document storage request failed (HTTP ${response.status}).`,
