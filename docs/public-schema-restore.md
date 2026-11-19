@@ -12,7 +12,7 @@ Decrypted SHA-256: 660C76084CA4ADA8B8DCDE5627956F9E8B7188B57CBED6452FF7454EB544B
 
 The restore matched 101 tables and 519 rows against the archive's COPY records. All 177 foreign keys were validated with zero orphan rows. Fifteen migrations were completed. Prisma successfully read users, customers, Umrah bookings, stored documents, journals, website customers, and CMS pages using the application's generated client.
 
-This snapshot contains one staff account, one customer, one website customer, zero stored-document records, and zero journals. Payment-heavy recovery needs an additional synthetic snapshot exercise. Applying the current additive customer-recovery migration to this restored snapshot also succeeded.
+This snapshot contains one staff account, one customer, one website customer, zero stored-document records, and zero journals. Applying the current additive customer-recovery migration to this restored snapshot also succeeded. The separate synthetic financial/object drill below covers records absent from this production snapshot.
 
 ## Prepare the destination
 
@@ -66,3 +66,23 @@ The exercise used --no-owner and --no-acl so Supabase roles and grants are not r
 Document byte recovery was separately exercised with synthetic data in persistence.pg17.spec.ts and document-backup.spec.mjs. Production document activation, independent offsite retrieval, and independent recovery-key custody remain separate acceptance tasks.
 
 Stop the local cluster after verification. Keep restored records private and remove disposable plaintext artifacts through the approved local data-retention process. Use the retained application revision for code rollback. A database restore replaces data and requires its own recovery decision.
+
+## Encrypted synthetic financial and object drill
+
+`backend/scripts/financial-restore-journey.cjs` was exercised against the existing disposable payment-integration fixtures on PostgreSQL 17.12/UTC. It packages a public-schema dump with a paired synthetic document export, encrypts the package with age, decrypts using the existing local recovery identity, and restores into a fresh database. It does not accept remote database URLs, arbitrary source databases, existing output directories or an existing destination database.
+
+Prerequisites: built backend, PostgreSQL 17 tools, age, tar, and a seeded `zat_synthetic_payment_integration` database. Seed using `backend/apps/api/src/finance/payment-integration.pg17.spec.ts` against that disposable database; never copy production records into it. No concurrent writer should use the fixtures during the snapshot/fingerprint comparison.
+
+Set the following in a private operator session, then run `node backend/scripts/financial-restore-journey.cjs` from the repository root:
+
+* `ZAT_SYNTHETIC_DATABASE_URL`: PostgreSQL URL for `127.0.0.1:55463/zat_synthetic_payment_integration`.
+* `ZAT_RESTORE_DATABASE_URL`: same loopback server/credentials, fresh database named `zat_restore_financial_` plus a lowercase alphanumeric/underscore suffix.
+* `ZAT_PG_BIN`: PostgreSQL 17 binaries directory.
+* `ZAT_AGE_BIN`: age executable path.
+* `ZAT_RECOVERY_IDENTITY`: local age identity path; keep its contents private.
+* `ZAT_RECOVERY_RECIPIENT`: corresponding public age recipient.
+* `ZAT_FINANCIAL_RESTORE_OUTPUT`: fresh, nonexisting output directory whose parent exists.
+
+The tested drill matched 102 tables / 167 rows, 178 validated foreign keys / zero orphans, and 16 complete migrations. Eighteen journals and six receipts retained their exact financial fingerprint, with debit and credit totals each `1040.00`. Application reads succeeded. One paired document had no missing/orphan objects, retained metadata, downloaded with private headers, denied a foreign branch, and matched its hash in a fresh Node process.
+
+The output contains `financial-recovery.tar.age` and aggregate `result.json`. Keep the checksum from that run with its artifact; encryption produces a different ciphertext hash each run. Plaintext source/extracted packages contain synthetic fixtures only. The restored database contains those same fixtures and is separate from the source. Stop the disposable cluster when finished. This drill does not establish an offsite copy, independent key custody, hosted storage durability, or hosted roles/RLS correctness.
