@@ -53,6 +53,7 @@ test("PG17 visa intake, application status, private PDF and customer isolation",
         assert.equal(row.status, status === "APPROVED" ? "Completed" : "Upcoming");
         assert.deepEqual(Object.keys(row).sort(), ["reference", "service", "destination", "travelDate", "status", "createdAt", "updatedAt"].sort());
         assert.equal(row.service, "Visa");
+        assert.equal(row.travelDate, null, "Application creation/submission timestamps are not travel dates");
       }
       assert.equal((await bookings.listForWebsiteCustomer(other.id)).bookings.some(row => row.reference === application.applicationNo), false);
     });

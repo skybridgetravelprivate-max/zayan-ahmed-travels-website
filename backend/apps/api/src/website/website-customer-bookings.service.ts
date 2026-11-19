@@ -173,12 +173,12 @@ export class WebsiteCustomerBookingsService {
         row.status === "CANCELLED" || row.status === "REJECTED",
       );
       if (!status) continue;
-      const travelDate = travelDateFrom(row.submittedAt ?? row.createdAt);
       rows.push({
         reference: row.applicationNo,
         service: "Visa",
         destination: row.country.slice(0, 200),
-        travelDate,
+        // Visa creation/submission records do not establish a travel date.
+        travelDate: null,
         status,
         createdAt: isoDate(row.createdAt),
         updatedAt: isoDate(row.updatedAt),

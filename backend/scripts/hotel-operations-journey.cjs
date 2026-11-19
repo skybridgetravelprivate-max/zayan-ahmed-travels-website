@@ -25,7 +25,7 @@ async function main() {
     const hash = await bcrypt.hash(password, 10), role = await db.role.upsert({ where: { name: "SUPER_ADMIN" }, update: {}, create: { name: "SUPER_ADMIN" } });
     const branch = await db.branch.create({ data: { code: tag, name: "Synthetic hotel office" } });
     const admin = await db.user.create({ data: { email: `${tag}@example.test`, username: tag, fullName: "Synthetic hotel operator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: role.id } } } });
-    const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic hotel customer", branchId: branch.id } });
+    const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic hotel customer", email: `${tag}-hotel@example.test`, branchId: branch.id } });
     const passenger = await db.passenger.create({ data: { fullName: "Synthetic allocated guest", customerId: customer.id } });
     const hotel = await db.hotel.create({ data: { hotelNumber: randomUUID(), name: "Synthetic acceptance hotel", city: "Makkah", country: "Saudi Arabia" } });
     const roomType = await db.hotelRoomType.create({ data: { hotelId: hotel.id, name: "Synthetic single room", occupancy: 1 } });
@@ -105,8 +105,36 @@ async function main() {
     fs.writeFileSync(path.join(output,"hotel-reservation.pdf"),await accommodation.body());
     const excluded=await operator.context.request.get(origin+`/api/v1/pdf/hotel-reservation/${booking.id}?mode=EXCLUDED`);assert.equal(excluded.status(),200);fs.writeFileSync(path.join(output,"hotel-reservation-excluded.pdf"),await excluded.body());
     const customerView=await operator.context.request.get(origin+`/v1/customer/bookings?website_customer_id=${customer.id}`,{headers:{"x-zat-internal-token":env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN}});assert.equal(customerView.status(),200);assert.equal((await customerView.json()).bookings.find(row=>row.reference===booking.bookingNumber).status,"Completed");
-    const otherCustomer=await db.customer.create({data:{customerNumber:randomUUID(),fullName:"Synthetic isolated customer",branchId:branch.id}});
+    const otherCustomer=await db.customer.create({data:{customerNumber:randomUUID(),fullName:"Synthetic isolated customer",email:`${tag}-other@example.test`,branchId:branch.id}});
     const isolatedView=await operator.context.request.get(origin+`/v1/customer/bookings?website_customer_id=${otherCustomer.id}`,{headers:{"x-zat-internal-token":env.CUSTOMER_BOOKINGS_INTERNAL_TOKEN}});assert.equal(isolatedView.status(),200);assert.equal((await isolatedView.json()).bookings.length,0);
+    for (const [party, owns] of [[customer, true], [otherCustomer, false]]) {
+      const registered = await operator.context.request.post(origin + "/api/account/register", { headers: { Origin: origin }, data: { email: party.email, password, confirmPassword: password, displayName: "Synthetic hotel website account" } });
+      assert.equal(registered.status(), 201);
+      const website = await db.websiteCustomer.findUniqueOrThrow({ where: { email: party.email } });
+      const linked = await operator.context.request.post(origin + "/api/v1/website/customer-links", { headers: { Origin: origin }, data: { websiteCustomerId: website.id, crmCustomerId: party.id, ownershipVerified: true } });
+      assert.equal(linked.status(), 201);
+      const customerContext = await browser.newContext();
+      try {
+        const customerPage = await customerContext.newPage();
+        await customerPage.goto(origin + "/my-bookings");
+        await customerPage.getByLabel("Email", { exact: true }).fill(party.email);
+        await customerPage.getByLabel("Password", { exact: true }).fill(password);
+        await customerPage.locator("form").getByRole("button", { name: /^Sign in$/i }).click();
+        if (owns) await customerPage.getByRole("button", { name: "Completed", exact: true }).waitFor();
+        else await customerPage.getByRole("heading", { name: "No bookings yet", exact: true }).waitFor();
+        const response = await customerContext.request.get(origin + "/api/account/bookings?website_customer_id=forged");
+        assert.equal(response.status(), 200); assert.match(response.headers()["cache-control"], /private.*no-store/);
+        const rows = (await response.json()).bookings;
+        assert.equal(rows.some(row => row.reference === booking.bookingNumber), owns);
+        if (owns) {
+          await customerPage.getByRole("button", { name: "Completed", exact: true }).click();
+          await customerPage.getByRole("heading", { name: booking.bookingNumber, exact: true }).waitFor();
+          assert.equal((await customerContext.request.get(origin + `/api/v1/pdf/hotel-reservation/${booking.id}`)).status(), 401);
+          await customerPage.screenshot({ path: path.join(output, "customer-hotel-completed.png"), fullPage: true });
+        }
+      } finally { await customerContext.close(); }
+    }
+    checks.push("Two actual website customer logins: verified owner sees completed hotel booking, other account and forged selector remain isolated, private cache headers retained, customer cannot fetch staff PDF");
     const receipt = await db.receipt.findFirstOrThrow({where:{hotelBookingId:booking.id}});assert.equal(receipt.amount.toFixed(2),"250.25");assert.equal(await db.receipt.count({where:{hotelBookingId:booking.id}}),1);
     const [balance] = await db.$queryRaw`SELECT coalesce(sum(l.debit-l.credit),0)::text AS balance FROM "JournalLine" l JOIN "JournalEntry" j ON j.id=l."journalId" JOIN "ChartOfAccount" a ON a.id=l."accountId" WHERE l."partyId"=${customer.id} AND a.code='1300' AND j.status='POSTED'`;
     assert.equal(Number(balance.balance).toFixed(2),"1750.75");
@@ -124,7 +152,7 @@ async function main() {
     const large=await operator.context.request.post(origin+"/api/v1/hotel-reservations",{headers:{Origin:origin},data:{branchId:branch.id,customerId:customer.id,segments:[{hotelId:hotel.id,checkIn:"2041-01-01",checkOut:"2041-01-03",rooms:Array.from({length:8},(_,i)=>({occupancy:2,passengerIds:longGuests.slice(i*2,i*2+2).map(p=>p.id)}))}]}});assert.equal(large.status(),201);const largeBooking=await large.json();
     for(const mode of ["INCLUDED","EXCLUDED"]){const document=await operator.context.request.get(origin+`/api/v1/pdf/hotel-reservation/${largeBooking.id}?mode=${mode}`);assert.equal(document.status(),200);fs.writeFileSync(path.join(output,`hotel-multipage-${mode}.pdf`),await document.body());}
     checks.push("Eight-room, sixteen-long-name reservation PDFs generated in both price modes for separate pagination inspection");
-    const result={status:"passed",syntheticOnly:true,checks,hotel:{net:"2001.00",paid:"250.25",balance:"1750.75",roomStatus:"CHECKED_OUT"},limits:["No supplier confirmation or payout claimed","Customer projection tested through internal HTTP; public account login not repeated","Full settlement and supplier settlement not tested","No actual email delivery or production password change"],productionChanges:false};fs.writeFileSync(path.join(output,"hotel-operations-browser-result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+    const result={status:"passed",syntheticOnly:true,checks,hotel:{net:"2001.00",paid:"250.25",balance:"1750.75",roomStatus:"CHECKED_OUT"},limits:["No supplier confirmation or payout claimed","Full settlement and supplier settlement not tested","No actual email delivery or production password change"],productionChanges:false};fs.writeFileSync(path.join(output,"hotel-operations-browser-result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   } finally {
     if (browser) await browser.close();
     if (child && child.exitCode === null) { child.kill(); await new Promise(resolve=>child.once("exit",resolve)); }

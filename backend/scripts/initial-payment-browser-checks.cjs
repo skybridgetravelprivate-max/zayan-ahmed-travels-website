@@ -3,14 +3,14 @@ const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
 const path = require("node:path");
 
-module.exports = async ({ context, page, origin, db, admin, outputDir }) => {
+module.exports = async ({ context, page, origin, db, admin, outputDir, customerId }) => {
   // Existing synthetic receipt has already been examined by the parent journey.
   for (const receipt of await db.receipt.findMany({ where: { customerId: { not: null } } })) {
     const response = await context.request.post(`${origin}/api/v1/finance/receipts/${receipt.id}/review`, { data: { reviewed: true } });
     assert.equal(response.status(), 201);
   }
   await page.evaluate(() => localStorage.clear());
-  const party = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic initial browser customer", branchId: admin.defaultBranchId } });
+  const party = customerId ? await db.customer.findUniqueOrThrow({ where: { id: customerId } }) : await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic initial browser customer", branchId: admin.defaultBranchId } });
   const ticketNumber = randomUUID();
   async function fill() {
     await page.getByRole("button", { name: "Issue ticket", exact: true }).click();
@@ -47,4 +47,5 @@ module.exports = async ({ context, page, origin, db, admin, outputDir }) => {
   await page.getByRole("button", { name: "I reviewed this saved receipt; allow a new payment", exact: true }).click();
   await page.getByText("Saved receipt reviewed. You may explicitly start a new payment.", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(outputDir, "initial-payment-recovered.png"), fullPage: true });
+  return ticket;
 };

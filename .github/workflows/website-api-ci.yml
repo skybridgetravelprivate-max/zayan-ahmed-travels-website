@@ -121,6 +121,7 @@ jobs:
           npm run test:operations:pg17 --prefix backend
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/workflows/visa-journey.pg17.spec.ts
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/workflows/ticket-journey.pg17.spec.ts
+          node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/documents/private-storage.pg17.spec.ts
           npm run test:document-backup --prefix backend
 
       - name: Verify root dependency audit
