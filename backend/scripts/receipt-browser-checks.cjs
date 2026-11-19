@@ -13,10 +13,11 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
   context.setDefaultTimeout(20000);
   const results = [];
   async function staffLogin(page, user) {
-    await page.goto(origin + "/admin/login");
+    const superAdmin = user.id === admin.id;
+    await page.goto(origin + "/admin/login/" + (superAdmin ? "super-admin" : "staff"));
     await page.getByLabel("Email or username", { exact: true }).fill(user.username);
     await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Staff sign in", exact: true }).click();
+    await page.getByRole("button", { name: superAdmin ? "Super Admin sign in" : "Staff sign in", exact: true }).click();
     await page.waitForURL(origin + "/admin");
   }
   async function receiptForm(page) {
@@ -151,15 +152,13 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
     assert.equal(foreignPdf.status(), 404);
     assert.equal((await staffOther.request.post(origin + `/api/v1/finance/receipts/${receipt.id}/review`, { data: { reviewed: true } })).status(), 403);
     await ownerPage.goto(origin + "/account");
-    await ownerPage.getByRole("heading", { name: "Need help with an inquiry?", exact: true }).waitFor();
+    await ownerPage.getByRole("heading", { name: "Need assistance?", exact: true }).waitFor();
     assert.ok(!(await ownerPage.locator("body").innerText()).includes("Demo Traveller"));
     for (const width of [390, 1280]) {
       await ownerPage.setViewportSize({ width, height: 844 });
-      await ownerPage.getByRole("button", { name: "Support", exact: true }).click();
-      assert.equal(await ownerPage.getByRole("link", { name: "Contact agency", exact: true }).getAttribute("href"), "/contact");
+      assert.equal(await ownerPage.getByRole("link", { name: "Contact the travel desk", exact: true }).getAttribute("href"), "/contact");
       assert.ok(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Account layout must fit mobile and desktop");
       await ownerPage.screenshot({ path: path.join(outputDir, `account-${width}.png`), fullPage: true });
-      await ownerPage.getByRole("button", { name: "Support", exact: true }).click();
     }
     const guest = await browser.newContext();
     const guestPage = await guest.newPage();
@@ -169,12 +168,13 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
     await guest.close();
     results.push("real account identity and support link render at mobile/desktop sizes; signed-out account has no fabricated profile");
     await owner.close(); await other.close(); await staffOther.close();
-    await require("./initial-payment-browser-checks.cjs")({ context, page: pageC, origin, db, admin, outputDir });
+    const issuedTicket = await require("./initial-payment-browser-checks.cjs")({ context, page: pageC, origin, db, admin, outputDir, customerId: booking.customerId });
     results.push("initial ticket payment sends explicit method and durable key; lost response and reload replay one ticket/receipt; recovery and review work on the ticket page");
     await require("./manual-workflow-browser-checks.cjs")({ context, page: pageC, origin, db, booking, lead, password, outputDir });
     results.push("real staff UI holds posted cancellation with 409; zero-value cancellation replays without audit duplication; customer cancellation tab and private PDF work; production-mode uploads remain disabled");
+    results.push(...await require("./service-browser-checks.cjs")({ context, page: pageC, origin, db, booking, lead, password, otherEmail, issuedTicket, outputDir }));
     results.push("two verified customer logins display only their own bookings; forged selectors ignored; owner sees the pending date; customer/foreign staff document requests return 401/404; foreign receipt review denied (403)");
-    const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, paid: "350.35", balance: "659.65", syntheticOnly: true };
+    const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, receiptCountScope: "original Umrah booking", paid: "350.35", balance: "659.65", syntheticOnly: true };
     fs.writeFileSync(path.join(outputDir, "browser-result.json"), JSON.stringify(result, null, 2));
     return result;
   } finally { await context?.close(); }
