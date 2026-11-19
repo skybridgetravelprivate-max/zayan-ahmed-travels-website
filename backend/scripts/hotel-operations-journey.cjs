@@ -50,10 +50,10 @@ async function main() {
     async function login(identity) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       const page = await context.newPage();
-      await page.goto(origin + "/admin/login");
+      await page.goto(origin + "/admin/login/super-admin");
       await page.getByLabel("Email or username").fill(identity.username);
       await page.getByLabel("Password", { exact: true }).fill(password);
-      await page.getByRole("button", { name: "Staff sign in", exact: true }).click();
+      await page.getByRole("button", { name: "Super Admin sign in", exact: true }).click();
       await page.waitForURL(origin + "/admin");
       await page.getByRole("heading", { name: "Due work and open sales", exact: true }).waitFor();
       return { context, page };

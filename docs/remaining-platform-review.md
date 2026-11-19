@@ -5,7 +5,7 @@ Baseline: deployed release `5be097af6f7285d2ae884d346472bb728271f117`. This revi
 ## Confirmed and repaired
 
 * Missing local document bytes escaped as a raw filesystem error. Reproduce by uploading a synthetic document, removing its object bytes, then requesting its authorized download. `backend/apps/api/src/common/storage.service.ts` now returns a sanitized 503. Metadata remains intact, so restoration can recover the same document. The unit regression and `documents/persistence.pg17.spec.ts` cover missing bytes, scoped access, backup restoration and a fresh Node process reading the original hash.
-* Existing browser acceptance runners used the obsolete combined login page. The four affected runners now use the current staff or Super Admin portal. These are test-harness corrections, not changes to authentication rules.
+* Existing browser acceptance runners used the obsolete combined login page, old recovery labels and the pre-planner public inquiry form. The four affected runners now follow the current portals and actual inquiry preparation sequence. CRM, administration, recovery/hotel and hotel browser journeys passed. These are test-harness corrections, not changes to authentication rules.
 * Two PostgreSQL suites expected numeric report values after the application adopted exact decimal strings. Expectations now assert the existing exact values. No accounting formula changed.
 * CI now includes the existing manual lifecycle, remaining operations and document-backup suites. Full dependency audits remain required at moderate severity and include development dependencies.
 
@@ -31,6 +31,12 @@ This is public-schema recovery evidence. The archive contains no stored-document
 | P2 | `/api/health` checks database health (`backend/apps/api/src/health.controller.ts`). Independent external monitoring ownership and alert delivery are unverified. | Agree alert recipients, maintenance process, availability objective and escalation; exercise a controlled staging failure and recovery alert. |
 | P2 | Eight-room, sixteen-long-name hotel PDFs were rendered and visually reviewed in both price modes: two pages, preserved rows and readable totals/footer. | Extend acceptance to remaining document types, currencies, long/non-Latin names and extreme passenger counts. Agree required languages/fonts before changing templates. |
 | P2 | Selected hotel mobile375/desktop1440 layouts have no overflow. Full accessibility and performance acceptance is incomplete. | Audit public/account/staff flows with automated and keyboard checks; define target devices, data volume, latency and accessibility criteria. Synthetic timings are not a production service-level guarantee. |
+
+Live HTTPS reads on 19 November returned 200 with placeholder wording on all three policy pages. The administration browser journey passed keyboard/Escape/focus navigation, 320/375/1440 reflow, 200% text scaling and axe WCAG 2.2 A/AA checks on its dashboard, filtered lead list, lead and customer records. The CRM dashboard axe scan also passed. This is selected-page evidence, not a complete site accessibility certification.
+
+The fresh PostgreSQL 17/local SMTP HTTP journey also passed against this candidate: branch-admin 403/no disclosure/no journal, Super Admin read/balanced journal, customer login and booking isolation, generic known/unknown recovery responses, hash-only token storage, expired/concurrent/reused token rejection, password replacement and old-session revocation. Staff recovery was separately exercised in Chrome with a seeded synthetic token and no outbound provider.
+
+A Windows PostgreSQL default timezone of Asia/Karachi reproduced shifted timestamps in the Prisma timestamp path. UTC cluster startup restored the unchanged expiry assertions. The restore procedure now explicitly requires UTC; verifying another hosting/database timezone requires its own acceptance check.
 
 ## Historical claims already resolved
 

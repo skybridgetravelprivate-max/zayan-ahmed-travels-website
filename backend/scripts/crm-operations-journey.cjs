@@ -61,10 +61,12 @@ async function main() {
     async function login(identity) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       const page = await context.newPage();
-      await page.goto(origin + "/admin/login");
+      const portal = identity.id === admin.id ? "super-admin" : "staff";
+      const label = identity.id === admin.id ? "Super Admin" : "Staff";
+      await page.goto(origin + "/admin/login/" + portal);
       await page.getByLabel("Email or username").fill(identity.username);
       await page.getByLabel("Password", { exact: true }).fill(password);
-      await page.getByRole("button", { name: "Staff sign in", exact: true }).click();
+      await page.getByRole("button", { name: label + " sign in", exact: true }).click();
       await page.waitForURL(origin + "/admin");
       await page.getByRole("heading", { name: "Due work and open sales", exact: true }).waitFor();
       return { context, page };
@@ -72,12 +74,19 @@ async function main() {
     const triage = await login(admin), sales = await login(staff), restricted = await login(limited);
     const anonymous = await browser.newContext(), publicPage = await anonymous.newPage();
     await publicPage.goto(origin + "/flights#inquiry");
+    await publicPage.getByLabel("From", { exact: true }).fill("Islamabad");
+    await publicPage.getByLabel("To", { exact: true }).fill("Jeddah");
+    const departure = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    await publicPage.getByLabel("Travel date", { exact: true }).fill(departure);
+    await publicPage.locator("summary").filter({ hasText: "Travellers" }).click();
+    await publicPage.locator('select[name="trip"]').selectOption("One way");
+    await publicPage.getByRole("button", { name: "Prepare inquiry" }).click();
     const inquiryName = `Synthetic browser inquiry ${tag.slice(0, 8)}`;
     await publicPage.getByLabel("Name", { exact: true }).fill(inquiryName);
     await publicPage.getByLabel("Phone", { exact: true }).fill("+923001234567");
     await publicPage.getByLabel("Email", { exact: true }).fill(`inquiry-${tag}@example.test`);
     await publicPage.locator('textarea[name="message"]').fill("Synthetic local CRM acceptance only; no supplier service requested.");
-    await publicPage.getByRole("button", { name: "Send flights inquiry", exact: true }).click();
+    await publicPage.getByRole("button", { name: "Send travel inquiry", exact: true }).click();
     await publicPage.getByRole("status").filter({ hasText: /received|submitted|saved/i }).waitFor();
     const lead = await db.lead.findFirstOrThrow({ where: { email: `inquiry-${tag}@example.test` } });
     assert.equal(lead.branchId, null);

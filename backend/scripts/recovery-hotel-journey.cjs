@@ -50,19 +50,19 @@ async function main() {
     async function login(identity) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       const page = await context.newPage();
-      await page.goto(origin + "/admin/login");
+      await page.goto(origin + "/admin/login/super-admin");
       await page.getByLabel("Email or username").fill(identity.username);
       await page.getByLabel("Password", { exact: true }).fill(password);
-      await page.getByRole("button", { name: "Staff sign in", exact: true }).click();
+      await page.getByRole("button", { name: "Super Admin sign in", exact: true }).click();
       await page.waitForURL(origin + "/admin");
       await page.getByRole("heading", { name: "Due work and open sales", exact: true }).waitFor();
       return { context, page };
     }
     const staff = await login(admin), recovery = await browser.newContext(), reset = await recovery.newPage();
     await reset.goto(origin + "/admin/forgot-password");
-    await reset.getByLabel("Staff email", { exact: true }).fill(admin.email);
+    await reset.getByLabel("Account email", { exact: true }).fill(admin.email);
     await reset.getByRole("button", { name: "Request recovery link", exact: true }).click();
-    await reset.getByRole("status").filter({ hasText: "Staff recovery email is unavailable" }).waitFor();
+    await reset.getByRole("status").filter({ hasText: "Recovery email is unavailable" }).waitFor();
     assert.equal(await db.passwordResetToken.count({ where: { email: admin.email } }), 0);
     checks.push("Actual forgot form reports globally unconfigured mail without creating or disclosing a token; no email sent");
     await reset.goto(origin + "/reset-password?token=invalid");
@@ -73,13 +73,13 @@ async function main() {
     assert.ok(navigation.headers()["cache-control"].includes("no-store")); assert.equal(navigation.headers()["referrer-policy"], "no-referrer");
     assert.equal(await reset.locator('meta[name="robots"]').getAttribute("content"), "noindex, nofollow");
     const next = `Changed-${randomBytes(12).toString("hex")}!`;
-    await reset.getByLabel("New staff password", { exact: true }).fill(next);
+    await reset.getByLabel("New password", { exact: true }).fill(next);
     await reset.getByLabel("Confirm new password", { exact: true }).fill(next + "different");
-    await reset.getByRole("button", { name: "Reset staff password", exact: true }).click();
+    await reset.getByRole("button", { name: "Reset password", exact: true }).click();
     await reset.getByRole("status").filter({ hasText: "passwords do not match" }).waitFor();
     await reset.getByLabel("Confirm new password", { exact: true }).fill(next);
-    await reset.getByRole("button", { name: "Reset staff password", exact: true }).click();
-    await reset.getByRole("status").filter({ hasText: "Previous staff sessions have been revoked" }).waitFor();
+    await reset.getByRole("button", { name: "Reset password", exact: true }).click();
+    await reset.getByRole("status").filter({ hasText: "Previous sessions have been revoked" }).waitFor();
     assert.ok(!reset.url().includes("token="));
     assert.equal((await staff.context.request.get(origin + "/api/auth/me")).status(), 401);
     assert.equal((await recovery.request.post(origin + "/api/auth/reset-password", { headers: { Origin: origin }, data: { token, password: next } })).status(), 400);

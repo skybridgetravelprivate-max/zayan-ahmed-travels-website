@@ -44,14 +44,14 @@ test("PG17: ticket replacement preserves payments and reconciles customer accoun
       assert.equal(replacement.newTicket.sector, "ISB-MED");
       assert.equal(replacement.newTicket.exchangeRate.toString(), "1.5");
       const rows = await accounting.arAp("customer");
-      assert.equal(rows.find(r => r.partyId === customer.id)?.balance, 60.62);
+      assert.equal(rows.find(r => r.partyId === customer.id)?.balance, "60.62");
     });
     await t.test("replaced ticket cannot be refunded again and a refunded replacement cannot be reissued blindly", async () => {
       await assert.rejects(workflow.refund(ticket.id, { refundAmount: 5, reason: "Synthetic" }, req));
       await workflow.refund(replacement!.newTicket.id, { refundAmount: 5, reason: "Synthetic credit" }, req);
       await assert.rejects(workflow.reissue(replacement!.newTicket.id, { agencyFee: 1 }, req), { status: 409 });
       const report = await new ReportsService(db as never, accounting).run("receivables", {});
-      assert.equal(report.rows.find(r => r.clientId === customer.id)?.debit, 55.62);
+      assert.equal(report.rows.find(r => r.clientId === customer.id)?.debit, "55.62");
     });
     await t.test("concurrent reissues create only one replacement and unpaid originals stay unpaid", async () => {
       const original = await db.ticketSale.create({ data: { customerId: customer.id, branchId: branch.id, fare: 5, net: 5, cost: 0, profit: 5, status: "ISSUED" } });

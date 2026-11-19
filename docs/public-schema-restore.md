@@ -16,7 +16,7 @@ This snapshot contains one staff account, one customer, one website customer, ze
 
 ## Prepare the destination
 
-Install PostgreSQL 17 client/server tools, age, and the repository dependencies. Use a fresh local cluster bound to 127.0.0.1 with password authentication. The exercised port was 55463. Store its data and logs in the restricted directory. Use a fresh database name beginning zat_restore_ for each exercise.
+Install PostgreSQL 17 client/server tools, age, and the repository dependencies. Use a fresh local cluster bound to 127.0.0.1 with password authentication and database timezone UTC. The exercised port was 55463. When starting it with pg_ctl, use options `-p 55463 -h 127.0.0.1 -c timezone=UTC`. Confirm `SHOW timezone` returns UTC before application acceptance tests: the Windows initdb default can inherit Asia/Karachi, and this exercise reproduced a five-hour timestamp shift through the Prisma timestamp path with that default. Store data and logs in the restricted directory. Use a fresh database name beginning zat_restore_ for each exercise.
 
 Set these variables in the private operator session. ZAT_PRIVATE_RESTORE_DIR and ZAT_RECOVERY_IDENTITY are local paths. PGPASSWORD is the disposable cluster password. ZAT_RESTORE_DATABASE_URL must refer to the same loopback database.
 
