@@ -224,6 +224,7 @@ export class WorkflowsController {
       const ticket = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
       if (!ticket) throw new BadRequestException("Ticket not found");
       assertBranch(req.user, ticket.branchId);
+      await assertPeopleLinks(tx, req.user, ticket);
       if (["CANCELLED", "REISSUED"].includes(ticket.status)) throw new BadRequestException("Cancelled or replaced ticket cannot be refunded; use its current replacement");
       if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
       const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toNumber();

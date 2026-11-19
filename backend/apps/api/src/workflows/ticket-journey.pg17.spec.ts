@@ -95,6 +95,16 @@ test("PG17 ticket issuance, settlement, customer projection, PDFs and refund cre
       await assert.rejects(workflows.refund(ticket.id, { refundAmount: 100.50, reason: "Synthetic denial" }, { user: foreign } as never), { status: 404 });
       assert.deepEqual(await financialCounts(), before);
     });
+    await t.test("same-branch ticket with a foreign customer cannot post refund credit across branches", async () => {
+      const linked = await db.ticketSale.create({ data: {
+        ticketNumber: "SYN-LEGACY-" + randomUUID(), branchId: branch.id, customerId: other.id,
+        fare: "10.00", net: "10.00", paidAmount: "10.00", status: "ISSUED", paymentStatus: "PAID",
+      } });
+      const before = await financialCounts();
+      await assert.rejects(workflows.refund(linked.id, { refundAmount: 10, reason: "Synthetic linked-owner denial" }, { user: viewer } as never), { status: 404 });
+      assert.deepEqual(await financialCounts(), before);
+      assert.equal((await db.ticketSale.findUniqueOrThrow({ where: { id: linked.id } })).status, "ISSUED");
+    });
     let refundId = "";
     await t.test("partial then final refunds retain paid receipt history and create customer credit once", async () => {
       await workflows.refund(ticket.id, { refundAmount: 40.25, reason: "Synthetic partial refund" }, req);
