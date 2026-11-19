@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Prisma } from "@prisma/client";
+import { GUARDS_METADATA } from "@nestjs/common/constants";
 import type { ExecutionContext } from "@nestjs/common";
 import { ResourcesService } from "../resources/resources.service";
 import { CrmScopeGuard } from "../crm/crm-scope.guard";
 import { AuthController } from "../auth/auth.controller";
+import { AdminController } from "../admin/admin.controller";
 import { AccountingService } from "../finance/accounting.service";
 import { FinanceController } from "../finance/finance.controller";
 import { WebsiteCustomerLinkController } from "../website/website-customer-link.controller";
@@ -193,6 +195,12 @@ test("global finance guard denies scoped accounts even with account permission",
   const context = (u: AuthUser) => ({ switchToHttp: () => ({ getRequest: () => ({ user: u }) }) }) as ExecutionContext;
   assert.throws(() => guard.canActivate(context({ ...user, permissions: ["account.view"] })), { status: 403 });
   assert.equal(guard.canActivate(context(admin)), true);
+});
+
+test("legacy admin audit and manual journal require global finance authorization", () => {
+  const guards = (handler: object) => Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[] | undefined;
+  assert.ok(guards(AdminController.prototype.auditLog)?.includes(GlobalFinanceGuard));
+  assert.ok(guards(AdminController.prototype.journal)?.includes(GlobalFinanceGuard));
 });
 
 test("invoice posting failure propagates within the invoice transaction", async () => {

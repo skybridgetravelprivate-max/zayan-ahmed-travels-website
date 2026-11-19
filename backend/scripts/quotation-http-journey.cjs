@@ -5,8 +5,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
+const net = require("node:net");
 const { pathToFileURL } = require("node:url");
-const { randomUUID, randomBytes } = require("node:crypto");
+const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const root = path.resolve(__dirname, "../..");
 const databaseUrl = process.env.ZAT_SYNTHETIC_DATABASE_URL;
@@ -14,6 +15,52 @@ if (!databaseUrl) throw Error("Set ZAT_SYNTHETIC_DATABASE_URL to a disposable lo
 const target = new URL(databaseUrl);
 assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(target.hostname));
 assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
+
+function createSmtpCapture() {
+  const messages = [];
+  const sockets = new Set();
+  const server = net.createServer(socket => {
+    sockets.add(socket);
+    socket.setEncoding("utf8");
+    let pending = "";
+    let message = "";
+    let inData = false;
+    socket.write("220 synthetic.local ESMTP\r\n");
+    socket.on("data", chunk => {
+      pending += chunk;
+      let end;
+      while ((end = pending.indexOf("\r\n")) !== -1) {
+        const line = pending.slice(0, end);
+        pending = pending.slice(end + 2);
+        if (inData) {
+          if (line === ".") {
+            messages.push(message);
+            message = "";
+            inData = false;
+            socket.write("250 queued\r\n");
+          } else message += `${line}\r\n`;
+          continue;
+        }
+        const command = line.split(" ", 1)[0].toUpperCase();
+        if (command === "EHLO" || command === "HELO") socket.write("250-synthetic.local\r\n250 SIZE 10485760\r\n");
+        else if (command === "MAIL" || command === "RCPT" || command === "RSET") socket.write("250 OK\r\n");
+        else if (command === "DATA") { inData = true; socket.write("354 end with dot\r\n"); }
+        else if (command === "QUIT") { socket.write("221 bye\r\n"); socket.end(); }
+        else socket.write("250 OK\r\n");
+      }
+    });
+    socket.on("close", () => sockets.delete(socket));
+  });
+  return {
+    messages,
+    start: () => new Promise(resolve => server.listen(0, "127.0.0.1", resolve)),
+    port: () => server.address().port,
+    close: async () => {
+      for (const socket of sockets) socket.destroy();
+      await new Promise(resolve => server.close(resolve));
+    },
+  };
+}
 
 async function serve() {
   assert.equal(process.env.DATABASE_URL, databaseUrl);
@@ -59,6 +106,8 @@ async function journey() {
   const port = portServer.address().port;
   await new Promise(resolve => portServer.close(resolve));
   const origin = `http://127.0.0.1:${port}`;
+  const smtp = createSmtpCapture();
+  await smtp.start();
   const cookieJars = new Map();
   async function request(route, { actor = "anonymous", method = "GET", body, headers = {} } = {}) {
     const response = await fetch(origin + route, { method, redirect: "manual", headers: { ...(cookieJars.get(actor) ? { Cookie: cookieJars.get(actor) } : {}), ...(body ? { "Content-Type": "application/json", Origin: origin } : {}), ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -87,11 +136,15 @@ async function journey() {
     }
     const admin = await db.user.create({ data: { email: `${tag}@example.test`, username: tag, fullName: "Synthetic HTTP administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: adminRole.id } } } });
     const outsider = await db.user.create({ data: { email: `${tag}-staff@example.test`, username: `${tag}-staff`, fullName: "Synthetic foreign staff", passwordHash: hash, defaultBranchId: otherBranch.id, roles: { create: { roleId: scopedRole.id } } } });
+    const branchAdminRole = await db.role.create({ data: { name: `SyntheticAdmin-${tag}` } });
+    const branchAdminPermissions = await Promise.all(["audit.view", "account.adjust"].map(code => db.permission.upsert({ where: { code }, update: {}, create: { code } })));
+    await db.rolePermission.createMany({ data: branchAdminPermissions.map(permission => ({ roleId: branchAdminRole.id, permissionId: permission.id })) });
+    const branchAdmin = await db.user.create({ data: { email: `${tag}-admin@example.test`, username: `${tag}-admin`, fullName: "Synthetic branch administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: branchAdminRole.id } }, branches: { create: { branchId: branch.id } } } });
     for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["4200", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
     const lead = await db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic HTTP traveler", mobile: "+923000000000", email: `${tag}-customer@example.test`, adults: 3, budget: 1000.03, branchId: branch.id } });
     const environment = {};
     for (const key of ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "USERPROFILE", "LOCALAPPDATA"]) if (process.env[key]) environment[key] = process.env[key];
-    Object.assign(environment, { NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_HTTP_PORT: String(port), JWT_SECRET: randomBytes(32).toString("hex"), JWT_REFRESH_SECRET: randomBytes(32).toString("hex"), CUSTOMER_BOOKINGS_INTERNAL_TOKEN: randomBytes(32).toString("hex"), APP_URL: origin, API_URL: origin, CRM_API_URL: origin, COOKIE_SECURE: "false" });
+    Object.assign(environment, { NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_HTTP_PORT: String(port), JWT_SECRET: randomBytes(32).toString("hex"), JWT_REFRESH_SECRET: randomBytes(32).toString("hex"), CUSTOMER_BOOKINGS_INTERNAL_TOKEN: randomBytes(32).toString("hex"), APP_URL: origin, SITE_URL: "https://customer-recovery.example.test", API_URL: origin, CRM_API_URL: origin, SMTP_HOST: "127.0.0.1", SMTP_PORT: String(smtp.port()), SMTP_SECURE: "false", COOKIE_SECURE: "false" });
     child = spawn(process.execPath, [__filename, "--serve"], { cwd: root, env: environment, stdio: ["ignore", log, log, "ipc"], windowsHide: true });
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error("Synthetic gateway startup timed out")), 45000);
@@ -100,6 +153,42 @@ async function journey() {
     });
     await json("/api/auth/login", { actor: "staff", method: "POST", body: { identifier: admin.username, password } }, 201);
     await json("/api/auth/login", { actor: "outsider", method: "POST", body: { identifier: outsider.username, password } }, 201);
+    await json("/api/auth/login", { actor: "branch-admin", method: "POST", body: { identifier: branchAdmin.username, password } }, 201);
+    const auditMarker = `synthetic-http-${tag}`;
+    await db.auditLog.create({ data: { userId: admin.id, action: "AUTHZ_HTTP_REGRESSION", entity: "SyntheticTest", entityId: auditMarker } });
+    const deniedAudit = await request(`/api/v1/admin/audit?q=${encodeURIComponent(auditMarker)}`, { actor: "branch-admin" });
+    assert.equal(deniedAudit.status, 403);
+    const deniedAuditBody = await deniedAudit.json();
+    assert.equal(Array.isArray(deniedAuditBody), false);
+    assert.ok(!JSON.stringify(deniedAuditBody).includes(auditMarker));
+    const allowedAudit = await json(`/api/v1/admin/audit?q=${encodeURIComponent(auditMarker)}`, { actor: "staff" });
+    assert.ok(allowedAudit.some(row => row.entityId === auditMarker));
+    const cashAccount = await db.chartOfAccount.findUniqueOrThrow({ where: { code: "1100" } });
+    const receivableAccount = await db.chartOfAccount.findUniqueOrThrow({ where: { code: "1300" } });
+    const deniedJournalMemo = `Synthetic denied journal ${tag}`;
+    const journalLines = [
+      { accountId: cashAccount.id, debit: 25.25, credit: 0 },
+      { accountId: receivableAccount.id, debit: 0, credit: 25.25 },
+    ];
+    const journalCountBefore = await db.journalEntry.count({ where: { memo: deniedJournalMemo } });
+    const deniedJournal = await request("/api/v1/admin/manual-journal", {
+      actor: "branch-admin",
+      method: "POST",
+      body: { memo: deniedJournalMemo, reason: "Synthetic authorization check", lines: journalLines },
+    });
+    assert.equal(deniedJournal.status, 403);
+    assert.equal(await db.journalEntry.count({ where: { memo: deniedJournalMemo } }), journalCountBefore);
+    const allowedJournal = await request("/api/v1/admin/manual-journal", {
+      actor: "staff",
+      method: "POST",
+      body: { memo: `Synthetic allowed journal ${tag}`, reason: "Synthetic authorization check", lines: journalLines },
+    });
+    assert.equal(allowedJournal.status, 201);
+    const allowedJournalBody = await allowedJournal.json();
+    const persistedJournal = await db.journalEntry.findUniqueOrThrow({ where: { id: allowedJournalBody.id }, include: { lines: true } });
+    assert.equal(persistedJournal.status, "POSTED");
+    assert.equal(persistedJournal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
+    checks.push("real HTTP auth: branch admin with audit.view/account.adjust receives 403 and no audit data/journal write; Super Admin reads synthetic audit row and posts a balanced journal");
     assert.equal((await request("/api/v1/crm/quotations")).status, 401);
     checks.push("real staff login cookies; anonymous staff access denied (401)");
     const quote = await json(`/api/v1/crm/leads/${lead.id}/quotation`, { actor: "staff", method: "POST", body: {} }, 201);
@@ -165,6 +254,53 @@ async function journey() {
       const browserResult = await require("./receipt-browser-checks.cjs")({ origin, outputDir, db, admin, outsider, password, lead, booking, receipt, otherEmail, otherBooking });
       checks.push(...browserResult.checks);
     }
+    const unknownRecovery = await json("/api/account/forgot-password", {
+      method: "POST",
+      body: { email: `${tag}-unknown@example.test` },
+    });
+    assert.equal(unknownRecovery.message, "If an account matches that email, a recovery link will be sent.");
+    assert.equal(smtp.messages.length, 0);
+    const recoveryRequest = await json("/api/account/forgot-password", {
+      method: "POST",
+      body: { email: lead.email.toUpperCase() },
+    });
+    assert.equal(recoveryRequest.message, "If an account matches that email, a recovery link will be sent.");
+    assert.equal(smtp.messages.length, 1);
+    const deliveredMessage = smtp.messages[0].replace(/=\r?\n/g, "");
+    const recoveryToken = deliveredMessage.match(/token(?:=3D|=)([a-f0-9]{64})/)?.[1];
+    assert.ok(recoveryToken);
+    const recoveryTokenHash = createHash("sha256").update(recoveryToken).digest("hex");
+    const storedResetToken = await db.websiteCustomerPasswordResetToken.findFirstOrThrow({ where: { tokenHash: recoveryTokenHash } });
+    assert.notEqual(storedResetToken.tokenHash, recoveryToken);
+    assert.ok(storedResetToken.expiresAt > new Date());
+    const expiredToken = randomBytes(32).toString("hex");
+    await db.websiteCustomerPasswordResetToken.create({
+      data: {
+        customerId: website.id,
+        tokenHash: createHash("sha256").update(expiredToken).digest("hex"),
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+    const newCustomerPassword = `Synthetic-reset-${randomBytes(12).toString("hex")}!`;
+    const reset = token => request("/api/account/reset-password", {
+      actor: "customer",
+      method: "POST",
+      body: { token, password: newCustomerPassword },
+    });
+    assert.equal((await reset(expiredToken)).status, 400);
+    assert.equal((await request("/api/account/bookings", { actor: "customer" })).status, 200);
+    const attempts = await Promise.all([reset(recoveryToken), reset(recoveryToken)]);
+    assert.deepEqual(attempts.map(response => response.status).sort(), [200, 400]);
+    const resetResponse = attempts.find(response => response.status === 200);
+    assert.deepEqual(await resetResponse.json(), { ok: true, message: "Your password was reset. Existing sessions have been revoked; please sign in again." });
+    assert.ok((await db.websiteCustomerPasswordResetToken.findUniqueOrThrow({ where: { id: storedResetToken.id } })).usedAt);
+    assert.equal(await db.websiteCustomerSession.count({ where: { customerId: website.id, revokedAt: null } }), 0);
+    assert.equal((await request("/api/account/bookings", { actor: "customer" })).status, 401);
+    assert.equal((await request("/api/account/reset-password", { method: "POST", body: { token: recoveryToken, password } })).status, 400);
+    assert.equal((await request("/api/account/login", { actor: "old-customer-password", method: "POST", body: { email: lead.email, password } })).status, 401);
+    await json("/api/account/login", { actor: "new-customer-password", method: "POST", body: { email: lead.email, password: newCustomerPassword } });
+    await json("/api/account/login", { actor: "other-customer-password", method: "POST", body: { email: `${tag}-other@example.test`, password } });
+    checks.push("customer recovery over real HTTP: unknown and known emails share a generic response; local SMTP capture receives one link; only its hashed token is stored; reset changes the password, rejects reuse, revokes old sessions, and leaves other accounts unaffected");
     const result = { status: "passed", checks, net: "1010.00", paid: "250.25", balance: "759.75", syntheticOnly: true, browserReload: process.env.ZAT_PLAYWRIGHT_MODULE ? "actual Chromium tabs, reload, browser closure and reopen; see browser-result.json for final browser totals" : "simulated new component using persisted storage; real HTTP requests and cookies", localReverseProxy: true, productionAccess: false };
     fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result, null, 2));
@@ -173,7 +309,7 @@ async function journey() {
       child.send("stop");
       await Promise.race([new Promise(resolve => child.once("exit", resolve)), new Promise(resolve => setTimeout(() => { child.kill(); resolve(); }, 5000).unref())]);
     }
-    fs.closeSync(log); await db.$disconnect();
+    fs.closeSync(log); await db.$disconnect(); await smtp.close();
   }
 }
 

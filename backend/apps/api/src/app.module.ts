@@ -68,6 +68,7 @@ import { WebsiteLeadsController } from "./website/website-leads.controller";
 import { WebsiteInquiriesController } from "./website/website-inquiries.controller";
 import { WebsiteCustomerUpsertController } from "./website/website-customer-upsert.controller";
 import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.service";
+import { WebsiteCustomerRecoveryController } from "./website/website-customer-recovery.controller";
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { WebsiteCustomerUpsertService } from "./website/website-customer-upsert.
     WebsiteInquiriesController,
     WebsiteCustomerBookingsController,
     WebsiteCustomerUpsertController,
+    WebsiteCustomerRecoveryController,
     ResourcesController,
     HealthController,
   ],
