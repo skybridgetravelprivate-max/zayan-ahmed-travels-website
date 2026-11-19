@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID, createHash } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, copyFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import { StorageService } from "../common/storage.service";
 import { DocumentsController } from "./documents.controller";
@@ -53,7 +54,29 @@ test("PG17 synthetic document persistence and scoped read acceptance", { skip: !
       await assert.rejects(storage.get("../secrets"), { status: 400 });
       assert.equal(await db.storedDocument.count(), count);
     });
-    // Synthetic evidence is preserved; no database/object restore or cloud call occurs.
+    await t.test("missing bytes fail safely and a backup restores the same document after process restart", async () => {
+      const stored = await db.storedDocument.findUniqueOrThrow({ where: { id: document.id } });
+      const objectPath = join(process.env.LOCAL_STORAGE_PATH!, stored.storageKey);
+      const backupRoot = await mkdtemp(join(tmpdir(), "zat-synthetic-object-backup-"));
+      const backupPath = join(backupRoot, "fixture.pdf");
+      await copyFile(objectPath, backupPath);
+      await storage.delete(stored.storageKey);
+      await assert.rejects(controller.download(document.id, {} as never, request), { status: 503 });
+      assert.equal(await db.storedDocument.count({ where: { id: document.id } }), 1);
+      await mkdir(dirname(objectPath), { recursive: true });
+      await copyFile(backupPath, objectPath);
+      const childScript = [
+        "const {StorageService}=require(process.argv[1]);",
+        "new StorageService().get(process.argv[2]).then(bytes=>",
+        "console.log(require('node:crypto').createHash('sha256').update(bytes).digest('hex'))",
+        ").catch(()=>process.exitCode=1);",
+      ].join("");
+      const hash = execFileSync(process.execPath, [
+        "-e", childScript, resolve("apps/api/dist/common/storage.service.js"), stored.storageKey,
+      ], { encoding: "utf8", env: process.env }).trim();
+      assert.equal(hash, createHash("sha256").update(bytes).digest("hex"));
+      await rm(backupRoot, { recursive: true, force: true });
+    });
   } finally {
     for (const [key,value] of previous) if (value === undefined) delete process.env[key]; else process.env[key] = value;
     await db.$disconnect();
