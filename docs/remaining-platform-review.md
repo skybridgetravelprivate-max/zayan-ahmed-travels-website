@@ -1,0 +1,43 @@
+# Remaining platform review — 19 November 2026
+
+Baseline: deployed release `5be097af6f7285d2ae884d346472bb728271f117`. This review adds isolated recovery evidence and a document-read fix. It does not activate production document uploads or publish policy wording.
+
+## Confirmed and repaired
+
+* Missing local document bytes escaped as a raw filesystem error. Reproduce by uploading a synthetic document, removing its object bytes, then requesting its authorized download. `backend/apps/api/src/common/storage.service.ts` now returns a sanitized 503. Metadata remains intact, so restoration can recover the same document. The unit regression and `documents/persistence.pg17.spec.ts` cover missing bytes, scoped access, backup restoration and a fresh Node process reading the original hash.
+* Existing browser acceptance runners used the obsolete combined login page. The four affected runners now use the current staff or Super Admin portal. These are test-harness corrections, not changes to authentication rules.
+* Two PostgreSQL suites expected numeric report values after the application adopted exact decimal strings. Expectations now assert the existing exact values. No accounting formula changed.
+* CI now includes the existing manual lifecycle, remaining operations and document-backup suites. Full dependency audits remain required at moderate severity and include development dependencies.
+
+## Disaster recovery evidence
+
+The encrypted pre-release archive was decrypted with the existing recovery identity and restored into an isolated PostgreSQL 17.12 database. Both archive hashes were verified. All 101 public tables and 519 rows matched the archive, all 177 foreign keys were validated with zero orphans, 15 migrations were complete, and generated Prisma application reads succeeded. The current additive recovery migration also applied successfully to the restored snapshot. See `docs/public-schema-restore.md` for the repeatable procedure and `backend/scripts/verify-restored-public.cjs` for aggregate validation.
+
+This is public-schema recovery evidence. The archive contains no stored-document records or journals. It excludes object bytes, hosting configuration, secrets, DNS, mailbox state, other Supabase schemas and later production writes. Independent offsite retrieval and recovery-key custody remain unverified.
+
+## Prioritized backlog
+
+| Priority | Item and evidence | Next acceptance / decision |
+| --- | --- | --- |
+| P1 | Complete disaster recovery beyond the public schema. Current snapshot has no financial journals or stored objects. | Restore a fresh encrypted synthetic financial snapshot and paired object export; verify hosted runtime roles/RLS; retrieve an independent offsite copy using separately held key material. Owner selects recovery point and recovery time objectives, custody and retention. |
+| P1 | Production private-document persistence is intentionally disabled (`HOSTINGER-RUNTIME.md`, `DOCUMENT_UPLOADS_ENABLED=false`). Local isolated persistence, denial, missing bytes, restart and byte restoration pass. | Review private bucket configuration, production service-role access, backup schedule, object/metadata reconciliation and recovery drill before a separately reviewed activation. Local filesystem testing does not establish hosted object durability. |
+| P1 | Public policy fallbacks are placeholders (`src/app/privacy/page.tsx:25`, `src/app/terms/page.tsx:22`, `src/app/refund-policy/page.tsx:47`). | Review the private policy drafts. Confirm retention, suppliers/processors, cookies, complaint process, jurisdiction, booking acceptance and service-specific cancellation/refund rules before publication. CMS may supersede these fallbacks, so inspect live rendered content before publishing. |
+| P1 | Financially posted Umrah cancellation deliberately requires review (`backend/apps/api/src/umrah/lifecycle.pg17.spec.ts`). Hotel cancellation retains credit without inventing a cash payout. | Accountant approves credit versus payout, supplier recovery, cancellation/reissue fees, currencies, tax, period closure and reconciliation evidence. Preserve current review holds until that decision. |
+| P2 | Ticketing acceptance covers reissue, concurrent retries, refund restrictions, payment preservation, balanced journals and receivables (`workflows/remaining-workflows.pg17.spec.ts`, `finance/payment-integration.pg17.spec.ts`). | Complete a single browser/customer/PDF trace for issuance through completion and refund. Supplier/GDS confirmation and settlement need approved sandbox credentials and business rules. |
+| P2 | Hotel selected end-to-end synthetic journey passes: multi-room/guest transfer, check-in/out, receipt, receivable, private PDFs, customer projection and cross-branch denial (`backend/scripts/hotel-operations-journey.cjs`). | Verify full customer settlement, supplier confirmation and supplier payout separately. Customer projection over internal HTTP is not a fresh public customer-login acceptance test. |
+| P2 | Transport creation/accounting is implemented in `backend/apps/api/src/workflows/workflows.controller.ts`; initial receipt coverage exists in `finance/payment-integration.pg17.spec.ts`. | Define dispatch, completion and cancellation/refund states, supplier settlement and customer-visible statuses; then trace a complete synthetic lifecycle. Do not infer new financial transitions from generic CRUD. |
+| P2 | Visa uses branch-scoped generic resources (`resources/registry.ts`, `resources/resource-contract.ts`), Prisma VisaStatus, and an application-record PDF (`documents/documents.controller.ts`). | Confirm allowed status transitions, cost/selling ownership, refund rules, external submission evidence and customer visibility. End-to-end completion/refund accounting remains unverified. A PDF is not proof of visa approval. |
+| P2 | Customer profile is a read-only summary (`src/components/account/ProfileSummary.tsx`); public inquiries are handled by the travel desk (`AccountHome.tsx:33`). | Proposal: permit phone/display-name edits with audit, verified email-change flow, and an account inquiry history linked by verified identity. Owner approves editable fields and identity/linking rules first. |
+| P2 | `/api/health` checks database health (`backend/apps/api/src/health.controller.ts`). Independent external monitoring ownership and alert delivery are unverified. | Agree alert recipients, maintenance process, availability objective and escalation; exercise a controlled staging failure and recovery alert. |
+| P2 | Eight-room, sixteen-long-name hotel PDFs were rendered and visually reviewed in both price modes: two pages, preserved rows and readable totals/footer. | Extend acceptance to remaining document types, currencies, long/non-Latin names and extreme passenger counts. Agree required languages/fonts before changing templates. |
+| P2 | Selected hotel mobile375/desktop1440 layouts have no overflow. Full accessibility and performance acceptance is incomplete. | Audit public/account/staff flows with automated and keyboard checks; define target devices, data volume, latency and accessibility criteria. Synthetic timings are not a production service-level guarantee. |
+
+## Historical claims already resolved
+
+PR #41 added Super Admin restrictions on audit/manual journal and customer password recovery with expiry-at-claim, concurrent/reused-token protection and session revocation. Its PostgreSQL/SMTP journey and live recovery verification passed in the prior release record. Both full dependency audits currently report zero vulnerabilities. These are resolved historical items; keep regression checks required.
+
+The configured production PostgreSQL binding and additive recovery migration were verified during that release. An old backlog item questioning the target database is superseded by that evidence. This task's isolated restore does not constitute a new production backup or production deployment.
+
+## Remaining verification boundaries
+
+Financial unit/integration coverage establishes specific transactions, not every complete service lifecycle. A full Umrah/ticket/hotel/transport/visa browser-to-customer-to-report trace remains open where noted above. External payment, supplier, GDS, Nusuk and messaging integrations require approved test access and acceptance rules. Policy drafts require owner review. No business fees, refund promises or legal conclusions have been invented.
