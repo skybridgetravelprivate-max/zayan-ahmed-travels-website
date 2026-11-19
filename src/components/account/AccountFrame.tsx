@@ -20,7 +20,7 @@ export function AccountFrame({
     <>
       <section className="bg-zayan-blue text-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-          <p className="text-sm font-semibold tracking-wide text-zayan-orange uppercase">
+          <p className="text-sm font-semibold tracking-wide text-orange-300 uppercase">
             {site.legalName}
           </p>
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{title}</h1>
