@@ -92,6 +92,22 @@ test("local development storage validates text content and keeps legacy download
   }
 });
 
+test("missing local document bytes return a sanitized recovery error", async () => {
+  const root = await mkdtemp(join(tmpdir(), "zat-missing-storage-test-"));
+  try {
+    await withEnvironment({ NODE_ENV: "test", STORAGE_DRIVER: "local", LOCAL_STORAGE_PATH: root }, async () => {
+      await assert.rejects(new StorageService().get("missing.pdf"), (error: unknown) => {
+        const failure = error as { getStatus(): number; message: string };
+        assert.equal(failure.getStatus(), 503);
+        assert.doesNotMatch(failure.message, /ENOENT|missing\.pdf|zat-missing-storage/);
+        return true;
+      });
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("Supabase storage uses a private object API and never returns a public URL", async () => {
   const calls: { url: string; method: string; headers: Headers; body: BodyInit | null }[] = [];
   const restoreFetch = configureFetch(async (input, init) => {

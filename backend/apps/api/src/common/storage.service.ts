@@ -338,7 +338,14 @@ export class StorageService {
       const response = await this.supabaseRequest("GET", key);
       return Buffer.from(await response.arrayBuffer());
     }
-    return fs.readFile(this.localPath(key));
+    const storagePath = this.localPath(key);
+    try {
+      return await fs.readFile(storagePath);
+    } catch {
+      throw new ServiceUnavailableException(
+        "Document bytes are unavailable; storage recovery requires operator attention.",
+      );
+    }
   }
 
   async delete(key: string) {

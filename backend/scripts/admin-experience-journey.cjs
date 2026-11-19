@@ -219,11 +219,13 @@ async function main() {
         viewport: { width: 1440, height: 1000 },
       });
       const page = await context.newPage();
-      await page.goto(origin + "/admin/login");
+      const portal = identity.id === admin.id ? "super-admin" : "staff";
+      const label = identity.id === admin.id ? "Super Admin" : "Staff";
+      await page.goto(origin + "/admin/login/" + portal);
       await page.getByLabel("Email or username").fill(identity.username);
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page
-        .getByRole("button", { name: "Staff sign in", exact: true })
+        .getByRole("button", { name: label + " sign in", exact: true })
         .click();
       await page.waitForURL(origin + "/admin");
       await page
@@ -291,6 +293,13 @@ async function main() {
     const anonymous = await browser.newContext(),
       publicPage = await anonymous.newPage();
     await publicPage.goto(origin + "/flights#inquiry");
+    await publicPage.getByLabel("From", { exact: true }).fill("Islamabad");
+    await publicPage.getByLabel("To", { exact: true }).fill("Jeddah");
+    const departure = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    await publicPage.getByLabel("Travel date", { exact: true }).fill(departure);
+    await publicPage.locator("summary").filter({ hasText: "Travellers" }).click();
+    await publicPage.locator('select[name="trip"]').selectOption("One way");
+    await publicPage.getByRole("button", { name: "Prepare inquiry" }).click();
     const inquiryName = `Synthetic browser inquiry ${tag.slice(0, 8)}`;
     await publicPage.getByLabel("Name", { exact: true }).fill(inquiryName);
     await publicPage.getByLabel("Phone", { exact: true }).fill("+923001234567");
@@ -303,7 +312,7 @@ async function main() {
         "Synthetic local CRM acceptance only; no supplier service requested.",
       );
     await publicPage
-      .getByRole("button", { name: "Send flights inquiry", exact: true })
+      .getByRole("button", { name: "Send travel inquiry", exact: true })
       .click();
     await publicPage
       .getByRole("status")

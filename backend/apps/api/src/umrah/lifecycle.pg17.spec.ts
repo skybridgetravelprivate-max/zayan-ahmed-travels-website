@@ -89,9 +89,9 @@ test("PG17 lifecycle: atomic cancellation, terminal status and financial review 
       assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
       assert.equal((await reservations.get(actor, booking.id)).balance.toFixed(2), "-30.25");
       assert.equal(await db.receipt.count({ where: { hotelBookingId: booking.id } }), 1);
-      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === party.id)?.balance, -30.25);
+      assert.equal((await accounting.arAp("customer")).find(r => r.partyId === party.id)?.balance, "-30.25");
       const report = await new ReportsService(db as never, accounting).run("receivables", {});
-      assert.equal(report.rows.find(r => r.clientId === party.id)?.debit, -30.25);
+      assert.equal(report.rows.find(r => r.clientId === party.id)?.debit, "-30.25");
       const cash = await db.chartOfAccount.findUniqueOrThrow({ where: { code: "1100" } });
       assert.equal((await db.journalLine.aggregate({ where: { accountId: cash.id, journal: { sourceId: booking.id } }, _sum: { credit: true } }))._sum.credit?.toFixed(2), "0.00");
       const ops = new ReceiptOperations(db as never, seq, audit, accounting);
