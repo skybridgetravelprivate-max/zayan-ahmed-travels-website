@@ -1,6 +1,6 @@
 # Remaining platform review — 19 November 2026
 
-Current baseline: PR #42 deployed as `60defcb4ec0a596470e74bca81b19829da9180ea`, Hostinger version `01a1f451-7b94-701d-bafe-89e0b1bdf6ac`, verified Current / Completed. Earlier review evidence below began at `5be097af`. PR #42's fixes are deployed; follow-up review changes remain unmerged. Production document uploads remain disabled and policies remain unpublished.
+Current baseline: PR #43 deployed as `88321c0e301054ec55d08a9cecb0674f714a0030`, Hostinger version `01a1f4bc-5ee9-7344-9e2d-2c29fc9f7e3e`, rechecked Current / Completed on 21 November 2026. PR #42 and the follow-up changes below are deployed. Production uploads remain disabled and policies remain placeholders. New hardening changes are review-only; see `docs/hardening-review-20261121.md` for the current dependency gate and acceptance boundaries.
 
 ## Follow-up review changes
 

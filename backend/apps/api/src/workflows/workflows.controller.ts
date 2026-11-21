@@ -1,8 +1,11 @@
 import { ReceiptOperations } from "../finance/receipt-operations";
+import { assertBaseCurrency } from "../finance/base-currency";
+import { GlobalFinanceGuard } from "../auth/global-finance.guard";
+import { createHash } from "node:crypto";
 import { money } from "../finance/money";
 import { convertLeadToCustomer } from "../crm/convert-lead";
 import { convertQuotationToBooking } from "../crm/convert-quotation";
-import { BadRequestException, ConflictException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
@@ -140,6 +143,7 @@ export class WorkflowsController {
       if (typeof value === "string" && (value.length > 300 || (key.endsWith("Id") && !/^[A-Za-z0-9_-]{1,80}$/.test(value)))) throw new BadRequestException("Invalid ticket field");
     }
     const result = await new ReceiptOperations(this.prisma, this.seq, this.audit, this.accounting).initial(req.user, paymentSubmission, requestKey, "ticketSaleId", initialPaid, async tx => {
+      const currencyBasis = await assertBaseCurrency(tx, body);
       assertBranch(req.user, body.branchId || req.user.defaultBranchId);
       await assertPeopleLinks(tx, req.user, body);
       await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
@@ -152,6 +156,7 @@ export class WorkflowsController {
       const ticket = await tx.ticketSale.create({
         data: {
           ...body,
+          ...currencyBasis,
           fare,
           tax,
           discount,
@@ -225,17 +230,18 @@ export class WorkflowsController {
       if (!ticket) throw new BadRequestException("Ticket not found");
       assertBranch(req.user, ticket.branchId);
       await assertPeopleLinks(tx, req.user, ticket);
+      await assertBaseCurrency(tx, ticket);
       if (["CANCELLED", "REISSUED"].includes(ticket.status)) throw new BadRequestException("Cancelled or replaced ticket cannot be refunded; use its current replacement");
       if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
-      const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toNumber();
-      const paid = ticket.paymentStatus === "UNPAID" ? 0 : Number(ticket.paidAmount ?? 0) || (ticket.paymentStatus === "PAID" ? Number(ticket.net) : Number(ticket.paidAmount ?? 0));
-      const refundable = Math.max(0, new Prisma.Decimal(Math.min(paid, Number(ticket.net))).minus(prior).toNumber());
+      const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0));
+      const recordedPaid = money(ticket.paidAmount ?? 0);
+      const paid = ticket.paymentStatus === "UNPAID" ? new Prisma.Decimal(0) : recordedPaid.isZero() && ticket.paymentStatus === "PAID" ? money(ticket.net) : recordedPaid;
+      const refundable = Prisma.Decimal.max(0, Prisma.Decimal.min(paid, ticket.net).minus(prior));
       const amounts = [body.refundAmount, body.airlineDeduction ?? 0, body.agencyDeduction ?? 0, body.otherCharges ?? 0];
       if (!amounts.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Refund amounts must be nonnegative numbers with at most two decimal places");
-      const netRefund = amounts.slice(1).reduce((amount, deduction) => amount.minus(deduction), new Prisma.Decimal(body.refundAmount)).toNumber();
+      const netRefund = money(amounts.slice(1).reduce((amount, deduction) => amount.minus(deduction), money(body.refundAmount)), true);
       if (Number(body.refundAmount) <= 0) throw new BadRequestException("Refund amount is required");
-      if (netRefund <= 0) throw new BadRequestException("Net refund after deductions must be positive");
-      if (netRefund > refundable) throw new BadRequestException("Refund cannot exceed refundable amount");
+      if (netRefund.greaterThan(refundable)) throw new BadRequestException("Refund cannot exceed refundable amount");
       const journal = await this.accounting.postRefund({
         userId: req.user.id,
         amount: netRefund,
@@ -263,8 +269,8 @@ export class WorkflowsController {
       await tx.ticketSale.update({
         where: { id },
         data: {
-          status: netRefund >= refundable - 0.009 ? "REFUNDED" : ticket.status,
-          paymentStatus: prior + netRefund >= paid - 0.009 && paid > 0 ? "REFUNDED" : ticket.paymentStatus,
+          status: netRefund.greaterThanOrEqualTo(refundable) ? "REFUNDED" : ticket.status,
+          paymentStatus: prior.plus(netRefund).greaterThanOrEqualTo(paid) && paid.greaterThan(0) ? "REFUNDED" : ticket.paymentStatus,
         },
       });
       await this.audit.log({ userId: req.user.id, action: "REFUND", entity: "ticketSale", entityId: id, after: refund, db: tx });
@@ -292,6 +298,7 @@ export class WorkflowsController {
     if (!original) throw new BadRequestException();
     assertBranch(req.user, original.branchId);
     await assertPeopleLinks(tx, req.user, original);
+    await assertBaseCurrency(tx, original);
     if (["REISSUED", "REFUNDED", "CANCELLED"].includes(original.status)) throw new ConflictException("Ticket cannot be reissued in its current state");
     const fees = [body.airlineChangeFee ?? 0, body.agencyFee ?? 0, body.fareDifference ?? 0];
     if (!fees.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Fees must be nonnegative amounts with at most two decimal places");
@@ -351,8 +358,8 @@ export class WorkflowsController {
         branchId: original.branchId,
         userId: req.user.id,
         lines: [
-          { accountId: ar.id, debit: extra.toNumber(), credit: 0, partyType: "customer", partyId: original.customerId ?? undefined },
-          { accountId: rev.id, debit: 0, credit: extra.toNumber() },
+          { accountId: ar.id, debit: extra, credit: 0, partyType: "customer", partyId: original.customerId ?? undefined },
+          { accountId: rev.id, debit: 0, credit: extra },
         ],
       });
       journalId = journal.id;
@@ -423,21 +430,35 @@ export class WorkflowsController {
   }
 
   @Post("payroll/run")
+  @UseGuards(GlobalFinanceGuard)
   @RequirePermission("hr.create")
-  async payroll(@Body() body: { period: string }) {
-    const employees = await this.prisma.employee.findMany({ where: { status: "ACTIVE" } });
-    const run = await this.prisma.payrollRun.create({ data: { period: body.period, status: "POSTED" } });
-    const slips = [];
-    for (const e of employees) {
-      const slipNo = await this.seq.next("sal", "ZAT-SAL");
-      const net = Number(e.basicSalary);
-      slips.push(
-        await this.prisma.salarySlip.create({
-          data: { slipNo, payrollId: run.id, employeeId: e.id, basic: e.basicSalary, net },
-        }),
-      );
-    }
-    return { run, slips };
+  async payroll(@Body() body: { period: string }, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    if (!req.user.isSuperAdmin) throw new ForbiddenException("Payroll requires Super Admin access");
+    if (!body || typeof body.period !== "string" || !body.period.trim() || body.period.length > 40 || Object.keys(body).some(k => k !== "period")) throw new BadRequestException("Provide a payroll period of at most 40 characters");
+    const period = body.period.trim();
+    const id = submissionId("payroll", [req.user.id], key);
+    const fingerprint = createHash("sha256").update(JSON.stringify({ period })).digest("hex");
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 4))::text`;
+      const existing = await tx.payrollRun.findUnique({ where: { id }, include: { slips: true } });
+      if (existing) {
+        const proof = await tx.auditLog.findFirst({ where: { entity: "PayrollRun", entityId: id, action: "PAYROLL_SUBMITTED" } });
+        if (proof?.after !== fingerprint || existing.period !== period) throw new ConflictException("Payroll key belongs to a different submission");
+        const { slips, ...run } = existing;
+        return { run, slips };
+      }
+      const employees = await tx.employee.findMany({ where: { status: "ACTIVE" }, orderBy: { id: "asc" } });
+      const created = await tx.payrollRun.create({ data: { id, period, status: "DRAFT" } });
+      const slips = [];
+      for (const e of employees) {
+        const slipNo = await this.seq.next("sal", "ZAT-SAL", tx);
+        const salary = money(e.basicSalary);
+        slips.push(await tx.salarySlip.create({ data: { slipNo, payrollId: created.id, employeeId: e.id, basic: salary, net: salary } }));
+      }
+      const run = await tx.payrollRun.update({ where: { id }, data: { status: "POSTED" } });
+      await this.audit.log({ userId: req.user.id, action: "PAYROLL_SUBMITTED", entity: "PayrollRun", entityId: id, after: fingerprint, db: tx });
+      return { run, slips };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30000 });
   }
 
   @Post("star")
@@ -478,8 +499,13 @@ export class WorkflowsController {
         checkOut: new Date(rm.checkOut),
       });
     }
-    const cost = rooms.reduce((s, r) => s + Number(r.cost || 0) * Number(r.qty || 1), 0);
-    const sellingPrice = rooms.reduce((s, r) => s + Number(r.sale || 0) * Number(r.qty || 1), 0);
+    const quantity = (value?: number) => {
+      const n = value ?? 1;
+      if (!Number.isSafeInteger(n) || n < 1 || n > 2147483647) throw new BadRequestException("Use a positive whole-number room quantity");
+      return n;
+    };
+    const cost = money(rooms.reduce((s, r) => s.plus(money(r.cost ?? 0).mul(quantity(r.qty))), new Prisma.Decimal(0)));
+    const sellingPrice = money(rooms.reduce((s, r) => s.plus(money(r.sale ?? 0).mul(quantity(r.qty))), new Prisma.Decimal(0)));
     const bookingNumber = await this.seq.next("str", "STR", tx);
     const rec = await tx.starBooking.create({
       data: {
@@ -491,14 +517,14 @@ export class WorkflowsController {
         autoAllocate: body.autoAllocate !== false,
         cost,
         sellingPrice,
-        profit: sellingPrice - cost,
+        profit: sellingPrice.minus(cost),
         branchId: req.user.defaultBranchId,
         rooms: {
           create: rooms.map((rm) => ({
             hotelId: rm.hotelId,
             roomType: rm.roomType,
             roomNo: rm.roomNo,
-            qty: rm.qty || 1,
+            qty: quantity(rm.qty),
             checkIn: new Date(rm.checkIn),
             checkOut: new Date(rm.checkOut),
             mealPlan: rm.mealPlan,
@@ -650,13 +676,11 @@ export class WorkflowsController {
       await assertPeopleLinksInBranch(tx, body, body.branchId || req.user.defaultBranchId);
       for (const [field, model] of [["umrahBookingId", "umrahBooking"], ["hotelBookingId", "hotelBooking"]] as const) if (body[field]) await assertRecordBranch(tx, req.user, model, body[field]);
       const paxCount = Number(body.paxCount ?? 1);
-      if (!Number.isFinite(paxCount) || paxCount < 1) throw new BadRequestException("Passenger count must be at least 1");
-      const cost = Number(body.cost ?? 0);
-      const sellingPrice = Number(body.sellingPrice ?? 0);
-      if (![cost, sellingPrice].every(n => Number.isFinite(n) && n >= 0)) throw new BadRequestException("Financial totals cannot be negative or invalid");
-      const paid = Number(body.paid ?? 0);
-      if (!Number.isFinite(paid) || paid < 0) throw new BadRequestException("Invalid paid amount");
-      if (paid - sellingPrice > 0.5) throw new BadRequestException("Paid amount exceeds selling total");
+      if (!Number.isSafeInteger(paxCount) || paxCount < 1 || paxCount > 2147483647) throw new BadRequestException("Passenger count must be a positive whole number");
+      const cost = money(body.cost ?? 0);
+      const sellingPrice = money(body.sellingPrice ?? 0);
+      const paid = money(body.paid ?? 0);
+      if (paid.greaterThan(sellingPrice)) throw new BadRequestException("Paid amount exceeds selling total");
       const tripDate = body.tripDate ? new Date(String(body.tripDate)) : new Date();
       const bookingNumber = String(body.bookingNumber || (await this.seq.next("tr-bk", "TRN", tx)));
       const rec = await tx.transportBooking.create({
@@ -677,9 +701,9 @@ export class WorkflowsController {
           paxCount,
           cost,
           sellingPrice,
-          net: sellingPrice - cost,
+          net: sellingPrice.minus(cost),
           paid,
-          paymentStatus: paid >= sellingPrice && sellingPrice > 0 ? "PAID" : paid > 0 ? "PARTIAL" : "UNPAID",
+          paymentStatus: paid.greaterThanOrEqualTo(sellingPrice) && sellingPrice.greaterThan(0) ? "PAID" : paid.greaterThan(0) ? "PARTIAL" : "UNPAID",
           umrahBookingId: (body.umrahBookingId as string) || null,
           hotelBookingId: (body.hotelBookingId as string) || null,
           branchId: (body.branchId as string) || req.user.defaultBranchId,

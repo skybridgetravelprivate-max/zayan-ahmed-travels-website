@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
@@ -145,8 +145,9 @@ export class CrmController {
     @Param("id") id: string,
     @Body() body: { channel: string; subject?: string; message: string; send?: boolean },
     @Req() req: Request & { user: AuthUser },
+    @Headers("idempotency-key") key?: string,
   ) {
-    return this.crm.logCommunication(id, req.user, body);
+    return this.crm.logCommunication(id, req.user, body, key);
   }
 
   @Post("leads/:id/quotation")
@@ -187,8 +188,8 @@ export class CrmController {
 
   @Post("quotations/:id/send")
   @RequirePermission("quotation.edit")
-  sendQuote(@Param("id") id: string, @Req() req: Request & { user: AuthUser }) {
-    return this.crm.sendQuotation(id, req.user);
+  sendQuote(@Param("id") id: string, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    return this.crm.sendQuotation(id, req.user, key);
   }
 
   @Post("leads/:id/merge")
@@ -221,8 +222,9 @@ export class CrmController {
     @Param("id") id: string,
     @Body() body: { channel: string; subject?: string; message: string; send?: boolean },
     @Req() req: Request & { user: AuthUser },
+    @Headers("idempotency-key") key?: string,
   ) {
-    return this.crm.logCustomerCommunication(id, req.user, body);
+    return this.crm.logCustomerCommunication(id, req.user, body, key);
   }
 
   @Post("customers/:id/follow-ups")

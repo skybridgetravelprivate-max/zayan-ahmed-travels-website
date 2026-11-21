@@ -33,6 +33,7 @@ export async function createNestApp(): Promise<INestApplication> {
     credentials: true,
   });
   app.use((req: Request, res: Response, next: NextFunction) => {
+    if (process.env.HSTS_ENABLED === "true") res.setHeader("Strict-Transport-Security", "max-age=300");
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");

@@ -72,7 +72,12 @@ async function serve() {
   const next = require(path.join(root, "node_modules/next"))({ dev: false, dir: root, hostname: "127.0.0.1", port });
   await next.prepare();
   const handle = next.getRequestHandler();
-  const server = http.createServer((request, response) => isApiPathname(request.url.split("?")[0]) ? api(request, response) : handle(request, response));
+  let cmsOutage = false;
+  const server = http.createServer((request, response) => {
+    if (process.env.HSTS_ENABLED === "true") response.setHeader("Strict-Transport-Security", "max-age=300");
+    if (cmsOutage && request.url.startsWith("/api/public/website/pages")) { response.writeHead(503); response.end(); return; }
+    return isApiPathname(request.url.split("?")[0]) ? api(request, response) : handle(request, response);
+  });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const upstreamPort = server.address().port;
   // Exercise real header/cookie/PDF forwarding, not only gateway path classification.
@@ -86,6 +91,7 @@ async function serve() {
   await new Promise(resolve => proxy.listen(port, "127.0.0.1", resolve));
   process.send?.({ ready: true });
   process.on("message", async message => {
+    if (message && typeof message === "object" && typeof message.cmsOutage === "boolean") { cmsOutage = message.cmsOutage; process.send?.({ cmsOutage }); return; }
     if (message !== "stop") return;
     proxy.closeAllConnections(); proxy.close(); server.closeAllConnections(); server.close(); await app.close(); await next.close(); process.disconnect?.();
   });
@@ -145,12 +151,17 @@ async function journey() {
     const environment = {};
     for (const key of ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "USERPROFILE", "LOCALAPPDATA"]) if (process.env[key]) environment[key] = process.env[key];
     Object.assign(environment, { NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_DATABASE_URL: databaseUrl, ZAT_SYNTHETIC_HTTP_PORT: String(port), JWT_SECRET: randomBytes(32).toString("hex"), JWT_REFRESH_SECRET: randomBytes(32).toString("hex"), CUSTOMER_BOOKINGS_INTERNAL_TOKEN: randomBytes(32).toString("hex"), APP_URL: origin, SITE_URL: "https://customer-recovery.example.test", API_URL: origin, CRM_API_URL: origin, SMTP_HOST: "127.0.0.1", SMTP_PORT: String(smtp.port()), SMTP_SECURE: "false", COOKIE_SECURE: "false" });
+    environment.HSTS_ENABLED = "true";
     child = spawn(process.execPath, [__filename, "--serve"], { cwd: root, env: environment, stdio: ["ignore", log, log, "ipc"], windowsHide: true });
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error("Synthetic gateway startup timed out")), 45000);
       child.once("message", message => { clearTimeout(timer); assert.equal(message.ready, true); resolve(); });
       child.once("exit", () => { clearTimeout(timer); reject(Error("Synthetic gateway failed to start; inspect local server.log")); });
     });
+    const rendering = [];
+    async function samplePage(label) { const started = performance.now(); const response = await fetch(origin + "/"); await response.text(); assert.equal(response.status, 200); rendering.push({ label, elapsedMs: performance.now() - started }); }
+    await samplePage("initial public request after process startup");
+    await samplePage("warm public request");
     await json("/api/auth/login", { actor: "staff", method: "POST", body: { identifier: admin.username, password } }, 201);
     await json("/api/auth/login", { actor: "outsider", method: "POST", body: { identifier: outsider.username, password } }, 201);
     await json("/api/auth/login", { actor: "branch-admin", method: "POST", body: { identifier: branchAdmin.username, password } }, 201);
@@ -302,6 +313,12 @@ async function journey() {
     await json("/api/account/login", { actor: "other-customer-password", method: "POST", body: { email: `${tag}-other@example.test`, password } });
     checks.push("customer recovery over real HTTP: unknown and known emails share a generic response; local SMTP capture receives one link; only its hashed token is stored; reset changes the password, rejects reuse, revokes old sessions, and leaves other accounts unaffected");
     const result = { status: "passed", checks, net: "1010.00", paid: "250.25", balance: "759.75", syntheticOnly: true, browserReload: process.env.ZAT_PLAYWRIGHT_MODULE ? "actual Chromium tabs, reload, browser closure and reopen; see browser-result.json for final browser totals" : "simulated new component using persisted storage; real HTTP requests and cookies", localReverseProxy: true, productionAccess: false };
+    async function toggleCms(cmsOutage) { await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(Error("CMS fixture control timed out")), 5000); child.once("message", message => { clearTimeout(timer); assert.equal(message.cmsOutage, cmsOutage); resolve(); }); child.send({ cmsOutage }); }); }
+    await toggleCms(true);
+    try { await samplePage("isolated CMS HTTP 503 fallback"); } finally { await toggleCms(false); }
+    await samplePage("CMS restored");
+    checks.push("initial/warm rendering and controlled CMS 503 fallback/restoration return 200; no production performance objective claimed");
+    fs.writeFileSync(path.join(outputDir, "rendering-baseline.json"), JSON.stringify({ environment: "local synthetic production build", rendering }, null, 2));
     fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result, null, 2));
   } finally {

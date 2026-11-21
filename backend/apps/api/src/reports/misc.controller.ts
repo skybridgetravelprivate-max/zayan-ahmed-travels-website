@@ -1,5 +1,5 @@
 import { GlobalFinanceGuard } from "../auth/global-finance.guard";
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { PrismaService } from "../common/prisma.service";
 import { JwtAuthGuard } from "../auth/jwt.guard";
@@ -7,7 +7,8 @@ import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { ResourcesService } from "../resources/resources.service";
 import { AuthUser } from "../auth/auth.types";
 import { MailService } from "../common/mail.service";
-import { WhatsAppService } from "../common/whatsapp.service";
+import { OutboundMessageService } from "../common/outbound-message.service";
+import { Headers } from "@nestjs/common";
 
 import { reportCsv } from "./csv";
 import { ReportsService } from "./reports.service";
@@ -84,8 +85,22 @@ export class ExportController {
     @Req() req: Request & { user: AuthUser },
     @Res() res: Response,
   ) {
-    const result = await this.resources.list(resource, req.user, { ...query, page: "1", pageSize: "5000" });
-    const rows = result.data as Record<string, unknown>[];
+    const rows: Record<string, unknown>[] = [];
+    let expectedTotal: number | undefined;
+    const seen = new Set<unknown>();
+    for (let page = 1; page <= 50; page++) {
+      // Use the same authorization/redaction path; never raise the public list cap.
+      const result = await this.resources.list(resource, req.user, { ...query, page: String(page), pageSize: "100", sort: "id", dir: "asc" });
+      if (result.total > 5000) throw new BadRequestException("Export exceeds 5000 rows; narrow the filters");
+      if (expectedTotal !== undefined && expectedTotal !== result.total) throw new BadRequestException("Export changed while reading; retry with narrower filters");
+      expectedTotal = result.total;
+      for (const row of result.data as Record<string, unknown>[]) {
+        if (seen.has(row.id)) throw new BadRequestException("Export changed while reading; retry with narrower filters");
+        seen.add(row.id); rows.push(row);
+      }
+      if (rows.length >= result.total) break;
+      if (!(result.data as unknown[]).length || page === 50) throw new BadRequestException("Export changed while reading; retry with narrower filters");
+    }
     if (!rows.length) {
       res.setHeader("Content-Type", "text/csv");
       return res.send("");
@@ -117,7 +132,7 @@ export class ImportController {
 @Controller("v1/comms")
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class CommsController {
-  constructor(private mail: MailService, private wa: WhatsAppService) {}
+  constructor(private mail: MailService, private outbound: OutboundMessageService) {}
 
   @Post("email")
   @RequirePermission("settings.manage")
@@ -130,8 +145,20 @@ export class CommsController {
 
   @Post("whatsapp")
   @RequirePermission("settings.manage")
-  whatsapp(@Body() body: { to: string; message: string }) {
-    return this.wa.send(body.to, String(body.message || "").slice(0, 4000));
+  whatsapp(@Body() body: { to: string; message: string }, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    return this.outbound.submit(req.user.id, body, key);
+  }
+
+  @Get("whatsapp/submission/:key")
+  whatsappStatus(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
+    return this.outbound.status(req.user.id, key);
+  }
+
+  @Post("whatsapp/:id/reconcile")
+  @UseGuards(GlobalFinanceGuard)
+  @RequirePermission("settings.manage")
+  reconcileWhatsapp(@Param("id") id: string, @Body() body: { status: string; reason: string; providerReference?: string }, @Req() req: Request & { user: AuthUser }) {
+    return this.outbound.reconcile(req.user.id, id, body);
   }
 }
 

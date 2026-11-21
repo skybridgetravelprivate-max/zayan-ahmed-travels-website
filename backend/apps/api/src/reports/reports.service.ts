@@ -329,24 +329,20 @@ export class ReportsService {
   }
 
   private async dailySale(q: Record<string, string>) {
-    const by: Record<string, { date: string; count: number; sale: string; cost: string; paid: string; profit: string }> = {};
-    const add = (date: Date | null, sale: string, cost: string, paid: string) => {
-      if (!date) return;
-      if (!inRange(date, q.from, q.to)) return;
-      const d = date.toISOString().slice(0, 10);
-      if (!by[d]) by[d] = { date: d, count: 0, sale: "0.00", cost: "0.00", paid: "0.00", profit: "0.00" };
-      by[d].count += 1;
-      by[d].sale = new Prisma.Decimal(by[d].sale).plus(sale).toFixed(2);
-      by[d].cost = new Prisma.Decimal(by[d].cost).plus(cost).toFixed(2);
-      by[d].paid = new Prisma.Decimal(by[d].paid).plus(paid).toFixed(2);
-      by[d].profit = new Prisma.Decimal(by[d].sale).minus(by[d].cost).toFixed(2);
-    };
-    (await this.prisma.umrahBooking.findMany()).forEach((u) => add(u.departureDate || u.createdAt, String(u.net), String(u.cost), String(u.paid)));
-    (await this.prisma.ticketSale.findMany()).forEach((t) => add(t.createdAt, String(t.net), String(t.cost), String(t.paidAmount || 0)));
-    (await this.prisma.hotelBooking.findMany({ where: { cancelledAt: null } })).forEach((h) => add(h.checkIn, String(h.net), String(h.cost), String(h.paid)));
-    (await this.prisma.transportBooking.findMany()).forEach((t) => add(t.tripDate || t.createdAt, String(t.sellingPrice), String(t.cost), String(t.paid || 0)));
-    (await this.prisma.starBooking.findMany()).forEach((s) => add(s.createdAt, String(s.sellingPrice), String(s.cost), String(s.paid)));
-    return Object.values(by).sort((a, b) => a.date.localeCompare(b.date));
+    const rows = await this.prisma.$queryRaw<{ date: string; count: number; sale: string; cost: string; paid: string }[]>`
+      WITH sales AS (
+        SELECT coalesce("departureDate", "createdAt")::date AS day, net AS sale, cost, paid FROM "UmrahBooking"
+        UNION ALL SELECT "createdAt"::date, net, cost, "paidAmount" FROM "TicketSale"
+        UNION ALL SELECT "checkIn"::date, net, cost, paid FROM "HotelBooking" WHERE "cancelledAt" IS NULL
+        UNION ALL SELECT coalesce("tripDate", "createdAt")::date, "sellingPrice", cost, paid FROM "TransportBooking"
+        UNION ALL SELECT "createdAt"::date, "sellingPrice", cost, paid FROM "StarBooking"
+      )
+      SELECT day::text AS date, count(*)::int AS count, sum(sale)::text AS sale, sum(cost)::text AS cost, sum(paid)::text AS paid
+      FROM sales WHERE (${q.from || null}::date IS NULL OR day >= ${q.from || null}::date)
+        AND (${q.to || null}::date IS NULL OR day <= ${q.to || null}::date)
+      GROUP BY day ORDER BY day
+    `;
+    return rows.map(row => ({ ...row, sale: new Prisma.Decimal(row.sale).toFixed(2), cost: new Prisma.Decimal(row.cost).toFixed(2), paid: new Prisma.Decimal(row.paid).toFixed(2), profit: new Prisma.Decimal(row.sale).minus(row.cost).toFixed(2) }));
   }
 
   private async receivables() {
