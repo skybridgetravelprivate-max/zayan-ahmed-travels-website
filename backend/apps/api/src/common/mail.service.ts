@@ -8,13 +8,16 @@ export class MailService {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT ?? 587),
     secure: process.env.SMTP_SECURE === "true",
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth:
       process.env.SMTP_USER && process.env.SMTP_PASSWORD
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
         : undefined,
   });
 
-  async send(to: string, subject: string, html: string) {
+  async send(to: string, subject: string, html: string, messageId?: string) {
     if (!process.env.SMTP_HOST) {
       console.warn("SMTP not configured; email skipped");
       return { skipped: true };
@@ -24,6 +27,7 @@ export class MailService {
       to,
       subject,
       html,
+      ...(messageId ? { messageId } : {}),
     });
   }
 }

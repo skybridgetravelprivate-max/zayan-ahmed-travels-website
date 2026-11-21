@@ -6,7 +6,6 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { ResourcesService } from "../resources/resources.service";
 import { AuthUser } from "../auth/auth.types";
-import { MailService } from "../common/mail.service";
 import { OutboundMessageService } from "../common/outbound-message.service";
 import { Headers } from "@nestjs/common";
 
@@ -132,15 +131,27 @@ export class ImportController {
 @Controller("v1/comms")
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class CommsController {
-  constructor(private mail: MailService, private outbound: OutboundMessageService) {}
+  constructor(private outbound: OutboundMessageService) {}
 
   @Post("email")
   @RequirePermission("settings.manage")
-  email(@Body() body: { to: string; subject: string; html: string }) {
-    const html = String(body.html || "")
+  email(@Body() body: { to: string; subject: string; html: string }, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    const html = (typeof body?.html === "string" ? body.html : "")
       .replace(/<script\b[\s\S]*?<\/script>/gi, "")
       .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, "");
-    return this.mail.send(body.to, body.subject, html);
+    return this.outbound.submitEmail(req.user.id, { to: body?.to, subject: body?.subject, html }, key);
+  }
+
+  @Get("email/submission/:key")
+  emailStatus(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
+    return this.outbound.status(req.user.id, key, "EMAIL");
+  }
+
+  @Post("email/:id/reconcile")
+  @UseGuards(GlobalFinanceGuard)
+  @RequirePermission("settings.manage")
+  reconcileEmail(@Param("id") id: string, @Body() body: { status: string; reason: string; providerReference?: string }, @Req() req: Request & { user: AuthUser }) {
+    return this.outbound.reconcile(req.user.id, id, body, "EMAIL");
   }
 
   @Post("whatsapp")
