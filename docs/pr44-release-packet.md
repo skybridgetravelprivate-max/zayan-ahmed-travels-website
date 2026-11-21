@@ -1,6 +1,6 @@
 # PR #44 release preparation — review only
 
-Application code candidate: `0a73527de3367be62f63730cd66e47022b91e866` (recorded after local verification). The final documentation-inclusive SHA and exact CI runs belong to the PR #44 release record. Before any release, match local HEAD, remote PR head, reviewed source tree and the successful CI SHA. Do not deploy a moving branch without this comparison.
+Application code candidate: `bbd5bb4217f5d2edfea4cbb48eb4e83a6603d458` (recorded after local verification, including the operator recovery workspace). The final documentation-inclusive SHA and exact CI runs belong to the PR #44 release record. Before any release, match local HEAD, remote PR head, reviewed source tree and the successful CI SHA. Do not deploy a moving branch without this comparison.
 
 ## Current production evidence
 
@@ -38,7 +38,9 @@ Staff email, CRM lead/customer communication writes (including log-only writes) 
 
 Read one's own result with `GET /api/v1/comms/email/submission/:key` or the WhatsApp equivalent. SENT means provider/SMTP acceptance, not recipient delivery. UNCERTAIN blocks the original key and identical ambiguous content. Super Admin/settings authority must independently confirm the result and supply an audited reason to the channel's `POST /api/v1/comms/{email|whatsapp}/:id/reconcile`. NOT_SENT does not reopen an old key; use an explicit new submission only after review. Do not mark NOT_SENT just because a request timed out or while delivery could still be in flight.
 
-The quotation browser retains a saved retry key until acknowledgement. A complete operator reconciliation/new-intent screen is not delivered; API-based reviewed operations remain necessary. Provider delivery/status semantics and an approved external sandbox are still acceptance gaps. Password recovery keeps its separate fresh one-use token contract, generic responses, failure invalidation and session revocation; no reset-token plaintext is added to the ledger.
+The quotation browser retains a saved retry key until acknowledgement. The reviewed `/admin/communications` workspace now provides own-key lookup, Super Admin outcome review and conservative preparation of a new quotation attempt. It loads up to 50 saved quotation attempts for the current staff namespace from this browser (bounded to 10000 inspected storage entries). It never sends a message. Before releasing a saved key, it acquires the existing quotation Web Lock, fetches both channel states again and verifies the stored key still matches. At least one channel must be NOT_SENT and every other channel NOT_SENT or absent. SENT, UNCERTAIN, wholly absent results, corrupt storage, changed keys or unavailable checks keep the key. When one channel was accepted and another was not, do not restart the whole quotation; separately review any targeted remaining-channel operation.
+
+Super Admin review reads minimal metadata by submission identity through the guarded `GET /api/v1/comms/submissions/:id`; the result excludes message/destination/fingerprint. The form requires independently confirmed outcome and reason, then reads back the committed result. After a lost response, read the identity again instead of resubmitting blindly. Provider delivery/status semantics and an approved external sandbox remain acceptance gaps. Password recovery keeps its separate fresh one-use token contract, generic responses, failure invalidation and session revocation; no reset-token plaintext is added to the ledger. No additional migration is introduced by this workspace.
 
 ## Deployment, smoke tests and rollback
 
