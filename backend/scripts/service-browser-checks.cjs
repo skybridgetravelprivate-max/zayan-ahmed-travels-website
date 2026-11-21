@@ -54,6 +54,8 @@ module.exports = async ({ context, page, origin, db, booking, lead, password, ot
     const customerContext = await context.browser().newContext();
     try {
       const customerPage = await customerContext.newPage();
+      const pageErrors = [];
+      customerPage.on("pageerror", error => pageErrors.push(error.message));
       await customerPage.goto(origin + "/my-bookings");
       await customerPage.getByLabel("Email", { exact: true }).fill(email);
       await customerPage.getByLabel("Password", { exact: true }).fill(password);
@@ -65,6 +67,13 @@ module.exports = async ({ context, page, origin, db, booking, lead, password, ot
       const references = bookingRows.map(row => row.reference);
       for (const reference of [issuedTicket.ticketNumber, transport.bookingNumber, visa.applicationNo]) assert.equal(references.includes(reference), owns);
       if (owns) {
+        const pageResponse = await customerPage.goto(origin + "/my-bookings");
+        const policy = pageResponse.headers()["content-security-policy-report-only"];
+        assert.match(policy, /script-src .*'nonce-[A-Za-z0-9+/]+=*'/);
+        const nonce = policy.match(/'nonce-([^']+)'/)[1];
+        const jsonNonces = await customerPage.locator('script[type="application/ld+json"]').evaluateAll(scripts => scripts.map(script => script.nonce));
+        assert.ok(jsonNonces.length > 0 && jsonNonces.every(value => value === nonce));
+        assert.equal(pageResponse.headers()["strict-transport-security"], "max-age=300");
         assert.equal(bookingRows.find(row => row.reference === visa.applicationNo).travelDate, null);
         await customerPage.getByRole("button", { name: "Upcoming", exact: true }).click();
         await customerPage.getByRole("heading", { name: transport.bookingNumber, exact: true }).waitFor();
@@ -92,6 +101,13 @@ module.exports = async ({ context, page, origin, db, booking, lead, password, ot
           assert.deepEqual(audit.violations, []);
           checks.push("selected customer booking page axe WCAG A/AA scan passed; incomplete/manual checks retained in evidence");
         }
+        const pkg = await db.umrahPackage.create({ data: { packageNumber: require("node:crypto").randomUUID(), name: "Synthetic breadcrumb package", durationDays: 7, departureCity: "Islamabad", isPublic: true, status: "ACTIVE" } });
+        await customerPage.goto(origin + "/umrah/" + pkg.id);
+        const graphs = await customerPage.locator('script[type="application/ld+json"]').evaluateAll(scripts => scripts.map(script => JSON.parse(script.textContent)));
+        const crumbs = graphs.find(graph => graph["@type"] === "BreadcrumbList");
+        assert.equal(crumbs.itemListElement[2].name, pkg.name);
+        assert.equal(pageErrors.length, 0, JSON.stringify(pageErrors));
+        checks.push("built report-only nonce policy matches JSON-LD, opt-in HSTS appears, package breadcrumbs are truthful, and customer pages have no page errors");
       }
     } finally { await customerContext.close(); }
   }
