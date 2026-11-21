@@ -21,6 +21,9 @@ export class OutboundMessageService {
     const id = submissionId("whatsapp", [userId], key);
     const fingerprint = createHash("sha256").update(JSON.stringify({ to: body.to, message: body.message })).digest("hex");
     const reserved = await this.db.$transaction(async tx => {
+      // Different payloads sharing a request key must serialize before the first
+      // lookup, even though they acquire different content locks below.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 7))::text`;
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${fingerprint}, 6))::text`;
       const previous = await tx.outboundMessage.findUnique({ where: { id } });
       if (previous) {

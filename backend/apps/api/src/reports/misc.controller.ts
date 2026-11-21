@@ -150,7 +150,6 @@ export class CommsController {
   }
 
   @Get("whatsapp/submission/:key")
-  @RequirePermission("settings.manage")
   whatsappStatus(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
     return this.outbound.status(req.user.id, key);
   }

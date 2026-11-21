@@ -103,6 +103,50 @@ test("PG17 HTTP hardening: payroll, exact invoices and FX containment", { skip: 
         assert.equal((await post("/api/v1/comms/whatsapp",notSent)).status,201);assert.equal(calls,4);
       }finally{wa.send=original;}
     });
+    await t.test("concurrent different messages sharing a request key reject the loser without a second provider call", async () => {
+      const wa = app.get(WhatsAppService), original = wa.send;
+      let calls = 0;
+      try {
+        wa.send = async () => { calls++; return { id: "synthetic-concurrent-provider" }; };
+        const key = randomUUID();
+        const results = await Promise.all(["First", "Second"].map(message => post("/api/v1/comms/whatsapp", { to: "+10000000003", message }, key)));
+        assert.deepEqual(results.map(response => response.status).sort(), [201, 409]);
+        assert.equal(calls, 1);
+      } finally { wa.send = original; }
+    });
+    await t.test("CRM lead, customer and quotation WhatsApp routes share durable uncertain-send protection", async () => {
+      const wa = app.get(WhatsAppService), original = wa.send;
+      let calls = 0;
+      try {
+        wa.send = async () => { calls++; throw new BadGatewayException("Synthetic provider accepted, response lost"); };
+        const lead = await db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic message lead", mobile: "+10000000001", branchId: branch.id } });
+        const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic message customer", phone: "+10000000002", whatsapp: "+10000000002", branchId: branch.id } });
+        const quote = await db.quotation.create({ data: { quotationNumber: randomUUID(), customerId: customer.id, branchId: branch.id } });
+        const cases = [
+          { path: `/api/v1/crm/leads/${lead.id}/communications`, body: { channel: "WHATSAPP", send: true, message: "Synthetic lead message" } },
+          { path: `/api/v1/crm/customers/${customer.id}/communications`, body: { channel: "WHATSAPP", send: true, message: "Synthetic customer message" } },
+          { path: `/api/v1/crm/quotations/${quote.id}/send`, body: {} },
+        ];
+        for (const item of cases) {
+          const key = randomUUID(), before = calls;
+          const invalid = await post(item.path, item.body, "invalid");
+          assert.equal(invalid.status, 400, item.path + " " + await invalid.text());
+          assert.equal(calls, before);
+          assert.equal((await post(item.path, item.body, key)).status, 502);
+          assert.equal(calls, before + 1);
+          assert.equal((await post(item.path, item.body, key)).status, 409);
+          assert.equal((await post(item.path, item.body)).status, 409);
+          assert.equal(calls, before + 1);
+          const status = await fetch(origin + "/api/v1/comms/whatsapp/submission/" + key, { headers: { Authorization: `Bearer ${admin}` } });
+          assert.equal(status.status, 200);
+          assert.equal((await status.json()).status, "UNCERTAIN");
+          const other = await fetch(origin + "/api/v1/comms/whatsapp/submission/" + key, { headers: { Authorization: `Bearer ${staff}` } });
+          assert.equal(other.status, 404);
+        }
+        assert.equal(await db.communication.count({ where: { OR: [{ leadId: lead.id }, { customerId: customer.id }] } }), 0);
+        assert.equal((await db.quotation.findUniqueOrThrow({ where: { id: quote.id } })).status, "DRAFT");
+      } finally { wa.send = original; }
+    });
     await t.test("representative synthetic query plans use the additive recent-auth and customer-ticket indexes",async()=>{
       const tag="idx_"+randomUUID();
       await db.$executeRaw`INSERT INTO "LoginAttempt" (id,identifier,success,"createdAt") SELECT ${tag}||n::text,'zat-customer:login:synthetic',false,NOW()-n*INTERVAL '1 minute' FROM generate_series(1,20000) AS n`;

@@ -981,6 +981,16 @@ export function ManagementWorkspace({
       }
       if (workflow.version && row) data.version = row.version;
       let requestKey: string | undefined;
+      const quotationSend = workflow.path === "/api/v1/crm/quotations/:id/send";
+      const quotationRetryIdentity = `${retryIdentity}:quotation-send:${row?.id}`;
+      if (quotationSend) {
+        if (!navigator.locks)
+          throw new Error("This browser cannot safely coordinate message retries across tabs.");
+        requestKey = await navigator.locks.request(
+          `zat:message-key:${quotationRetryIdentity}`,
+          () => receiptRetryKey(localStorage, quotationRetryIdentity, { path: workflow.path, id: row?.id }),
+        );
+      }
       if (
         ["receipts", "payments"].includes(resource) ||
         Number(data.paid ?? data.paidAmount ?? 0) > 0
@@ -1008,7 +1018,8 @@ export function ManagementWorkspace({
         data,
         requestKey,
       );
-      if (requestKey)
+      if (quotationSend) clearReceiptRetry(localStorage, quotationRetryIdentity);
+      if (requestKey && !quotationSend)
         setReceiptPreview(
           ["receipts", "payments"].includes(resource)
             ? result
