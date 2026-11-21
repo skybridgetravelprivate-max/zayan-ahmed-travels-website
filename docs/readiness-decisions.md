@@ -1,6 +1,6 @@
 # Remaining readiness decisions — owner review
 
-Baseline verified on 19 November 2026: PR #42 merged/deployed as `60defcb4ec0a596470e74bca81b19829da9180ea`; Hostinger deployment `01a1f451-7b94-701d-bafe-89e0b1bdf6ac` is Current / Completed. This review branch does not authorize another production deployment.
+Baseline rechecked on 21 November 2026: PR #43 deployed as `88321c0e301054ec55d08a9cecb0674f714a0030`; Hostinger deployment `01a1f4bc-5ee9-7344-9e2d-2c29fc9f7e3e` is Current / Completed. This hardening review does not authorize another production deployment. The full backend dependency audit currently fails on the Effect advisory; see `docs/hardening-review-20261121.md`.
 
 ## Offsite recovery proposal
 
