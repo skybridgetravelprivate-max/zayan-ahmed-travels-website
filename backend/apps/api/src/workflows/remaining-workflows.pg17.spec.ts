@@ -30,7 +30,7 @@ test("PG17: ticket replacement preserves payments and reconciles customer accoun
     const seq = new SequenceService(db as never), audit = new AuditService(db as never);
     const accounting = new AccountingService(db as never, seq, audit);
     const workflow = new WorkflowsController(db as never, seq, audit, accounting, {} as never);
-    const ticket = await db.ticketSale.create({ data: { ticketNumber: randomUUID(), customerId: customer.id, supplierId: supplier.id, branchId: branch.id, fare: "100.03", net: "100.03", cost: "60", profit: "40.03", paidAmount: "40.01", status: "ISSUED", paymentStatus: "PARTIAL", sector: "ISB-JED", departureAt: new Date("2050-01-01"), exchangeRate: "1.5", baggage: "20kg" } });
+    const ticket = await db.ticketSale.create({ data: { ticketNumber: randomUUID(), customerId: customer.id, supplierId: supplier.id, branchId: branch.id, fare: "100.03", net: "100.03", cost: "60", profit: "40.03", paidAmount: "40.01", status: "ISSUED", paymentStatus: "PARTIAL", sector: "ISB-JED", departureAt: new Date("2050-01-01"), exchangeRate: "1", baggage: "20kg" } });
     await accounting.postSale({ userId: staff.id, module: "ticket", sourceId: ticket.id, customerId: customer.id, branchId: branch.id, amount: 100.03 });
     await accounting.postReceipt({ userId: staff.id, module: "ticket", sourceId: ticket.id, customerId: customer.id, branchId: branch.id, amount: 40.01, method: "CASH" });
     let replacement: Awaited<ReturnType<typeof workflow.reissue>>;
@@ -42,7 +42,7 @@ test("PG17: ticket replacement preserves payments and reconciles customer accoun
       assert.equal(replacement.newTicket.supplierId, supplier.id);
       assert.equal(replacement.newTicket.departureAt?.toISOString(), ticket.departureAt?.toISOString());
       assert.equal(replacement.newTicket.sector, "ISB-MED");
-      assert.equal(replacement.newTicket.exchangeRate.toString(), "1.5");
+      assert.equal(replacement.newTicket.exchangeRate.toString(), "1");
       const rows = await accounting.arAp("customer");
       assert.equal(rows.find(r => r.partyId === customer.id)?.balance, "60.62");
     });

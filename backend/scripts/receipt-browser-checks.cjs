@@ -173,6 +173,13 @@ module.exports = async function browserChecks({ origin, outputDir, db, admin, ou
     await require("./manual-workflow-browser-checks.cjs")({ context, page: pageC, origin, db, booking, lead, password, outputDir });
     results.push("real staff UI holds posted cancellation with 409; zero-value cancellation replays without audit duplication; customer cancellation tab and private PDF work; production-mode uploads remain disabled");
     results.push(...await require("./service-browser-checks.cjs")({ context, page: pageC, origin, db, booking, lead, password, otherEmail, issuedTicket, outputDir }));
+    try {
+      results.push(await require("./communication-recovery-browser-checks.cjs")({ context, page: pageC, origin, db, admin, outsider, password, outputDir }));
+    } catch (error) {
+      fs.writeFileSync(path.join(outputDir, "communication-recovery-failure.html"), await pageC.content());
+      await pageC.screenshot({ path: path.join(outputDir, "communication-recovery-failure.png"), fullPage: true });
+      throw error;
+    }
     results.push("two verified customer logins display only their own bookings; forged selectors ignored; owner sees the pending date; customer/foreign staff document requests return 401/404; foreign receipt review denied (403)");
     const result = { status: "passed", browser: await browser.version(), checks: results, receiptCount: 2, receiptCountScope: "original Umrah booking", paid: "350.35", balance: "659.65", syntheticOnly: true };
     fs.writeFileSync(path.join(outputDir, "browser-result.json"), JSON.stringify(result, null, 2));

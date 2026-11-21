@@ -1,9 +1,10 @@
 import { Prisma } from "@prisma/client";
+import { invoiceLines, sumMoney } from "./invoice-lines";
 import { PaymentOperations, paymentSubmissionId, type PaymentInput } from "./payment-operations";
 import { money, type MoneyInput } from "./money";
 import { GlobalFinanceGuard } from "../auth/global-finance.guard";
 import { ReceiptOperations, receiptSubmissionId, type ReceiptInput } from "./receipt-operations";
-import { BadRequestException, NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -278,8 +279,8 @@ export class FinanceController {
     return this.accounting.postOpening({
       userId: req.user.id,
       accountId: body.accountId,
-      debit: Number(body.debit || 0),
-      credit: Number(body.credit || 0),
+      debit: money(body.debit ?? 0),
+      credit: money(body.credit ?? 0),
       date: body.date ? new Date(body.date) : new Date(),
       memo: body.memo,
       branchId: req.user.defaultBranchId,
@@ -312,18 +313,18 @@ export class FinanceController {
     @Body() body: {
       customerId?: string;
       notes?: string;
-      tax?: number;
-      discount?: number;
-      lines: { serviceId?: string; description: string; qty?: number; unitPrice: number; cost?: number }[];
+      tax?: MoneyInput;
+      discount?: MoneyInput;
+      lines: { serviceId?: string; description: string; qty?: number; unitPrice: MoneyInput; cost?: MoneyInput }[];
     },
     @Req() req: Request & { user: AuthUser },
   ) {
     return this.prisma.$transaction(async tx => {
-    const lines = body.lines || [];
-    if (!lines.length) throw new BadRequestException("Add at least one service line");
-    const sellingPrice = lines.reduce((s, l) => s + Number(l.unitPrice || 0) * Number(l.qty || 1), 0);
-    const cost = lines.reduce((s, l) => s + Number(l.cost || 0) * Number(l.qty || 1), 0);
-    const net = sellingPrice - Number(body.discount || 0) + Number(body.tax || 0);
+    const lines = invoiceLines(body?.lines);
+    const sellingPrice = sumMoney(lines.map(l => l.amount));
+    const cost = sumMoney(lines.map(l => l.cost));
+    const tax = money(body.tax ?? 0), discount = money(body.discount ?? 0);
+    const net = money(sellingPrice.minus(discount).plus(tax));
     const invoiceNumber = await this.seq.next("inv", "INV", tx);
     const rec = await tx.serviceInvoice.create({
       data: {
@@ -333,17 +334,17 @@ export class FinanceController {
         status: "POSTED",
         cost,
         sellingPrice,
-        tax: body.tax || 0,
-        discount: body.discount || 0,
+        tax,
+        discount,
         net,
         notes: body.notes,
         lines: {
           create: lines.map((l) => ({
             serviceId: l.serviceId,
             description: l.description,
-            qty: l.qty || 1,
+            qty: l.qty,
             unitPrice: l.unitPrice,
-            amount: Number(l.unitPrice) * Number(l.qty || 1),
+            amount: l.amount,
           })),
         },
       },
@@ -359,7 +360,7 @@ export class FinanceController {
       branchId: rec.branchId,
       memo: `Service invoice ${rec.invoiceNumber}`,
     });
-    if (cost > 0) {
+    if (cost.greaterThan(0)) {
       await this.accounting.postCost({
         db: tx,
         userId: req.user.id,

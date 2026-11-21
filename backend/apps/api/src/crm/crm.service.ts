@@ -17,7 +17,9 @@ import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
 import { NotifyService } from "../common/notify.service";
 import { MailService } from "../common/mail.service";
-import { WhatsAppService } from "../common/whatsapp.service";
+import { OutboundMessageService } from "../common/outbound-message.service";
+import { submissionId } from "../common/submission-id";
+import { createHash } from "node:crypto";
 import { AuthUser, can } from "../auth/auth.types";
 import { LeadStatus, Prisma } from "@prisma/client";
 
@@ -41,7 +43,7 @@ export class CrmService {
     private audit: AuditService,
     private notify: NotifyService,
     private mail: MailService,
-    private wa: WhatsAppService,
+    private wa: OutboundMessageService,
     private accounting: AccountingService,
   ) {}
 
@@ -345,28 +347,43 @@ export class CrmService {
     id: string,
     user: AuthUser,
     body: { channel: string; subject?: string; message: string; send?: boolean },
+    key?: string,
   ) {
     const lead = await this.prisma.lead.findUnique({ where: { id } });
     if (!lead) throw new NotFoundException();
-    let delivery: unknown = null;
-    if (body.send && body.channel === "EMAIL" && lead.email) {
-      delivery = await this.mail.send(lead.email, body.subject ?? "Message", `<p>${body.message}</p>`);
-    }
-    if (body.send && body.channel === "WHATSAPP" && (lead.whatsapp || lead.mobile)) {
-      delivery = await this.wa.send(lead.whatsapp || lead.mobile, body.message);
-    }
-    const row = await this.prisma.communication.create({
-      data: {
-        channel: body.channel,
-        subject: body.subject,
-        body: body.message,
-        leadId: id,
-        userId: user.id,
-      },
+    return this.recordCommunication(user, { leadId: id, email: lead.email, phone: lead.whatsapp || lead.mobile }, body, key);
+  }
+
+  private async claimCommunication(userId: string, key: string | undefined, payload: object) {
+    const id = submissionId("communication", [userId], key);
+    const fingerprint = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 8))::text`;
+      const prior = await tx.communicationSubmission.findUnique({ where: { id } });
+      if (prior && prior.fingerprint !== fingerprint) throw new ConflictException("Communication key belongs to different content or recipient");
+      if (!prior) await tx.communicationSubmission.create({ data: { id, userId, fingerprint } });
     });
-    await this.prisma.lead.update({
-      where: { id },
-      data: { status: lead.status === "NEW" ? "CONTACTED" : lead.status },
+    return id;
+  }
+
+  private async recordCommunication(user: AuthUser, target: { leadId?: string; customerId?: string; email?: string | null; phone?: string | null }, body: { channel: string; subject?: string; message: string; send?: boolean }, key?: string) {
+    if (typeof body?.channel !== "string" || !body.channel.trim() || body.channel.length > 40 || typeof body.message !== "string" || !body.message.trim() || body.message.length > 4000 || (body.subject !== undefined && (typeof body.subject !== "string" || body.subject.length > 998 || /[\r\n]/.test(body.subject))) || (body.send !== undefined && typeof body.send !== "boolean")) throw new BadRequestException("Provide a channel and message of at most 4000 characters");
+    const to = body.send ? (body.channel === "EMAIL" ? target.email : body.channel === "WHATSAPP" ? target.phone : null) : null;
+    if (body.send && (!["EMAIL", "WHATSAPP"].includes(body.channel) || !to)) throw new BadRequestException("A configured recipient and supported delivery channel are required");
+    const id = await this.claimCommunication(user.id, key, { leadId: target.leadId ?? null, customerId: target.customerId ?? null, channel: body.channel, subject: body.subject ?? null, message: body.message, send: body.send === true, to: to ?? null });
+    const existing = await this.prisma.communication.findUnique({ where: { id } });
+    if (existing) return { communication: existing, delivery: null, replayed: true };
+    let delivery: unknown = null;
+    if (body.send && body.channel === "EMAIL") delivery = await this.wa.submitEmail(user.id, { to: to!, subject: body.subject ?? "Message", html: `<p>${body.message}</p>` }, key);
+    if (body.send && body.channel === "WHATSAPP") delivery = await this.wa.submit(user.id, { to: to!, message: body.message }, key);
+    const row = await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 8))::text`;
+      const prior = await tx.communication.findUnique({ where: { id } });
+      if (prior) return prior;
+      const created = await tx.communication.create({ data: { id, channel: body.channel, subject: body.subject, body: body.message, leadId: target.leadId, customerId: target.customerId, userId: user.id } });
+      if (target.leadId) await tx.lead.updateMany({ where: { id: target.leadId, status: "NEW" }, data: { status: "CONTACTED" } });
+      await tx.communicationSubmission.update({ where: { id }, data: { completedAt: new Date() } });
+      return created;
     });
     return { communication: row, delivery };
   }
@@ -480,21 +497,32 @@ export class CrmService {
     return quotation;
   }
 
-  async sendQuotation(id: string, user: AuthUser) {
+  async sendQuotation(id: string, user: AuthUser, key?: string) {
     const q = await this.prisma.quotation.findUnique({ where: { id }, include: { customer: true, lead: true } });
     if (!q) throw new NotFoundException();
     assertBranch(user, q.branchId);
     if (!["DRAFT", "SENT"].includes(q.status)) throw new ConflictException("Only an open quotation can be sent.");
+    const phone = q.customer?.whatsapp || q.lead?.whatsapp || q.lead?.mobile;
     const to = q.customer?.email || q.lead?.email;
     const html = `<p>Quotation ${q.quotationNumber}</p><p>Net: ${q.net} ${q.currency}</p>`;
+    if (!to && !phone) throw new ConflictException("No delivery channel accepted the quotation; its status is unchanged.");
+    const claim = await this.claimCommunication(user.id, key, { quotationId: id, to: to ?? null, phone: phone ?? null, html });
     let mail = null;
-    if (to) mail = await this.mail.send(to, `Quotation ${q.quotationNumber}`, html);
-    const phone = q.customer?.whatsapp || q.lead?.whatsapp || q.lead?.mobile;
+    if (to) mail = await this.wa.submitEmail(user.id, { to, subject: `Quotation ${q.quotationNumber}`, html }, key);
     let wa = null;
-    if (phone) wa = await this.wa.send(phone, `Quotation ${q.quotationNumber} net ${q.net} ${q.currency}`);
+    if (phone) wa = await this.wa.submit(user.id, { to: phone, message: `Quotation ${q.quotationNumber} net ${q.net} ${q.currency}` }, key);
     if (![mail, wa].some(result => result && !(result as { skipped?: boolean }).skipped)) throw new ConflictException("No delivery channel accepted the quotation; its status is unchanged.");
-    const updated = await this.prisma.quotation.update({ where: { id }, data: { status: "SENT" } });
-    await this.audit.log({ userId: user.id, action: "SEND", entity: "quotation", entityId: id });
+    const updated = await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claim}, 8))::text`;
+      const completed = await tx.communicationSubmission.findUniqueOrThrow({ where: { id: claim } });
+      if (!completed.completedAt) {
+        const changed = await tx.quotation.updateMany({ where: { id, status: { in: ["DRAFT", "SENT"] } }, data: { status: "SENT" } });
+        if (changed.count !== 1) throw new ConflictException("Quotation changed during delivery; review its current status");
+        await tx.communicationSubmission.update({ where: { id: claim }, data: { completedAt: new Date() } });
+        await this.audit.log({ userId: user.id, action: "SEND", entity: "quotation", entityId: id, db: tx });
+      }
+      return tx.quotation.findUniqueOrThrow({ where: { id } });
+    });
     return { quotation: updated, mail, wa };
   }
 
@@ -674,27 +702,11 @@ export class CrmService {
     id: string,
     user: AuthUser,
     body: { channel: string; subject?: string; message: string; send?: boolean },
+    key?: string,
   ) {
     const customer = await this.prisma.customer.findUnique({ where: { id } });
     if (!customer) throw new NotFoundException();
-    if (!body.message?.trim()) throw new BadRequestException("Message required");
-    let delivery: unknown = null;
-    if (body.send && body.channel === "EMAIL" && customer.email) {
-      delivery = await this.mail.send(customer.email, body.subject ?? "Message", `<p>${body.message}</p>`);
-    }
-    if (body.send && body.channel === "WHATSAPP" && (customer.whatsapp || customer.phone)) {
-      delivery = await this.wa.send(customer.whatsapp || customer.phone!, body.message);
-    }
-    const row = await this.prisma.communication.create({
-      data: {
-        channel: body.channel,
-        subject: body.subject,
-        body: body.message,
-        customerId: id,
-        userId: user.id,
-      },
-    });
-    return { communication: row, delivery };
+    return this.recordCommunication(user, { customerId: id, email: customer.email, phone: customer.whatsapp || customer.phone }, body, key);
   }
 
   async addCustomerFollowUp(id: string, user: AuthUser, body: { dueAt: string; type?: string; subject: string; notes?: string; priority?: string }) {

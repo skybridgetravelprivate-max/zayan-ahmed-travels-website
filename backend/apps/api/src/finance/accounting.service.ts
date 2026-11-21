@@ -346,9 +346,9 @@ export class AccountingService {
     memo?: string;
     branchId?: string | null;
   }) {
-    const debit = Number(opts.debit || 0);
-    const credit = Number(opts.credit || 0);
-    if ((debit > 0 && credit > 0) || (debit === 0 && credit === 0)) {
+    const debit = money(opts.debit ?? 0);
+    const credit = money(opts.credit ?? 0);
+    if (debit.isZero() === credit.isZero()) {
       throw new BadRequestException("Opening needs a debit or a credit, not both");
     }
     const equity = await this.accountByCode(GL.EQUITY);
@@ -360,7 +360,7 @@ export class AccountingService {
       kind: "OPENING",
       module: "accounts",
       sourceId: opts.accountId,
-      lines: debit > 0
+      lines: debit.greaterThan(0)
         ? [
             { accountId: opts.accountId, debit, credit: 0, memo: "Opening" },
             { accountId: equity.id, debit: 0, credit: debit, memo: "Opening equity" },
@@ -419,14 +419,16 @@ export class AccountingService {
   async trialBalance(asOf?: Date) {
     const accounts = await this.prisma.chartOfAccount.findMany({ where: { isPosting: true, deletedAt: null }, orderBy: { code: "asc" } });
     const cutoff = asOf || new Date();
+    const sums = await this.prisma.journalLine.groupBy({
+      by: ["accountId"],
+      where: { accountId: { in: accounts.map(a => a.id) }, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { lte: cutoff } } },
+      _sum: { debit: true, credit: true },
+    });
+    const byAccount = new Map(sums.map(row => [row.accountId, row._sum]));
     const rows = [];
     for (const a of accounts) {
-      const agg = await this.prisma.journalLine.aggregate({
-        where: { accountId: a.id, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { lte: cutoff } } },
-        _sum: { debit: true, credit: true },
-      });
-      const debit = new Prisma.Decimal(agg._sum.debit ?? 0);
-      const credit = new Prisma.Decimal(agg._sum.credit ?? 0);
+      const debit = new Prisma.Decimal(byAccount.get(a.id)?.debit ?? 0);
+      const credit = new Prisma.Decimal(byAccount.get(a.id)?.credit ?? 0);
       rows.push({ code: a.code, name: a.name, type: a.type, debit: debit.toFixed(2), credit: credit.toFixed(2), balance: debit.minus(credit).toFixed(2) });
     }
     const totDr = rows.reduce((s, r) => s.plus(r.debit), new Prisma.Decimal(0));
@@ -436,14 +438,16 @@ export class AccountingService {
 
   async profitLoss(from: Date, to: Date) {
     const accounts = await this.prisma.chartOfAccount.findMany({ where: { type: { in: ["REVENUE", "EXPENSE"] }, deletedAt: null } });
+    const sums = await this.prisma.journalLine.groupBy({
+      by: ["accountId"],
+      where: { accountId: { in: accounts.map(a => a.id) }, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { gte: from, lte: to } } },
+      _sum: { debit: true, credit: true },
+    });
+    const byAccount = new Map(sums.map(row => [row.accountId, row._sum]));
     const rows = [];
     for (const a of accounts) {
-      const agg = await this.prisma.journalLine.aggregate({
-        where: { accountId: a.id, journal: { status: { in: ["POSTED", "REVERSED"] }, date: { gte: from, lte: to } } },
-        _sum: { debit: true, credit: true },
-      });
-      const debit = new Prisma.Decimal(agg._sum.debit ?? 0);
-      const credit = new Prisma.Decimal(agg._sum.credit ?? 0);
+      const debit = new Prisma.Decimal(byAccount.get(a.id)?.debit ?? 0);
+      const credit = new Prisma.Decimal(byAccount.get(a.id)?.credit ?? 0);
       rows.push({
         code: a.code,
         name: a.name,

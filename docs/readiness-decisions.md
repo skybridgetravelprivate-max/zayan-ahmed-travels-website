@@ -1,6 +1,6 @@
 # Remaining readiness decisions — owner review
 
-Baseline verified on 19 November 2026: PR #42 merged/deployed as `60defcb4ec0a596470e74bca81b19829da9180ea`; Hostinger deployment `01a1f451-7b94-701d-bafe-89e0b1bdf6ac` is Current / Completed. This review branch does not authorize another production deployment.
+Baseline rechecked on 21 November 2026: PR #43 deployed as `88321c0e301054ec55d08a9cecb0674f714a0030`; Hostinger deployment `01a1f4bc-5ee9-7344-9e2d-2c29fc9f7e3e` is Current / Completed. This hardening review does not authorize another production deployment. Both full dependency audits pass after a narrowly scoped and tested Effect repair; see `docs/hardening-review-20261121.md` for compatibility evidence and remaining acceptance gates.
 
 ## Offsite recovery proposal
 
@@ -52,6 +52,6 @@ Define target devices/data volumes and performance objectives before adding perf
 
 ## Policy approval packet
 
-Live HTTPS reads still show placeholders on `/privacy`, `/terms` and `/refund-policy` (all 200). Existing owner-review drafts remain in the release outputs; no policy was published.
+Live HTTPS reads in the prior review showed placeholders on `/privacy`, `/terms` and `/refund-policy` (all 200). Owner-review drafts are retained in `docs/policy-owner-review.md`; no policy was published.
 
 Required decisions: confirm business identity/contact; actual collected fields and supplier disclosures; retention/deletion by record type; processors/locations/cookies/marketing; the customer acceptance and business confirmation that form a booking; service-specific changes/no-show/partial-use/refund terms; credit versus payout and payee checks; complaints/rights handling and jurisdiction; final wording and effective date. No fee, refund deadline, legal right or legal obligation is invented here.

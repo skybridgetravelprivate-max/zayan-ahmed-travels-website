@@ -22,6 +22,7 @@ import { PrismaService } from "./common/prisma.service";
 import { SequenceService } from "./common/sequence.service";
 import { AuditService } from "./common/audit.service";
 import { NotifyService } from "./common/notify.service";
+import { OutboundMessageService } from "./common/outbound-message.service";
 import { StorageService } from "./common/storage.service";
 import { MailService } from "./common/mail.service";
 import { WhatsAppService } from "./common/whatsapp.service";
@@ -122,6 +123,7 @@ import { WebsiteCustomerRecoveryController } from "./website/website-customer-re
     SequenceService,
     AuditService,
     NotifyService,
+    OutboundMessageService,
     StorageService,
     MailService,
     WhatsAppService,

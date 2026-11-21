@@ -420,6 +420,28 @@ model WebsiteCustomerPasswordResetToken {
   @@map("website_customer_password_reset_tokens")
 }
 
+model OutboundMessage {
+  id String @id
+  userId String
+  channel String @default("WHATSAPP")
+  fingerprint String
+  status String
+  providerReference String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([fingerprint, status])
+}
+
+// A private fingerprint claim is committed before external communication.
+// Its id is also the eventual Communication id, so retries cannot duplicate logs.
+model CommunicationSubmission {
+  id String @id
+  userId String
+  fingerprint String
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+}
+
 model LoginAttempt {
   id         String   @id @default(cuid())
   userId     String?
@@ -428,6 +450,8 @@ model LoginAttempt {
   success    Boolean
   ipAddress  String?
   createdAt  DateTime @default(now())
+  @@index([createdAt])
+  @@index([identifier, createdAt])
 }
 
 model PasswordResetToken {
@@ -1601,6 +1625,7 @@ model TicketSale {
   reissuesFrom TicketReissue[] @relation("OriginalTicket")
   reissuesTo   TicketReissue[] @relation("NewTicket")
   receipts Receipt[]
+  @@index([customerId, createdAt])
 
 }
 
