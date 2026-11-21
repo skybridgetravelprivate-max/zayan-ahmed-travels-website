@@ -1274,6 +1274,7 @@ export function ManagementWorkspace({
       )}
       {!editing && (
         <div className="mt-4 flex flex-wrap gap-2">
+          {resource === "quotations" && <Link href="/admin/communications" className={button}>Recover communication</Link>}
           {workflowsFor(resource, !!row, permissions, isSuperAdmin).map(
             (action) => (
               <button

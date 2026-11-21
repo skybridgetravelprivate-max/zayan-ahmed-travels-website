@@ -10,6 +10,13 @@ import { MailService } from "./mail.service";
 export class OutboundMessageService {
   constructor(private db: PrismaService, private wa: WhatsAppService, private audit: AuditService, private mail: MailService) {}
 
+  async review(id: string) {
+    if (!/^(email|whatsapp):[a-f0-9]{64}$/.test(id)) throw new BadRequestException("Provide a valid submission identity");
+    const row = await this.db.outboundMessage.findUnique({ where: { id }, select: { id: true, userId: true, channel: true, status: true, providerReference: true, createdAt: true, updatedAt: true } });
+    if (!row) throw new NotFoundException();
+    return row;
+  }
+
   async status(userId: string, key: string, channel: "WHATSAPP" | "EMAIL" = "WHATSAPP") {
     const id = submissionId(channel.toLowerCase(), [userId], key);
     const row = await this.db.outboundMessage.findUnique({ where: { id }, select: { id: true, status: true, providerReference: true } });

@@ -58,6 +58,7 @@ export default async function StaffWorkspaceLayout({
     unavailable = true;
   }
   const links = modules.map(({ key, title, group }) => ({ key, title, group }));
+  links.push({ key: "communication-recovery", title: "Communication recovery", group: "Administration" });
   if (user.isSuperAdmin || user.permissions.includes("ticket.view")) {
     links.push({ key: "issued-ticket-invoices", title: "Issued Ticket Invoices", group: "Flights" });
   }

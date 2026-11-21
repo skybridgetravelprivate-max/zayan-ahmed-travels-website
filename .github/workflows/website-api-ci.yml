@@ -69,6 +69,7 @@ jobs:
           npm run test:website-presentation
           node --import ./backend/node_modules/tsx/dist/loader.mjs --test scripts/security-headers.spec.ts
           npm run test:receipt-retry
+          node --import ./backend/node_modules/tsx/dist/loader.mjs --test src/lib/communication-recovery.test.ts
 
       - name: Verify isolated PostgreSQL 17 CMS and legacy administration
         env:

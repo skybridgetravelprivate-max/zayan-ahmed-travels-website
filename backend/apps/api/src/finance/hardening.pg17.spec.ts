@@ -248,6 +248,13 @@ test("PG17 HTTP hardening: payroll, exact invoices and FX containment", { skip: 
         assert.equal((await post("/api/v1/comms/email", lost, lostKey)).status, 503);
         assert.equal(capture.messages.length, 2);
         const row = await db.outboundMessage.findFirstOrThrow({ where: { channel: "EMAIL", status: "UNCERTAIN" }, orderBy: { createdAt: "desc" } });
+        const reviewPath = origin + "/api/v1/comms/submissions/" + encodeURIComponent(row.id);
+        assert.equal((await fetch(reviewPath)).status, 401);
+        const deniedReview = await fetch(reviewPath, { headers: { Authorization: `Bearer ${staff}` } });
+        assert.equal(deniedReview.status, 403); assert.doesNotMatch(await deniedReview.text(), /fingerprint|providerReference|synthetic@example/);
+        const permittedReview = await fetch(reviewPath, { headers: { Authorization: `Bearer ${admin}` } });
+        assert.equal(permittedReview.status, 200);
+        const metadata = await permittedReview.json(); assert.equal(metadata.channel, "EMAIL"); assert.equal(metadata.userId, row.userId); assert.equal(Object.hasOwn(metadata, "fingerprint"), false);
         assert.doesNotMatch(JSON.stringify(row), /synthetic@example|Synthetic lost|SMTP_PASSWORD/);
         await app.close(); app = await createNestApp(); await app.listen(0, "127.0.0.1"); origin = await app.getUrl();
         assert.equal((await post("/api/v1/comms/email", lost, lostKey)).status, 409);

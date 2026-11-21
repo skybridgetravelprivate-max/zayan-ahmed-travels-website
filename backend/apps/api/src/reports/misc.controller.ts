@@ -133,6 +133,13 @@ export class ImportController {
 export class CommsController {
   constructor(private outbound: OutboundMessageService) {}
 
+  @Get("submissions/:id")
+  @UseGuards(GlobalFinanceGuard)
+  @RequirePermission("settings.manage")
+  reviewSubmission(@Param("id") id: string) {
+    return this.outbound.review(id);
+  }
+
   @Post("email")
   @RequirePermission("settings.manage")
   email(@Body() body: { to: string; subject: string; html: string }, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {

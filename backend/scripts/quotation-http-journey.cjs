@@ -162,6 +162,29 @@ async function journey() {
     async function samplePage(label) { const started = performance.now(); const response = await fetch(origin + "/"); await response.text(); assert.equal(response.status, 200); rendering.push({ label, elapsedMs: performance.now() - started }); }
     await samplePage("initial public request after process startup");
     await samplePage("warm public request");
+    if (process.env.ZAT_COMMUNICATION_BROWSER_ONLY === "true") {
+      assert.ok(process.env.ZAT_PLAYWRIGHT_MODULE, "Focused browser verification requires Playwright");
+      const { chromium } = require(process.env.ZAT_PLAYWRIGHT_MODULE);
+      const browser = await chromium.launch({ executablePath: process.env.ZAT_BROWSER_EXECUTABLE || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      try {
+        const page = await context.newPage(); page.setDefaultTimeout(20000);
+        await page.goto(origin + "/admin/login/super-admin");
+        await page.getByLabel("Email or username", { exact: true }).fill(admin.username);
+        await page.getByLabel("Password", { exact: true }).fill(password);
+        await page.getByRole("button", { name: "Super Admin sign in", exact: true }).click();
+        await page.waitForURL(origin + "/admin");
+        const check = await require("./communication-recovery-browser-checks.cjs")({ context, page, origin, db, admin, outsider, password, outputDir });
+        assert.equal(smtp.messages.length, 0);
+        fs.writeFileSync(path.join(outputDir, "communication-result.json"), JSON.stringify({ status: "passed", check, syntheticOnly: true, productionChanges: false }, null, 2));
+        console.log("Focused communication browser checks passed; no SMTP message sent.");
+      } catch (error) {
+        const page = context.pages()[0];
+        if (page) { fs.writeFileSync(path.join(outputDir, "communication-recovery-failure.html"), await page.content()); await page.screenshot({ path: path.join(outputDir, "communication-recovery-failure.png"), fullPage: true }); }
+        throw error;
+      } finally { await context.close(); await browser.close(); }
+      return;
+    }
     await json("/api/auth/login", { actor: "staff", method: "POST", body: { identifier: admin.username, password } }, 201);
     await json("/api/auth/login", { actor: "outsider", method: "POST", body: { identifier: outsider.username, password } }, 201);
     await json("/api/auth/login", { actor: "branch-admin", method: "POST", body: { identifier: branchAdmin.username, password } }, 201);
