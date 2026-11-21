@@ -212,9 +212,9 @@ test("invoice posting failure propagates within the invoice transaction", async 
 });
 
 test("reversed original and reversal cancel to zero in the trial balance", async () => {
-  const service = new AccountingService({ chartOfAccount: { findMany: async () => [{ id: "cash", code: "1100", name: "Cash", type: "ASSET" }] }, journalLine: { aggregate: async (arg: { where: { journal: { status: { in: string[] } } } }) => {
+  const service = new AccountingService({ chartOfAccount: { findMany: async () => [{ id: "cash", code: "1100", name: "Cash", type: "ASSET" }] }, journalLine: { groupBy: async (arg: { where: { journal: { status: { in: string[] } } } }) => {
     const included = arg.where.journal.status.in;
-    return { _sum: { debit: included.includes("REVERSED") ? 10 : 0, credit: included.includes("POSTED") ? 10 : 0 } };
+    return [{ accountId: "cash", _sum: { debit: included.includes("REVERSED") ? 10 : 0, credit: included.includes("POSTED") ? 10 : 0 } }];
   } } } as never, {} as never, {} as never);
   const result = await service.trialBalance();
   assert.equal(result.rows[0].balance, "0.00");

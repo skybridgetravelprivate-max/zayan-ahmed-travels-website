@@ -94,15 +94,15 @@ test("ticket invoice uses the airline PNR and handles a missing PNR", async () =
 // No database access: model transaction rollback and lock scheduling, while asserting
 // the controller issues the PostgreSQL row lock before reading availability.
 function refundsHarness(fail = false) {
-  let state = { refunds: [] as { netRefund: number }[], journals: [] as Record<string, unknown>[], status: "ISSUED" };
+  let state = { refunds: [] as { netRefund: string }[], journals: [] as Record<string, unknown>[], status: "ISSUED" };
   let tail = Promise.resolve();
   const prisma = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => {
     let release!: () => void;
     const before = tail; tail = new Promise<void>(r => { release = r; });
     let draft: typeof state; let locked = false;
-    const tx = { $queryRaw: async (sql: TemplateStringsArray | { values: string[] }, id: string) => { if (!Array.isArray(sql)) return (sql as { values: string[] }).values.map(id => ({ id, isPosting: true, status: "ACTIVE", deletedAt: null })); assert.match((sql as TemplateStringsArray).join("?"), /TicketSale.*FOR UPDATE/); assert.equal(id, "t"); await before; locked = true; draft = structuredClone(state); },
+    const tx = { $queryRaw: async (sql: TemplateStringsArray | { values: string[] }, id: string) => { if (!Array.isArray(sql)) return (sql as { values: string[] }).values.map(id => ({ id, isPosting: true, status: "ACTIVE", deletedAt: null })); assert.match((sql as TemplateStringsArray).join("?"), /TicketSale.*FOR UPDATE/); assert.equal(id, "t"); await before; locked = true; draft = JSON.parse(JSON.stringify(state)); },
       ticketSale: { findUnique: async () => { assert.ok(locked); return { id: "t", branchId: "a", net: 100, paidAmount: 100, paymentStatus: "PAID", status: draft.status, refunds: draft.refunds }; }, update: async ({ data }: { data: Record<string, unknown> }) => { draft.status = String(data.status); } },
-      ticketRefund: { create: async ({ data }: { data: Record<string, unknown> }) => { if (fail) throw Error("injected insert failure"); draft.refunds.push(data as { netRefund: number }); return data; } },
+      ticketRefund: { create: async ({ data }: { data: Record<string, unknown> }) => { if (fail) throw Error("injected insert failure"); draft.refunds.push({ netRefund: String(data.netRefund) }); return data; } },
       chartOfAccount: { findUnique: async ({ where }: { where: { id: string; code?: string; customer?: unknown } }) => ({ id: where.code }) },
       journalEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { draft.journals.push(data); return { id: "j", ...data }; } },
       numberSequence: { upsert: async () => ({ current: 1, padLength: 1 }) },
@@ -118,7 +118,7 @@ test("two concurrent full refunds commit only the available amount", async () =>
   const h = refundsHarness();
   const results = await Promise.allSettled([1, 2].map(() => h.ctrl.refund("t", { refundAmount: 100, reason: "test" }, req())));
   assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
-  assert.equal(h.state().refunds.reduce((s, r) => s + r.netRefund, 0), 100);
+  assert.equal(h.state().refunds.reduce((s, r) => s.plus(r.netRefund), new Prisma.Decimal(0)).toFixed(2), "100.00");
   assert.equal(h.state().journals.length, 1);
   assert.equal(h.state().status, "REFUNDED");
 });
@@ -188,7 +188,7 @@ test("partial refunds stay active until the remaining amount is exhausted", asyn
   assert.equal(h.state().status, "ISSUED");
   await h.ctrl.refund("t", { refundAmount: 20, reason: "test" }, req());
   assert.equal(h.state().status, "REFUNDED");
-  assert.equal(h.state().refunds.reduce((sum, r) => sum + r.netRefund, 0), 100);
+  assert.equal(h.state().refunds.reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toFixed(2), "100.00");
 });
 
 test("generic booking updates and deletion cannot bypass posted reservation protection", async () => {

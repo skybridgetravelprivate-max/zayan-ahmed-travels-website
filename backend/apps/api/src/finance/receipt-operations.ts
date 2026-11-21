@@ -1,4 +1,5 @@
 import { money, paymentMethod, type MoneyInput } from "./money";
+import { assertBaseCurrency } from "./base-currency";
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { Prisma, type UmrahBooking, type TicketSale, type HotelBooking, type TransportBooking, type StarBooking } from "@prisma/client";
@@ -65,6 +66,7 @@ export class ReceiptOperations {
     if (field === "ticketSaleId") {
       const row = await tx.ticketSale.findUnique({ where: { id }, include: { refunds: true } });
       if (!row) throw new NotFoundException("Ticket not found");
+      await assertBaseCurrency(tx, row);
       return { id, customerId: row.customerId, branchId: row.branchId, net: row.net, paid: row.paidAmount, module: "ticket", closed: ["CANCELLED", "REISSUED", "REFUNDED"].includes(row.status) || row.refunds.length > 0,
         read: () => tx.ticketSale.findUniqueOrThrow({ where: { id } }),
         apply: (paid: Prisma.Decimal) => tx.ticketSale.update({ where: { id }, data: { paidAmount: paid, paymentStatus: paid.equals(row.net) ? "PAID" : "PARTIAL" } }) };
