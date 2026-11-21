@@ -52,6 +52,6 @@ Define target devices/data volumes and performance objectives before adding perf
 
 ## Policy approval packet
 
-Live HTTPS reads still show placeholders on `/privacy`, `/terms` and `/refund-policy` (all 200). Existing owner-review drafts remain in the release outputs; no policy was published.
+Live HTTPS reads in the prior review showed placeholders on `/privacy`, `/terms` and `/refund-policy` (all 200). Owner-review drafts are retained in `docs/policy-owner-review.md`; no policy was published.
 
 Required decisions: confirm business identity/contact; actual collected fields and supplier disclosures; retention/deletion by record type; processors/locations/cookies/marketing; the customer acceptance and business confirmation that form a booking; service-specific changes/no-show/partial-use/refund terms; credit versus payout and payee checks; complaints/rights handling and jurisdiction; final wording and effective date. No fee, refund deadline, legal right or legal obligation is invented here.
