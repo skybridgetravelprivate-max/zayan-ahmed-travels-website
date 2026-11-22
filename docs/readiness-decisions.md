@@ -4,7 +4,7 @@ Baseline rechecked on 22 November 2026: PR #44 deployed as `67c4d19c1876f78b01f6
 
 ## Offsite recovery proposal
 
-The production-schema restore and separate encrypted financial/object drill already establish local recovery. The connected Drive search found no matching backup documents/folders using the existing archive/project names and backup terms. That search's supported MIME-type scope excludes arbitrary binary archives; it is not proof that no remote `.age` copy exists. No approved destination, remote artifact identifier or independent custodian was established. No archive/key was uploaded or shared.
+The production-schema restore and separate encrypted financial/object drill establish local recovery. On 22 November the owner explicitly approved uploading the retained encrypted pre-release public-schema backup and checksum/scope manifest to the connected Google Drive My Drive. Both files were uploaded and read back as owner-only (`shared=false`); no key or plaintext was uploaded. The ciphertext was independently retrieved through Drive, its SHA256 matched the retained checksum, and a fresh PostgreSQL 17/UTC restore matched every public-table fingerprint, validated 178 foreign keys and passed application reads after isolated migrations from 16 to 18. See [offsite verification](offsite-recovery-verification-20261122.md). Independent human key custody, scheduled backups, retention and recovery objectives remain unverified/unimplemented. This snapshot has zero journals/receipts and excludes later writes and storage bytes; the earlier populated financial/object drill remains separate local synthetic evidence.
 
 Proposed starting policy, subject to owner approval:
 

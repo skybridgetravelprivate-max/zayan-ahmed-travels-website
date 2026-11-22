@@ -1,6 +1,6 @@
 # Recovery and private-storage acceptance
 
-Status: review procedure, not completed offsite/hosted acceptance. Production uploads stay disabled. Use this with `public-schema-restore.md`, `readiness-decisions.md` and the dated acceptance record.
+Status: review procedure. The approved Drive ciphertext retrieval and isolated public-schema restore leg passed on 22 November; see [evidence and scope](offsite-recovery-verification-20261122.md). Independent custody, broader recovery coverage and hosted storage acceptance remain incomplete. Production uploads stay disabled. Use this with `public-schema-restore.md`, `readiness-decisions.md` and the dated acceptance record.
 
 ## Owner setup packet
 
