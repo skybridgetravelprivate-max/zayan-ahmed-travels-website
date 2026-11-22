@@ -1,6 +1,6 @@
 # Remaining platform review — 19 November 2026
 
-Current baseline: PR #43 deployed as `88321c0e301054ec55d08a9cecb0674f714a0030`, Hostinger version `01a1f4bc-5ee9-7344-9e2d-2c29fc9f7e3e`, rechecked Current / Completed on 21 November 2026. PR #42 and the follow-up changes below are deployed. Production uploads remain disabled and policies remain placeholders. New hardening changes are review-only; see `docs/hardening-review-20261121.md` for the current dependency gate and acceptance boundaries.
+Current baseline rechecked on 22 November 2026: PR #44 deployed as `67c4d19c1876f78b01f66c32bfd2f8cdeba821bd`, Hostinger version `01a1ff19-6758-70a7-b6f7-983d42790eb3`, Completed with auto-deployment off. PR #42, #43 and #44 are deployed. Production uploads remain disabled and policies remain placeholders. The dated sections below retain their historical evidence; [the 22 November acceptance record](readiness-acceptance-20261122.md) distinguishes current checks, prior evidence and remaining decisions. See [recovery/storage acceptance](recovery-storage-acceptance.md) for the outstanding hosted drills. No new merge/deployment or activation is authorized by this readiness review.
 
 ## Follow-up review changes
 

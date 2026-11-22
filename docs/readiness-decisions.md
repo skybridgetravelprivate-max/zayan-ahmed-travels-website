@@ -1,6 +1,6 @@
 # Remaining readiness decisions — owner review
 
-Baseline rechecked on 21 November 2026: PR #43 deployed as `88321c0e301054ec55d08a9cecb0674f714a0030`; Hostinger deployment `01a1f4bc-5ee9-7344-9e2d-2c29fc9f7e3e` is Current / Completed. This hardening review does not authorize another production deployment. Both full dependency audits pass after a narrowly scoped and tested Effect repair; see `docs/hardening-review-20261121.md` for compatibility evidence and remaining acceptance gates.
+Baseline rechecked on 22 November 2026: PR #44 deployed as `67c4d19c1876f78b01f66c32bfd2f8cdeba821bd`; Hostinger deployment `01a1ff19-6758-70a7-b6f7-983d42790eb3` is Completed. Auto-deployment is off. The database has 18 completed migrations. Both full dependency audits pass, including development dependencies at moderate severity. The hardening changes are deployed; the remaining acceptance work does not authorize another deployment, upload activation or policy publication. See [the current acceptance record](readiness-acceptance-20261122.md) and [the recovery/storage runbook](recovery-storage-acceptance.md).
 
 ## Offsite recovery proposal
 
