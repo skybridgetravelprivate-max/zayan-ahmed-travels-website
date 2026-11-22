@@ -14,11 +14,13 @@ Proposed starting policy, subject to owner approval:
 * Nominate one primary operator and a separately named recovery custodian. Establish offline key custody and a procedure for temporary access during a drill. Do not distribute the existing key until the owner approves recipients and method.
 * Quarterly: retrieve the remote ciphertext, verify its hash, decrypt using independently held material and restore to isolated PostgreSQL 17/UTC. Compare migrations, foreign keys, exact ledger/receipt fingerprints and object reconciliation. Record elapsed time and failures using aggregate evidence.
 
-Owner decisions: exact offsite destination/artifact access; named custodian and approved key-transfer method; recovery targets and retention; budget if a new paid resource is needed. Existing local ciphertext alone does not complete this leg.
+The approved Drive destination and retrieved artifact are established. Remaining owner decisions: named independent custodian and approved offline access method; recovery targets, scheduling and retention; budget before any future paid resource. No key distribution is authorized by the ciphertext upload approval.
 
 ## Private storage activation review
 
-Only the production Supabase project `zat-erp` was returned by connected-project discovery. No approved hosted staging storage project was established. Do not create a paid project or run storage writes against production to fill this gap.
+Initial discovery returned only production. Later on 22 November the owner selected the existing Zayan Ahmed Travels organization, received a $0/month project quote and explicitly approved creating `zat-storage-acceptance`. The isolated project `joptpiauirpqlkvoishp` is ACTIVE_HEALTHY on PostgreSQL 17.12. Its private test bucket is created with the existing 8 MiB/MIME limits, RLS enabled, zero object policies and zero objects. No paid resource or production storage change was made. See [hosted setup and remaining credential gate](hosted-storage-readiness-20261122.md).
+
+The connector exposes only publishable keys; dashboard browser control and an authenticated local Supabase CLI session were unavailable. The existing adapter needs this test project's server secret/service-role key. An owner-restricted configuration file is prepared outside the repository with only that field blank. Positive upload/download, existing-object denial, application restart, missing-object/outage, paired restore and reconciliation acceptance remain pending that credential. Failed empty-bucket anonymous/publishable probes are not relabeled full access-control acceptance.
 
 Read-only production metadata confirms `zat-private-documents` exists and is private, with an 8 MiB limit and PDF/JPEG/PNG/WebP/plain-text MIME types. `storage.objects` has RLS enabled and zero policies, and this bucket has zero objects. This is configuration/inventory evidence, not a real authenticated write/download/restore exercise or proof of hosted durability. No policy or bucket setting was changed.
 
