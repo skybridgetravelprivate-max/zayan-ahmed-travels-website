@@ -1,5 +1,7 @@
 # Isolated public-schema recovery
 
+Latest follow-up: the [operational backup plan](operational-backup-plan.md) records a fresh 22 November encrypted populated financial/object drill with all 18 current migrations: 104 matched tables, 178 validated foreign keys, 18 journals/six receipts with exact balanced 1040.00 totals, and paired document restoration. That new archive remains local and synthetic. It does not change the scope of the older production archive below or the independently retrieved pre-PR44 snapshot.
+
 This procedure was exercised on PostgreSQL 17.12 on 19 November 2026 against the encrypted pre-release archive. Keep the decrypted archive, extracted SQL, database files, passwords, and recovery identity in an owner-restricted directory outside the repository.
 
 ## Verified archive
