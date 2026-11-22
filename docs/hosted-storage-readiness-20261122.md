@@ -17,15 +17,15 @@ Created project `zat-storage-acceptance`, ref `joptpiauirpqlkvoishp`, in ap-nort
 - Prepared an inherited owner-only local configuration outside the repository, restricted to the approved test project/bucket. The server credential field remains blank. No service credential, recovery key or plaintext customer record was reported or committed.
 - Production public health returned HTTP 200 with database healthy. hPanel revision/flag readback could not be repeated because browser control was unavailable; the prior verified release/flags remain historical evidence, not a newly inspected setting.
 
-## Concrete credential blocker
+## Initial credential blocker — resolved
 
 Available Supabase connector capabilities return publishable/legacy-anon keys, not an existing server secret. Dashboard browser control timed out; the machine has no authenticated Supabase CLI/session token. The positive adapter path requires this isolated project's existing server secret/service-role key. Do not reuse a production key, extract a signing secret through SQL, add permissive policies, or claim publishable credentials are equivalent.
 
 Resolution: native Windows browser controls reached Supabase; the owner completed sign-in. The existing test-project secret was then retrieved privately, saved to the owner-only local environment file and verified against the correct private bucket with HTTP 200. No credential was created/rotated and no production key was reused. The initial access limitations above are historical, not a current request for the owner to paste the key.
 
-## Remaining hosted acceptance
+## Follow-up acceptance
 
-Once configured, privately verify the exact project/key/bucket binding, then follow `recovery-storage-acceptance.md` using synthetic records: real authorized upload/download and SHA256; anonymous/customer/foreign-branch denial against existing bytes; isolated application restart/fresh-process retrieval; missing-object and object-connection outage with metadata retained; paired metadata/object backup/restoration; non-destructive reconciliation. Label local application versus hosted object-service evidence accurately. Do not claim provider restart durability from restarting a local fixture.
+The exact project/key/bucket binding was verified and the real hosted storage/auth journey passed using local isolated application/database fixtures; see `hosted-storage-acceptance-results-20261122.md`. Keep those environment boundaries explicit. Hosted application deployment/runtime acceptance, ongoing paired backups/recovery ownership and separately approved production activation remain open; do not claim provider restart durability from application restart.
 
 ## Independent key custody
 
