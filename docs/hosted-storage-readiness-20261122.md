@@ -1,6 +1,6 @@
 # Isolated hosted-storage setup — 22 November 2026
 
-Verdict: isolated project and private bucket prepared; positive hosted acceptance is blocked on the test project's existing server credential. Production uploads remain disabled. No paid resource, deployment or production financial/storage write was performed.
+Historical setup record: the isolated project and private bucket were prepared with an initial server-credential blocker. That blocker was subsequently resolved and the real hosted storage/auth checks passed with local isolated application/database fixtures; see [acceptance results](hosted-storage-acceptance-results-20261122.md). Production uploads remain disabled. No paid resource, deployment or production financial/storage write was performed.
 
 ## Quote and authorization
 
@@ -21,7 +21,7 @@ Created project `zat-storage-acceptance`, ref `joptpiauirpqlkvoishp`, in ap-nort
 
 Available Supabase connector capabilities return publishable/legacy-anon keys, not an existing server secret. Dashboard browser control timed out; the machine has no authenticated Supabase CLI/session token. The positive adapter path requires this isolated project's existing server secret/service-role key. Do not reuse a production key, extract a signing secret through SQL, add permissive policies, or claim publishable credentials are equivalent.
 
-Owner action: configure the isolated project's existing server credential through the prepared private local environment file, or restore authenticated dashboard access so the existing credential can be retrieved privately. Keep the value out of chat/repository/logs. The private file path is retained in the owner delivery packet. No new credential/access grant is necessary merely to provide an existing key to this isolated server-side operator runtime.
+Resolution: native Windows browser controls reached Supabase; the owner completed sign-in. The existing test-project secret was then retrieved privately, saved to the owner-only local environment file and verified against the correct private bucket with HTTP 200. No credential was created/rotated and no production key was reused. The initial access limitations above are historical, not a current request for the owner to paste the key.
 
 ## Remaining hosted acceptance
 
