@@ -49,5 +49,11 @@ export const STAFF_WORKFLOWS: Record<string, StaffWorkflow[]> = {
   expenses: [workflow("create", "Record expense", "account.post", "/api/v1/finance/expenses", [text("category", "Category"), money("amount", "Amount"), ref("supplierId", "Supplier", "suppliers"), text("notes", "Notes", false)], false, { superOnly: true, caution: "Posts an expense to the ledger." })],
 };
 export function workflowsFor(resource: string, record: boolean, permissions: string[], superAdmin: boolean) {
-  return (STAFF_WORKFLOWS[resource] ?? []).filter(w => w.record === record && (!w.superOnly || superAdmin) && (superAdmin || permissions.includes(w.permission)));
+  return (STAFF_WORKFLOWS[resource] ?? [])
+    .filter(w => w.record === record && (!w.superOnly || superAdmin) && (superAdmin || permissions.includes(w.permission)))
+    .map(w => resource === "tickets" && w.key === "create" && !superAdmin ? {
+      ...w,
+      fields: w.fields.filter(field => !["paidAmount", "paymentMethod"].includes(field.name)),
+      caution: "Issues an unpaid ticket and posts its sale/cost journals. Ask a Super Admin to record any payment separately.",
+    } : w);
 }

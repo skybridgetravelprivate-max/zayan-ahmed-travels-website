@@ -220,9 +220,11 @@ export class WorkflowsController {
   @RequirePermission("ticket.refund")
   async refund(
     @Param("id") id: string,
-    @Body() body: { refundAmount: number; airlineDeduction?: number; agencyDeduction?: number; otherCharges?: number; reason?: string },
+    @Body() body: { refundAmount: string | number; airlineDeduction?: string | number; agencyDeduction?: string | number; otherCharges?: string | number; reason?: string },
     @Req() req: Request & { user: AuthUser },
+    @Headers("idempotency-key") requestKey?: string,
   ) {
+    const refundId = submissionId("ticket-refund", [req.user.id, id], requestKey).replace(":", "_");
     return this.prisma.$transaction(async (tx) => {
       // Serialize availability checks across processes until commit.
       await tx.$queryRaw`SELECT id FROM "TicketSale" WHERE id = ${id} FOR UPDATE`;
@@ -231,16 +233,33 @@ export class WorkflowsController {
       assertBranch(req.user, ticket.branchId);
       await assertPeopleLinks(tx, req.user, ticket);
       await assertBaseCurrency(tx, ticket);
+      if (typeof body?.reason !== "string" || !body.reason.trim() || body.reason.length > 500) throw new BadRequestException("Refund reason is required (maximum 500 characters)");
+      const reason = body.reason.trim();
+      const refundMoney = (value: unknown, positive = false) => {
+        if (typeof value !== "string" && typeof value !== "number") throw new BadRequestException("Refund amounts must be decimal strings or numbers");
+        return money(value, positive);
+      };
+      const gross = refundMoney(body.refundAmount, true);
+      const airlineDeduction = refundMoney(body.airlineDeduction ?? 0);
+      const agencyDeduction = refundMoney(body.agencyDeduction ?? 0);
+      const otherCharges = refundMoney(body.otherCharges ?? 0);
+      const netRefund = money(gross.minus(airlineDeduction).minus(agencyDeduction).minus(otherCharges), true);
+      // Authorize the current ticket and linked owners before replaying any saved refund.
+      // The ticket row lock serializes same-key and different-key submissions across processes.
+      const saved = await tx.ticketRefund.findUnique({ where: { id: refundId } });
+      if (saved) {
+        if (saved.ticketId !== id || !gross.equals(saved.refundAmount) ||
+          !airlineDeduction.equals(saved.airlineDeduction) || !agencyDeduction.equals(saved.agencyDeduction) ||
+          !otherCharges.equals(saved.otherCharges) || saved.reason !== reason) {
+          throw new ConflictException("Refund key was already used for different details");
+        }
+        return saved;
+      }
       if (["CANCELLED", "REISSUED"].includes(ticket.status)) throw new BadRequestException("Cancelled or replaced ticket cannot be refunded; use its current replacement");
-      if (!String(body.reason ?? "").trim()) throw new BadRequestException("Refund reason is required");
       const prior = (ticket.refunds || []).reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0));
       const recordedPaid = money(ticket.paidAmount ?? 0);
       const paid = ticket.paymentStatus === "UNPAID" ? new Prisma.Decimal(0) : recordedPaid.isZero() && ticket.paymentStatus === "PAID" ? money(ticket.net) : recordedPaid;
       const refundable = Prisma.Decimal.max(0, Prisma.Decimal.min(paid, ticket.net).minus(prior));
-      const amounts = [body.refundAmount, body.airlineDeduction ?? 0, body.agencyDeduction ?? 0, body.otherCharges ?? 0];
-      if (!amounts.every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && new Prisma.Decimal(value).decimalPlaces() <= 2)) throw new BadRequestException("Refund amounts must be nonnegative numbers with at most two decimal places");
-      const netRefund = money(amounts.slice(1).reduce((amount, deduction) => amount.minus(deduction), money(body.refundAmount)), true);
-      if (Number(body.refundAmount) <= 0) throw new BadRequestException("Refund amount is required");
       if (netRefund.greaterThan(refundable)) throw new BadRequestException("Refund cannot exceed refundable amount");
       const journal = await this.accounting.postRefund({
         userId: req.user.id,
@@ -254,14 +273,15 @@ export class WorkflowsController {
       });
       const refund = await tx.ticketRefund.create({
         data: {
+          id: refundId,
           ticketId: id,
           originalFare: ticket.fare,
-          refundAmount: body.refundAmount,
-          airlineDeduction: body.airlineDeduction ?? 0,
-          agencyDeduction: body.agencyDeduction ?? 0,
-          otherCharges: body.otherCharges ?? 0,
+          refundAmount: gross,
+          airlineDeduction,
+          agencyDeduction,
+          otherCharges,
           netRefund,
-          reason: body.reason,
+          reason,
           approvedById: req.user.id,
           journalId: journal.id,
         },

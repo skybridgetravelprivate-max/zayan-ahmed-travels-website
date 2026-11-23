@@ -733,6 +733,7 @@ export function ManagementWorkspace({
   const retryIdentity = supplierPayment ? `supplier-payment:${staffUsername}` : staffUsername;
   const settlementLabel = supplierPayment ? "supplier payment" : "receipt";
   const [pendingReceipt, setPendingReceipt] = useState(false);
+  const [refundPreview, setRefundPreview] = useState<{ ticketId: string; refundId: string; amount: string; key: string } | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<{
     id: string;
     receiptNo?: string;
@@ -983,6 +984,15 @@ export function ManagementWorkspace({
       let requestKey: string | undefined;
       const quotationSend = workflow.path === "/api/v1/crm/quotations/:id/send";
       const quotationRetryIdentity = `${retryIdentity}:quotation-send:${row?.id}`;
+      const ticketRefund = resource === "tickets" && workflow.key === "refund";
+      const refundRetryIdentity = `${retryIdentity}:ticket-refund:${row?.id}`;
+      if (ticketRefund) {
+        if (!navigator.locks) throw new Error("This browser cannot safely coordinate refund retries across tabs.");
+        requestKey = await navigator.locks.request(`zat:refund-key:${refundRetryIdentity}`, async () => {
+          try { return await receiptRetryKey(localStorage, refundRetryIdentity, data); }
+          catch { throw new Error("An earlier refund needs review. Retry its original details; after a confirmed response, review the saved refund before starting another."); }
+        });
+      }
       if (quotationSend) {
         if (!navigator.locks)
           throw new Error("This browser cannot safely coordinate message retries across tabs.");
@@ -1019,7 +1029,11 @@ export function ManagementWorkspace({
         requestKey,
       );
       if (quotationSend) clearReceiptRetry(localStorage, quotationRetryIdentity);
-      if (requestKey && !quotationSend)
+      if (ticketRefund && row && requestKey) {
+        if (typeof result?.id !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(result.id) || result.ticketId !== row.id) throw new Error("Refund outcome is uncertain. Retry the original details to retrieve the saved refund.");
+        setRefundPreview({ ticketId: row.id, refundId: result.id, amount: canonicalMoney(result.netRefund), key: requestKey });
+      }
+      if (requestKey && !quotationSend && !ticketRefund)
         setReceiptPreview(
           ["receipts", "payments"].includes(resource)
             ? result
@@ -1287,6 +1301,26 @@ export function ManagementWorkspace({
               </button>
             ),
           )}
+        </div>
+      )}
+      {resource === "tickets" && refundPreview && row?.id === refundPreview.ticketId && (
+        <div role="status" className="mt-5 rounded-xl border border-line p-4">
+          <p>Refund saved: {refundPreview.refundId}. Net credit: {refundPreview.amount}. Retries with the same details return this refund. Review it before authorizing another partial refund.</p>
+          <Link className="mt-2 block underline" href={`/admin/manage/ticket-refunds?record=${encodeURIComponent(refundPreview.refundId)}`}>Open saved refund details</Link>
+          <button type="button" className={`${button} mt-3`} disabled={busy} onClick={async () => {
+            setBusy(true);
+            try {
+              if (!navigator.locks) throw new Error("This browser cannot safely coordinate refund reviews.");
+              const identity = `${retryIdentity}:ticket-refund:${refundPreview.ticketId}`;
+              await navigator.locks.request(`zat:refund-key:${identity}`, () => {
+                if (savedReceiptRetryKey(localStorage, identity) !== refundPreview.key) throw new Error("Refund retry information changed. Reload and review the saved refund.");
+                clearReceiptRetry(localStorage, identity);
+              });
+              setRefundPreview(null);
+              setMessage("Refund reviewed. You may start a separate partial refund.");
+            } catch (e) { setError(e instanceof Error ? e.message : "Refund review could not be completed."); }
+            finally { setBusy(false); }
+          }}>I reviewed this refund; allow a new refund</button>
         </div>
       )}
       {workflow && (

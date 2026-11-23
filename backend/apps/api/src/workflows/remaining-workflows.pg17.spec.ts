@@ -47,8 +47,8 @@ test("PG17: ticket replacement preserves payments and reconciles customer accoun
       assert.equal(rows.find(r => r.partyId === customer.id)?.balance, "60.62");
     });
     await t.test("replaced ticket cannot be refunded again and a refunded replacement cannot be reissued blindly", async () => {
-      await assert.rejects(workflow.refund(ticket.id, { refundAmount: 5, reason: "Synthetic" }, req));
-      await workflow.refund(replacement!.newTicket.id, { refundAmount: 5, reason: "Synthetic credit" }, req);
+      await assert.rejects(workflow.refund(ticket.id, { refundAmount: 5, reason: "Synthetic" }, req, randomUUID()));
+      await workflow.refund(replacement!.newTicket.id, { refundAmount: 5, reason: "Synthetic credit" }, req, randomUUID());
       await assert.rejects(workflow.reissue(replacement!.newTicket.id, { agencyFee: 1 }, req), { status: 409 });
       const report = await new ReportsService(db as never, accounting).run("receivables", {});
       assert.equal(report.rows.find(r => r.clientId === customer.id)?.debit, "55.62");

@@ -10,6 +10,19 @@ import {
 } from "./staff-management";
 import { workflowsFor, STAFF_WORKFLOWS } from "./staff-workflows";
 
+test("ticket creators cannot enter an initial payment without global finance authority", () => {
+  const before = JSON.stringify(STAFF_WORKFLOWS.tickets);
+  const staff = workflowsFor("tickets", false, ["ticket.create", "account.post"], false).find(w => w.key === "create")!;
+  assert.ok(staff);
+  assert.ok(staff.fields.some(f => f.name === "fare"));
+  assert.ok(staff.fields.every(f => !["paidAmount", "paymentMethod"].includes(f.name)));
+  assert.match(staff.caution!, /unpaid ticket/);
+  const admin = workflowsFor("tickets", false, [], true).find(w => w.key === "create")!;
+  assert.ok(admin.fields.some(f => f.name === "paidAmount"));
+  assert.ok(admin.fields.some(f => f.name === "paymentMethod"));
+  assert.equal(JSON.stringify(STAFF_WORKFLOWS.tickets), before);
+});
+
 test("accounting-review conflict has a fixed safe message; arbitrary server details are withheld", () => {
   assert.match(
     staffConflictMessage({

@@ -1,11 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clearReceiptRetry, hasPendingReceipt, receiptRetryKey } from "./receipt-retry";
+import { clearReceiptRetry, hasPendingReceipt, receiptRetryKey, savedReceiptRetryKey } from "./receipt-retry";
 
 function storage() {
   const rows = new Map<string, string>();
   return { rows, getItem: (key: string) => rows.get(key) ?? null, setItem: (key: string, value: string) => { rows.set(key, value); }, removeItem: (key: string) => { rows.delete(key); } };
 }
+
+test("ticket refund retry identity survives reload and requires explicit review before changed details", async () => {
+  const session = storage();
+  const identity = "staff:ticket-refund:ticket-a";
+  const payload = { refundAmount: "30.00", reason: "Synthetic refund" };
+  const key = await receiptRetryKey(session, identity, payload);
+  assert.equal(await receiptRetryKey(session, identity, { reason: payload.reason, refundAmount: "30.00" }), key);
+  await assert.rejects(receiptRetryKey(session, identity, { ...payload, refundAmount: "31.00" }));
+  assert.notEqual(await receiptRetryKey(session, "staff:ticket-refund:ticket-b", payload), key);
+  assert.ok(!JSON.stringify([...session.rows]).includes(payload.reason));
+  // A confirmed response does not clear the key. Only the explicit review action does.
+  assert.equal(savedReceiptRetryKey(session, identity), key);
+  clearReceiptRetry(session, identity);
+  assert.notEqual(await receiptRetryKey(session, identity, payload), key);
+});
 
 test("receipt key survives a reload and reordered fields without storing payment data", async () => {
   const session = storage();
