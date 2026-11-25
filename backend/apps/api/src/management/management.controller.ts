@@ -9,6 +9,14 @@ import { ManagementOriginGuard } from "./management.guard";
 @UseGuards(JwtAuthGuard, ManagementOriginGuard)
 export class ManagementController {
   constructor(private management: ManagementService) {}
+  @Get("historical-tickets")
+  historicalTickets(@Query("cursor") cursor: string | undefined, @Req() req: Request & { user: AuthUser }) {
+    return this.management.historicalTickets(req.user, cursor);
+  }
+  @Patch("historical-tickets/:id/review")
+  reviewHistoricalTickets(@Param("id") id: string, @Body() body: unknown, @Req() req: Request & { user: AuthUser }) {
+    return this.management.reviewHistoricalTickets(req.user, id, body);
+  }
   @Get("modules")
   modules(@Req() req: Request & { user: AuthUser }, @Res({ passthrough: true }) res: Response) {
     res.setHeader("Cache-Control", "private, no-store");
