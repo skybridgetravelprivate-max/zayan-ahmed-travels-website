@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ResourcesService } from "../resources/resources.service";
@@ -102,7 +103,7 @@ function refundsHarness(fail = false) {
     let draft: typeof state; let locked = false;
     const tx = { $queryRaw: async (sql: TemplateStringsArray | { values: string[] }, id: string) => { if (!Array.isArray(sql)) return (sql as { values: string[] }).values.map(id => ({ id, isPosting: true, status: "ACTIVE", deletedAt: null })); assert.match((sql as TemplateStringsArray).join("?"), /TicketSale.*FOR UPDATE/); assert.equal(id, "t"); await before; locked = true; draft = JSON.parse(JSON.stringify(state)); },
       ticketSale: { findUnique: async () => { assert.ok(locked); return { id: "t", branchId: "a", net: 100, paidAmount: 100, paymentStatus: "PAID", status: draft.status, refunds: draft.refunds }; }, update: async ({ data }: { data: Record<string, unknown> }) => { draft.status = String(data.status); } },
-      ticketRefund: { create: async ({ data }: { data: Record<string, unknown> }) => { if (fail) throw Error("injected insert failure"); draft.refunds.push({ netRefund: String(data.netRefund) }); return data; } },
+      ticketRefund: { findUnique: async () => null, create: async ({ data }: { data: Record<string, unknown> }) => { if (fail) throw Error("injected insert failure"); draft.refunds.push({ netRefund: String(data.netRefund) }); return data; } },
       chartOfAccount: { findUnique: async ({ where }: { where: { id: string; code?: string; customer?: unknown } }) => ({ id: where.code }) },
       journalEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { draft.journals.push(data); return { id: "j", ...data }; } },
       numberSequence: { upsert: async () => ({ current: 1, padLength: 1 }) },
@@ -116,7 +117,7 @@ function refundsHarness(fail = false) {
 }
 test("two concurrent full refunds commit only the available amount", async () => {
   const h = refundsHarness();
-  const results = await Promise.allSettled([1, 2].map(() => h.ctrl.refund("t", { refundAmount: 100, reason: "test" }, req())));
+  const results = await Promise.allSettled([1, 2].map(() => h.ctrl.refund("t", { refundAmount: 100, reason: "test" }, req(), randomUUID())));
   assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
   assert.equal(h.state().refunds.reduce((s, r) => s.plus(r.netRefund), new Prisma.Decimal(0)).toFixed(2), "100.00");
   assert.equal(h.state().journals.length, 1);
@@ -124,7 +125,7 @@ test("two concurrent full refunds commit only the available amount", async () =>
 });
 test("failure after refund journal insertion rolls back all refund changes", async () => {
   const h = refundsHarness(true);
-  await assert.rejects(h.ctrl.refund("t", { refundAmount: 100, reason: "test" }, req()), /injected/);
+  await assert.rejects(h.ctrl.refund("t", { refundAmount: 100, reason: "test" }, req(), randomUUID()), /injected/);
   assert.deepEqual(h.state(), { refunds: [], journals: [], status: "ISSUED" });
 });
 
@@ -184,9 +185,9 @@ test("voucher ownership and PDF aliases inherit parent branch checks; HR viewers
 
 test("partial refunds stay active until the remaining amount is exhausted", async () => {
   const h = refundsHarness();
-  for (const amount of [60, 20]) await h.ctrl.refund("t", { refundAmount: amount, reason: "test" }, req());
+  for (const amount of [60, 20]) await h.ctrl.refund("t", { refundAmount: amount, reason: "test" }, req(), randomUUID());
   assert.equal(h.state().status, "ISSUED");
-  await h.ctrl.refund("t", { refundAmount: 20, reason: "test" }, req());
+  await h.ctrl.refund("t", { refundAmount: 20, reason: "test" }, req(), randomUUID());
   assert.equal(h.state().status, "REFUNDED");
   assert.equal(h.state().refunds.reduce((sum, r) => sum.plus(r.netRefund), new Prisma.Decimal(0)).toFixed(2), "100.00");
 });
@@ -212,7 +213,7 @@ test("generic CRUD cannot forge attachment ownership or bypass transactional tic
 test("refunds reject sub-cent inputs before posting", async () => {
   for (const refundAmount of [100.009, 0.001, NaN, Infinity]) {
     const h = refundsHarness();
-    await assert.rejects(h.ctrl.refund("t", { refundAmount, reason: "test" }, req()), { status: 400 });
+    await assert.rejects(h.ctrl.refund("t", { refundAmount, reason: "test" }, req(), randomUUID()), { status: 400 });
     assert.equal(h.state().journals.length, 0);
     assert.equal(h.state().refunds.length, 0);
   }

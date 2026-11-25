@@ -92,7 +92,7 @@ test("PG17 ticket issuance, settlement, customer projection, PDFs and refund cre
     await t.test("foreign branch cannot render or refund and makes no financial writes", async () => {
       const before = await financialCounts();
       await assert.rejects(pdf.ticketInvoice(ticket.id, "INCLUDED", {} as Response, { user: foreign } as never), { status: 404 });
-      await assert.rejects(workflows.refund(ticket.id, { refundAmount: 100.50, reason: "Synthetic denial" }, { user: foreign } as never), { status: 404 });
+      await assert.rejects(workflows.refund(ticket.id, { refundAmount: 100.50, reason: "Synthetic denial" }, { user: foreign } as never, randomUUID()), { status: 404 });
       assert.deepEqual(await financialCounts(), before);
     });
     await t.test("same-branch ticket with a foreign customer cannot post refund credit across branches", async () => {
@@ -101,23 +101,48 @@ test("PG17 ticket issuance, settlement, customer projection, PDFs and refund cre
         fare: "10.00", net: "10.00", paidAmount: "10.00", status: "ISSUED", paymentStatus: "PAID",
       } });
       const before = await financialCounts();
-      await assert.rejects(workflows.refund(linked.id, { refundAmount: 10, reason: "Synthetic linked-owner denial" }, { user: viewer } as never), { status: 404 });
+      await assert.rejects(workflows.refund(linked.id, { refundAmount: 10, reason: "Synthetic linked-owner denial" }, { user: viewer } as never, randomUUID()), { status: 404 });
       assert.deepEqual(await financialCounts(), before);
       assert.equal((await db.ticketSale.findUniqueOrThrow({ where: { id: linked.id } })).status, "ISSUED");
     });
     let refundId = "";
+    await t.test("missing keys and invalid exact decimal inputs cannot write refunds", async () => {
+      const before = await financialCounts();
+      await assert.rejects(workflows.refund(ticket.id, { refundAmount: "1.00", reason: "Synthetic missing key" }, req), { status: 400 });
+      for (const refundAmount of ["1.001", "1e1", "-1", "NaN", "99999999999999999.00", [1], { amount: 1 }] as const) {
+        await assert.rejects(workflows.refund(ticket.id, { refundAmount, reason: "Synthetic invalid amount" } as never, req, randomUUID()), { status: 400 });
+      }
+      assert.deepEqual(await financialCounts(), before);
+    });
     await t.test("partial then final refunds retain paid receipt history and create customer credit once", async () => {
-      await workflows.refund(ticket.id, { refundAmount: 40.25, reason: "Synthetic partial refund" }, req);
+      const partialKey = randomUUID();
+      const partialBody = { refundAmount: "40.25", reason: "Synthetic partial refund" };
+      const [partial, concurrent] = await Promise.all([
+        workflows.refund(ticket.id, partialBody, req, partialKey),
+        workflows.refund(ticket.id, partialBody, req, partialKey),
+      ]);
+      assert.equal(partial.id, concurrent.id);
+      assert.equal(await db.ticketRefund.count({ where: { ticketId: ticket.id } }), 1);
+      const afterPartial = await financialCounts();
+      assert.equal((await workflows.refund(ticket.id, { ...partialBody, refundAmount: 40.25 }, req, partialKey)).id, partial.id);
+      await assert.rejects(workflows.refund(ticket.id, { ...partialBody, refundAmount: "41.25" }, req, partialKey), { status: 409 });
+      await assert.rejects(workflows.refund(ticket.id, { ...partialBody, reason: "Changed reason" }, req, partialKey), { status: 409 });
+      await assert.rejects(workflows.refund(ticket.id, partialBody, { user: foreign } as never, partialKey), { status: 404 });
+      assert.deepEqual(await financialCounts(), afterPartial);
       assert.equal((await db.ticketSale.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ISSUED");
       assert.equal(await arBalance(), "-40.25");
-      const final = await workflows.refund(ticket.id, { refundAmount: 60.25, reason: "Synthetic final refund" }, req);
+      const finalKey = randomUUID();
+      const finalBody = { refundAmount: "60.25", reason: "Synthetic final refund" };
+      const final = await workflows.refund(ticket.id, finalBody, req, finalKey);
       refundId = final.id;
       assert.equal((await db.ticketSale.findUniqueOrThrow({ where: { id: ticket.id } })).status, "REFUNDED");
       assert.equal((await customerRow()).status, "Cancelled");
       assert.equal(await arBalance(), "-100.50");
       assert.equal(await db.receipt.count({ where: { ticketSaleId: ticket.id } }), 2);
       const before = await financialCounts();
-      await assert.rejects(workflows.refund(ticket.id, { refundAmount: 0.01, reason: "Synthetic retry" }, req), { status: 400 });
+      assert.equal((await workflows.refund(ticket.id, finalBody, req, finalKey)).id, final.id);
+      assert.deepEqual(await financialCounts(), before);
+      await assert.rejects(workflows.refund(ticket.id, { refundAmount: 0.01, reason: "Synthetic retry" }, req, randomUUID()), { status: 400 });
       assert.deepEqual(await financialCounts(), before);
       for (const mode of ["INCLUDED", "EXCLUDED"] as const) await render("refund", refundId, mode);
       await assert.rejects(pdf.ticketRefund(refundId, "INCLUDED", {} as Response, { user: foreign } as never), { status: 404 });
