@@ -15,6 +15,7 @@ import { packageCatalog } from "../umrah/package-catalog";
 import { parseFields } from "../resources/resource-contract";
 import { resourceScope, validateResourceLinks } from "../resources/resource-scope";
 import { StaffAccessService } from "../auth/staff-access.service";
+import { historicalTickets, reviewHistoricalTickets } from "./historical-tickets";
 
 export { parseFields } from "../resources/resource-contract";
 
@@ -22,6 +23,9 @@ export { parseFields } from "../resources/resource-contract";
 @Injectable()
 export class ManagementService {
   constructor(private prisma: PrismaService, private seq: SequenceService) {}
+
+  historicalTickets(user: AuthUser, cursor?: string) { return historicalTickets(this.prisma, user, cursor); }
+  reviewHistoricalTickets(user: AuthUser, id: string, body: unknown) { return reviewHistoricalTickets(this.prisma, user, id, body); }
 
   catalog(user: AuthUser) {
     const modules = Object.keys(MANAGEMENT)
