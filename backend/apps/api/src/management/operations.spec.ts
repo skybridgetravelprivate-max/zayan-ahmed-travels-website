@@ -106,6 +106,17 @@ test("unpaid ticket issue posts sale, cost and audit in one transaction", async 
   assert.equal(h.state.journals.length, 2);
   assert.equal(h.state.audits.length, 1);
 });
+
+test("explicit customer selling total and supplier buying total post independently with exact profit", async () => {
+  const h = harness();
+  const result = await h.controller.sellTicket({ ticketNumber: "SYN-INDEPENDENT-PRICES", customerId: "customer-a", fare: "100.00", tax: "20.00", net: "110.25", cost: "80.00", paidAmount: 0 }, req);
+  assert.equal(result.net.toFixed(2), "110.25");
+  assert.equal(result.cost.toFixed(2), "80.00");
+  assert.equal(result.profit.toFixed(2), "30.25");
+  const sale = h.state.journals[0] as { lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[] };
+  assert.equal(sale.lines[0].debit.toFixed(2), "110.25");
+  assert.equal(sale.lines[1].credit.toFixed(2), "110.25");
+});
 test("failed ticket cost journal rolls back its ticket and sale journal", async () => {
   const h = harness(true);
   await assert.rejects(h.controller.sellTicket({ ticketNumber: "SYN-ROLLBACK", fare: 100, cost: 60 }, req), /synthetic ledger failure/);

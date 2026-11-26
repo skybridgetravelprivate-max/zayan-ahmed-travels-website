@@ -1,4 +1,5 @@
 import { canonicalMoney } from "./staff-management";
+import { accountingModules } from "./accounting-workspace";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -9,6 +10,24 @@ import {
   formatRecordValue,
 } from "./staff-management";
 import { workflowsFor, STAFF_WORKFLOWS } from "./staff-workflows";
+
+test("accounting workspace retires unrelated modules without adding permissions or mutating the source catalogue", () => {
+  const modules = [
+    { key: "tickets", title: "Tickets", group: "Flights", canCreate: false, canEdit: false },
+    { key: "leads", title: "Leads", group: "CRM", canCreate: true, canEdit: true },
+    { key: "payroll", title: "Payroll", group: "HR", canCreate: true, canEdit: true },
+    { key: "cms-pages", title: "Website", group: "Website", canCreate: true, canEdit: true },
+    { key: "__proto__", title: "Invalid", group: "Invalid", canCreate: true, canEdit: true },
+  ];
+  const before = structuredClone(modules);
+  const visible = accountingModules(modules);
+  assert.deepEqual(visible.map(m => m.key), ["tickets"]);
+  assert.equal(visible[0].title, "Full ticket vouchers");
+  assert.equal(visible[0].canCreate, false);
+  assert.equal(visible[0].canEdit, false);
+  assert.deepEqual(modules, before);
+  assert.deepEqual(accountingModules([]), []);
+});
 
 test("ticket creators cannot enter an initial payment without global finance authority", () => {
   const before = JSON.stringify(STAFF_WORKFLOWS.tickets);

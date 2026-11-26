@@ -33,7 +33,7 @@ export function StaffNavigation({
   }
   return (
     <aside
-      className="min-w-0 self-start rounded-2xl border border-line bg-surface lg:sticky lg:top-5"
+      className="accounting-sidebar min-w-0 self-start bg-surface"
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           close();
@@ -41,10 +41,10 @@ export function StaffNavigation({
         }
       }}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-line p-4 lg:flex-wrap">
+      <div className="accounting-profile flex items-center justify-between gap-3 p-4 lg:flex-wrap">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Staff workspace
+            Accounting workspace
           </p>
           <p className="mt-1 break-words font-semibold text-zayan-blue">
             {fullName}
@@ -75,7 +75,7 @@ export function StaffNavigation({
           aria-current={pathname === "/admin" ? "page" : undefined}
           className={`${linkStyle} ${pathname === "/admin" ? "bg-zayan-blue text-white" : "hover:bg-slate-100"}`}
         >
-          Dashboard
+          Home
         </Link>
         <Link
           prefetch={false}
@@ -84,9 +84,8 @@ export function StaffNavigation({
           aria-current={pathname === "/admin/manage" ? "page" : undefined}
           className={`${linkStyle} ${pathname === "/admin/manage" ? "bg-zayan-blue text-white" : "hover:bg-slate-100"}`}
         >
-          All modules
+          All accounting modules
         </Link>
-        {modules.some(module => module.key === "agents") && <Link prefetch={false} href="/admin/agencies" onClick={close} className={linkStyle} aria-current={pathname === "/admin/agencies" ? "page" : undefined}>Agency requests</Link>}
         {unavailable && (
           <p role="status" className="p-3 text-sm text-muted">
             Module navigation is unavailable. Reload to retry.

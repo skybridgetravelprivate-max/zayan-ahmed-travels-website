@@ -6,8 +6,9 @@ import {
   getStaffModules,
   staffRequest,
 } from "@/server/staff-api";
-import { CrmWorkQueue } from "@/components/admin/CrmWorkQueue";
 import { moduleHref, moduleCapabilities } from "@/lib/staff-navigation";
+import { accountingModules, accountingQuickKeys } from "@/lib/accounting-workspace";
+import { AccountingBalances } from "@/components/admin/AccountingBalances";
 export const metadata: Metadata = {
   title: "Staff dashboard",
   robots: { index: false, follow: false },
@@ -41,7 +42,7 @@ export default async function StaffDashboard() {
   let modules: Awaited<ReturnType<typeof getStaffModules>> | null = null,
     summary: Summary | null = null;
   try {
-    modules = await getStaffModules();
+    modules = accountingModules(await getStaffModules());
   } catch {
     /* Unavailable is not an empty catalogue. */
   }
@@ -49,7 +50,7 @@ export default async function StaffDashboard() {
     user.isSuperAdmin || user.permissions.includes("dashboard.view");
   if (canViewSummary)
     try {
-      const response = await staffRequest("/api/v1/dashboard/workspace");
+      const response = await staffRequest("/api/v1/dashboard/operations");
       if (response?.ok) {
         const value = await response.json();
         if (
@@ -70,30 +71,13 @@ export default async function StaffDashboard() {
       })
     : null;
   const quick = modules?.filter((module) =>
-    [
-      "leads",
-      "customers",
-      "quotations",
-      "tasks",
-      "follow-ups",
-      "hotel-bookings",
-      "tickets",
-      "transport-bookings",
-    ].includes(module.key),
+    accountingQuickKeys.includes(module.key),
   );
   return (
     <section>
-      <header className="rounded-2xl border border-line bg-slate-50 p-5 sm:p-6">
-        <p className="text-sm font-semibold uppercase tracking-wide text-zayan-orange">
-          Your work today
-        </p>
-        <h1 className="mt-2 text-crm-title font-bold text-zayan-blue lg:text-crm-title-lg">
-          Welcome, {user.fullName}
-        </h1>
-        <p className="mt-2 text-sm text-muted">
-          Open your permitted work, review priorities and continue customer
-          journeys.
-        </p>
+      <header className="mb-5 flex items-center justify-between gap-3">
+        <h1 className="uppercase">Overview</h1>
+        <p className="text-sm text-muted">Zayan Ahmed Travels / Accounts</p>
       </header>
       {canViewSummary && (
         <section aria-labelledby="operational-summary" className="mt-6">
@@ -101,19 +85,16 @@ export default async function StaffDashboard() {
             id="operational-summary"
             className="text-xl font-semibold text-zayan-blue"
           >
-            Operational overview
+            Today&apos;s activity
           </h2>
           {summary ? (
             <>
               <p className="mt-2 text-sm text-muted">
-                {summary.scope} · Company time: {summary.timeZone}. Month to
-                date: {date!.format(new Date(summary.period.start))} to{" "}
-                {date!.format(new Date(summary.generatedAt))}. These are
-                operational counts, not financial statements.
+                {summary.scope} · Company date: {date!.format(new Date(summary.generatedAt))} ({summary.timeZone}). Scheduled service records, not financial statements.
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {summary.metrics
-                  .filter((metric) => metric.value !== null)
+                  .filter((metric) => metric.value !== null && metric.key !== "leads")
                   .map((metric) => (
                     <article
                       key={metric.key}
@@ -146,13 +127,13 @@ export default async function StaffDashboard() {
       <section aria-labelledby="quick-work" className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="quick-work" className="text-xl font-semibold text-zayan-blue">
-            Your workspace
+            Quick actions
           </h2>
           <Link
             href="/admin/manage"
             className="min-h-11 rounded-lg border border-line px-4 py-3 text-sm font-semibold"
           >
-            All modules
+            All accounting modules
           </Link>
         </div>
         {modules === null ? (
@@ -187,9 +168,7 @@ export default async function StaffDashboard() {
           </div>
         )}
       </section>
-      {(user.isSuperAdmin || user.permissions.includes("lead.view")) && (
-        <CrmWorkQueue />
-      )}
+      {user.isSuperAdmin && <AccountingBalances />}
       <footer className="mt-8 flex flex-wrap items-center gap-4 border-t border-line pt-5 text-sm text-muted">
         <span>Signed in as {user.username}</span>
         <Link href="/" className="min-h-11 py-3 underline">

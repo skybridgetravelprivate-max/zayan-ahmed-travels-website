@@ -1,0 +1,55 @@
+/* Independently implemented from measured reference dimensions, using our existing Inter asset. */
+.accounting-workspace {
+  --crm-canvas: #f5f7fa;
+  --crm-border: #eaedf1;
+  --crm-primary: #495057;
+  --crm-muted: #626b75;
+  --color-line: #eaedf1;
+  --color-zayan-blue: #424b56;
+  --color-zayan-orange: #525ce5;
+  --color-muted: #626b75;
+  --foreground: #495057;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 100vh;
+  padding-top: 70px;
+  background: #f5f7fa;
+  color: #495057;
+  font-family: var(--font-crm-inter), sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.accounting-topbar { position: fixed; z-index: 40; inset: 0 0 auto; height: 70px; display: flex; align-items: center; gap: 24px; background: white; box-shadow: 0 2px 4px rgb(126 142 177 / 10%); }
+.accounting-brand { display: flex; flex: 0 0 260px; height: 70px; align-items: center; justify-content: center; gap: 5px; font-size: 21px; color: #4d7732; }
+.accounting-brand strong { color: #276c9a; font-weight: 600; }
+.accounting-topbar-title { font-size: 14px; }
+.accounting-user-name { margin-left: auto; padding-right: 24px; font-size: 13px; }
+.accounting-sidebar { position: sticky; top: 70px; min-height: calc(100vh - 70px); max-height: calc(100vh - 70px); overflow-y: auto; box-shadow: 0 2px 4px rgb(126 142 177 / 10%); }
+.accounting-profile { min-height: 160px; background: #4d7732; color: white; flex-direction: column; justify-content: center; text-align: center; gap: 12px; }
+.accounting-profile p { color: white; }
+.accounting-profile button { background: rgb(255 255 255 / 15%); color: white; border-color: rgb(255 255 255 / 50%); }
+.accounting-sidebar nav a { border-radius: 4px; font-size: 14px; font-weight: 400; }
+.accounting-sidebar nav { max-height: none; overflow: visible; }
+.accounting-sidebar nav a[aria-current="page"] { background: #eef0ff; color: #414ac9; }
+.accounting-sidebar summary { font-size: 13px; font-weight: 500; }
+.accounting-content { padding: 24px; }
+.accounting-content h1 { font-size: 20px; line-height: 1.5; font-weight: 500; letter-spacing: 0; }
+.accounting-content h2 { font-size: 17.5px; line-height: 1.5; font-weight: 600; letter-spacing: 0; }
+.accounting-content h3 { font-size: 16px; line-height: 1.5; font-weight: 500; }
+.accounting-content :is(article, fieldset, section > header, .rounded-xl, .rounded-2xl) { border-radius: 4px; }
+.accounting-content :is(input, select, textarea, button, .crm-reference) { font-family: var(--font-crm-inter), sans-serif; font-size: 14px; letter-spacing: 0; }
+.accounting-content :is(input, select, textarea) { border-color: #8391a2; border-radius: 4px; }
+.accounting-content :is(button, a.min-h-11) { border-radius: 4px; }
+.accounting-content table { font-size: 14px; }
+.accounting-content th { font-weight: 600; }
+.accounting-content td { vertical-align: top; }
+.accounting-overview-card { background: white; padding: 20px; box-shadow: 0 2px 4px rgb(126 142 177 / 10%); border: 1px solid #eaedf1; border-radius: 4px; }
+@media (max-width: 1023px) {
+  .accounting-workspace { grid-template-columns: minmax(0, 1fr); }
+  .accounting-sidebar { position: static; min-height: auto; max-height: none; }
+  .accounting-profile { min-height: 72px; }
+  .accounting-brand { flex-basis: auto; padding-left: 16px; font-size: 18px; }
+  .accounting-topbar-title { display: none; }
+  .accounting-user-name { padding-right: 16px; font-size: 12px; }
+  .accounting-content { padding: 16px; }
+}
