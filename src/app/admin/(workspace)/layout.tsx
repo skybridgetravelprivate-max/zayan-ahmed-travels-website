@@ -8,6 +8,8 @@ import {
 } from "@/components/admin/StaffNavigation";
 import { getStaffIdentity, getStaffModules } from "@/server/staff-api";
 import "./crm-typography.css";
+import "./accounting-workspace.css";
+import { accountingModules } from "@/lib/accounting-workspace";
 
 const inter = localFont({
   src: "../../fonts/inter-variable.woff2",
@@ -57,13 +59,18 @@ export default async function StaffWorkspaceLayout({
   } catch {
     unavailable = true;
   }
-  const links = modules.map(({ key, title, group }) => ({ key, title, group }));
+  const links = accountingModules(modules).map(({ key, title, group }) => ({ key, title, group }));
   links.push({ key: "communication-recovery", title: "Communication recovery", group: "Administration" });
   if (user.isSuperAdmin || user.permissions.includes("ticket.view")) {
-    links.push({ key: "issued-ticket-invoices", title: "Issued Ticket Invoices", group: "Flights" });
+    links.push({ key: "issued-ticket-invoices", title: "Issued ticket invoices", group: "Travel invoices" });
   }
   return (
-    <div className={`${typography} mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:px-8`}>
+    <div className={`${typography} accounting-workspace`}>
+      <header className="accounting-topbar">
+        <Link href="/admin" className="accounting-brand">Zayan <strong>Accounts</strong></Link>
+        <span className="accounting-topbar-title">Zayan Ahmed Travels</span>
+        <span className="accounting-user-name">{user.fullName}</span>
+      </header>
       <a
         href="#staff-content"
         className="sr-only z-50 rounded-lg bg-zayan-blue p-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -75,7 +82,7 @@ export default async function StaffWorkspaceLayout({
         modules={links}
         unavailable={unavailable}
       />
-      <div id="staff-content" tabIndex={-1} className="min-w-0 outline-none">
+      <div id="staff-content" tabIndex={-1} className="accounting-content min-w-0 outline-none">
         <StaffBreadcrumbs modules={links} />
         {children}
       </div>

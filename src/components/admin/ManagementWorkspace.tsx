@@ -1,5 +1,6 @@
 "use client";
 import { canonicalMoney } from "@/lib/staff-management";
+import { accountingModules } from "@/lib/accounting-workspace";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -84,7 +85,8 @@ function useCatalog() {
     let active = true;
     request(`${api}/modules`)
       .then((data) => {
-        if (active) setModules(data);
+        if (!Array.isArray(data)) throw new Error("Module catalogue is unavailable.");
+        if (active) setModules(accountingModules(data));
       })
       .catch((e) => {
         if (active)
@@ -106,12 +108,12 @@ export function ManagementHub({
 }) {
   const { modules, error } = useCatalog();
   const [query, setQuery] = useState("");
-  const filtered = modules?.filter((m) =>
+  const filtered = modules && accountingModules(modules).filter((m) =>
     `${m.title} ${m.group}`.toLowerCase().includes(query.toLowerCase()),
   );
   return (
     <section>
-      <h1 className="text-3xl font-bold text-zayan-blue">Management</h1>
+      <h1 className="text-3xl font-bold text-zayan-blue">Accounts workspace</h1>
       <p className="mt-2 text-muted">
         Open a module to search records and use the actions permitted for your
         staff account.
@@ -337,18 +339,20 @@ function Field({
 }
 
 function BookingFields({
+  resource,
   fields,
   row,
   disabled,
   create,
 }: {
+  resource: string;
   fields: ManagementField[];
   row: ManagementRow | null;
   disabled: boolean;
   create: boolean;
 }) {
   const sections = [
-    ...new Set(fields.map((field) => bookingFieldSection(field.name))),
+    ...new Set(fields.map((field) => bookingFieldSection(field.name, resource))),
   ];
   return (
     <div className="mt-5 space-y-5">
@@ -363,7 +367,7 @@ function BookingFields({
           </legend>
           <div className="grid gap-4 sm:grid-cols-2">
             {fields
-              .filter((field) => bookingFieldSection(field.name) === section)
+              .filter((field) => bookingFieldSection(field.name, resource) === section)
               .map((field) => (
                 <Field
                   key={`${row?.id || "new"}-${field.name}`}
@@ -1342,6 +1346,7 @@ export function ManagementWorkspace({
             </p>
           )}
           <BookingFields
+            resource={resource}
             fields={workflow.fields}
             row={null}
             disabled={busy}
@@ -1391,6 +1396,7 @@ export function ManagementWorkspace({
             Review changes before saving. Times are entered in UTC.
           </p>
           <BookingFields
+            resource={resource}
             fields={contract.writeFields}
             row={row}
             disabled={busy}

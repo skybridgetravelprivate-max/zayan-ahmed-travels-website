@@ -131,7 +131,7 @@ export function RecordResults({
   if (!columns.length) columns.push(...fields.slice(0, 4));
   return (
     <>
-      <div className="mt-4 hidden overflow-x-auto rounded-xl border border-line md:block">
+      <div className="relative mt-4 hidden overflow-x-auto rounded-xl border border-line md:block">
         <table className="w-full text-start text-crm-table">
           <caption className="sr-only">Authorized filtered records</caption>
           <thead className="bg-crm-canvas text-crm-label">

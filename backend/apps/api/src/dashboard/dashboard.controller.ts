@@ -1,4 +1,5 @@
 import { financialSummary } from "./financial-summary";
+import { dailyOperations } from "./daily-operations";
 import { ForbiddenException, Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt.guard";
@@ -13,6 +14,12 @@ import { AuthUser, can } from "../auth/auth.types";
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class DashboardController {
   constructor(private prisma: PrismaService) {}
+
+  @Get("operations")
+  @RequirePermission("dashboard.view")
+  operations(@Req() req: Request & { user: AuthUser }) {
+    return dailyOperations(this.prisma, req.user);
+  }
 
   /** Operational counters only; not revenue, ledger balances or all-service totals. */
   @Get("workspace")
