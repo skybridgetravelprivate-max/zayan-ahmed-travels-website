@@ -4,9 +4,9 @@ Reviewed deployed source: `1eb8d50b4d2c39a203105e816136feff055dc193` (cash vouch
 
 ## Evidence and limits
 
-Newly inspected: reference navigation rendered in the existing authenticated Assan Accounts cash-voucher page, including its module links; current code contracts, workflows, report catalogue and page components. The reference cash form has account/description/payment/receipt rows, opening cash display, totals and closing cash. Its current form was inspected without submitting anything.
+The initial inspection encountered an expired reference session. After the owner signed in again, 59 authenticated destination pages were inspected: 13 entry forms, 19 reports, and 27 list/setup pages. Their static labels, field names/types, filter controls and available table headings are captured in `reference-module-fields-20261128.json`. Input values, option/record contents, customer data and credentials are excluded. Pages without generated report tables were inspected only in their initial filter state; this does not establish their result columns. The reference dashboard and cash form were also inspected separately.
 
-The reference session expired when navigating to Entry Voucher. Subsequent form destinations redirected to Login. Those redirects do **not** count as inspecting the forms. Their internal fields, validations, resulting postings and current visual appearance remain unverified. No reference financial records were changed. Current CRM code inspection does not substitute for fresh browser acceptance. Earlier synthetic/CI evidence is historical evidence, not newly rerun for this read-only review.
+Client-side Add Ticket, Add Hotel, Add Visa and Add Transport each increased the relevant row count from one to two. Evidence is in `reference-row-controls-20261128.json`. No form was submitted, deleted or edited on the server. No original source/schema, financial formulas, postings, refund rules, print output or successful write behavior was recovered or verified. Current CRM code inspection does not substitute for fresh cross-application browser acceptance. Earlier synthetic/CI evidence is historical evidence, not newly rerun for this read-only review. The fresh reference ticket screenshot was at a narrow browser viewport, not a desktop pixel-parity test.
 
 ## Entry, service and setup comparison
 
@@ -71,10 +71,38 @@ Sources: `backend/apps/api/src/reports/reports.service.ts` (19 catalogue entries
 
 ## Priorities
 
-1. Reauthenticate reference and capture each form/list/report's labels, columns, row controls and empty/error/print states. Do not submit reference transactions. Browser-derived formulas remain unverified until tested with approved synthetic data.
+1. Field/filter/header inventory is now captured. Complete generated report results, print, empty/error states and desktop/mobile side-by-side checks. No reference transactions should be submitted; formulas remain unverified until agreed and tested with synthetic data.
 2. Multi-ticket voucher and group-seat booking/allocation; separate them from PNR historical grouping.
 3. Unified package component editor; dedicated hotel, visa and transport invoice editors over established transaction services.
 4. Cash opening/closing and filtered history, bank/expense voucher screens, customer-ledger and consolidated invoices.
 5. Report catalogue gaps, consultant/GDS/BSP source mapping, setup/profile/language/theme and print/mobile/keyboard comparison.
 
 No code, production data or deployment was changed by this audit. No tests were added/run for this documentation-only review. Successful releases do not prove all-module parity.
+
+## Fresh authenticated findings
+
+The inventory supersedes the earlier session-expiry limitation and “reference fields unverified” statements above. Functional write/financial equivalence and pixel-level layout remain unverified.
+
+| Area | Newly observed reference details | Difference confirmed against current code |
+|---|---|---|
+| Unified entry voucher | Journal, bank payment/receipt, cash receipt/payment and expense selectors; manual voucher number; top account; row totals/difference | Current journal and cash screens are separate; unified type switching/manual numbering and bank/expense presentation absent. |
+| General invoice | Consultant, manual number, supplier/customer descriptions and phone; independent buying/selling currencies and ROE; receiving rows | Current shared quantity invoice is PKR-based, with no consultant/manual number, dual-currency/ROE or equivalent receiving grid. |
+| Quick invoice | Supplier/customer plus repeated quantity, buy/sell rate, per-row profit and receiving accounts | Current quantity editor approximates core data; separate reference layout and per-row displayed totals/profit remain gaps. |
+| Ticket invoice | Repeated travel date/PNR/ticket/passport/sector plus separate buying/selling and receiving rows | Current active ticket issue form is a single ticket. |
+| Full ticket | Repeated supplier/customer/passenger rows; dates/PNR/GDS; named tax buckets; commissions/WHT/PSF percent and amount pairs; dual currency/ROE; repeated flight legs | Core single-ticket UI omits these repeated grids and detailed charge fields. Their calculation meaning/rounding must not be inferred from labels. |
+| Hotel invoice | Repeated customer/supplier/Shirka, room/meal/view, nights, adults/children, confirmation, per-night buy/sell, dual ROE; cancellation deadline/payment status | Existing hotel reservation uses whole-stay prices per room; this is a different pricing basis and cannot be relabeled per-night without conversion tests. |
+| Visa invoice | Repeated customer/supplier/Shirka, traveler/passport/visa/status/dates and independent buy/sell/ROE; dated receiving rows | Existing application maintenance/PDF is not this financial invoice editor. |
+| Transport invoice | Repeated customer/supplier, date/time, registration/capacity/driver, route and buy/sell/ROE plus flight rows | Current active workflow captures one trip and aggregate totals; no equivalent combined transport/flight row editor. |
+| Quotation | Validity/travel dates, title/destination/type, contact/address, repeated service/pax/unit amount, GST and totals | Current quotation create/add-item flow lacks the equivalent complete one-page form. No GST policy inferred. |
+| Package | Customer/consultant/commission plus repeated visa, ticket, hotel, transport and flight components | Existing Umrah booking/catalogue does not provide a matching combined component editor. |
+| Multi invoice | Customer and from/to date filters | Dedicated consolidated invoice view missing. |
+| Group inventory | Supplier, sector/category/name/PNR/seats, repeated flight legs, adult/child/infant buying and selling rates | Existing TicketGroup metadata omits this full inventory/rate/flight editor and booking screen. |
+| Consultant/Shirka | Consultant contact + sale percentage; Shirka type/contact | Separate active modules/mappings absent. Commission and type semantics still need defined mapping. |
+| Profile/airline | NTN/license/VAT, logo/stamp/banner and display toggles; airline shortcode, numeric code and logo | Current setup/resources do not establish equivalent field coverage or branding controls. |
+| User permissions | Add/view vs edit permissions per voucher, buying visibility, receiving edits, date edits and voiding | Existing role/branch model is different; no grant/removal is justified merely to copy checkbox appearance. |
+
+Fresh report filters additionally confirm: head-wise trial balance has account head; period trial balance has from/to; monthly P/L uses months; recovery lists received/remaining/pending-since; consultant includes commission; airline and GDS reports include buying/selling/profit; nearby stays include supplier/confirmation/meal/nights. Current report UI lacks these complete combinations. Existing finance APIs for balance sheet/general ledger/cash flow remain backend capabilities, not equivalent screens.
+
+### Audit delivery
+
+Documentation only. No application change, new deployment, financial write, deletion or schema change. Initial documentation head `e1ba815` and this follow-up must be distinguished from the previously deployed application. Check exact remote CI before describing this review PR's checks as passed.
