@@ -1,0 +1,25 @@
+{
+  "scope": "Client-side add-row controls only; no form submitted.",
+  "checks": [
+    {
+      "path": "entry-ticket-voucher",
+      "before": 1,
+      "after": 2
+    },
+    {
+      "path": "new-hotel-voucher",
+      "before": 1,
+      "after": 2
+    },
+    {
+      "path": "visa-voucher",
+      "before": 1,
+      "after": 2
+    },
+    {
+      "path": "transport-voucher",
+      "before": 1,
+      "after": 2
+    }
+  ]
+}

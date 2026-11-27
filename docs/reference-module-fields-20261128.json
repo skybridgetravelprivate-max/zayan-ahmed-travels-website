@@ -1,0 +1,5592 @@
+{
+  "scope": "Read-only UI field/filter/table-header observation. No values, records, formulas or write behavior captured.",
+  "pages": [
+    {
+      "path": "entry-voucher",
+      "title": "Entry Journal Voucher",
+      "labels": [
+        "Entry Date",
+        "Manual Voucher #",
+        "Account",
+        "Voucher Type",
+        "Description",
+        "Debit",
+        "Credit",
+        "Action",
+        "Total Debit",
+        "Total Credit",
+        "Difference",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "top_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "tot_debit",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "tot_credit",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Journal Voucher",
+        "Bank Payment",
+        "Bank Receipt",
+        "Cash Receipt",
+        "Cash Payment",
+        "Expense",
+        "+ Add Row"
+      ]
+    },
+    {
+      "path": "journal-voucher",
+      "title": "Add Journal Voucher",
+      "labels": [
+        "Date: Month/Day/Year",
+        "Account",
+        "Description",
+        "Debit",
+        "Credit",
+        "Total Debit",
+        "Total Credit",
+        "Difference",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "desc[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "price[]",
+          "placeholder": "Credit",
+          "type": "number"
+        },
+        {
+          "name": "total_debit",
+          "placeholder": "total_debit",
+          "type": "number"
+        },
+        {
+          "name": "total_credit",
+          "placeholder": "total_credit",
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "+ Add Row"
+      ]
+    },
+    {
+      "path": "entry-invoice-voucher",
+      "title": "Entry Invoice",
+      "labels": [
+        "Invoice Date",
+        "Manual Voucher #",
+        "Consultant",
+        "Supplier Account",
+        "Description",
+        "Currency",
+        "Buying ROE",
+        "Buying Amount",
+        "PKR Total Buying",
+        "Profit",
+        "Loss",
+        "Customer Account",
+        "Phone",
+        "Selling ROE",
+        "Selling Amount",
+        "PKR Total Selling",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "Action",
+        "PKR Received",
+        "PKR Remaining",
+        "Remarks",
+        "Total Debit",
+        "Total Credit",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "consultant",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "supplier_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "description2",
+          "placeholder": "Enter Description here...",
+          "type": "textarea"
+        },
+        {
+          "name": "currency_buying",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "buy_roe",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "buying_amount_foreign",
+          "placeholder": "Buying Amount",
+          "type": "number"
+        },
+        {
+          "name": "pkr_buying",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "customer_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "phone_no",
+          "placeholder": "Phone No",
+          "type": "text"
+        },
+        {
+          "name": "description1",
+          "placeholder": "Enter Description here...",
+          "type": "textarea"
+        },
+        {
+          "name": "currency_selling",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "sell_roe",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "selling_amount_foreign",
+          "placeholder": "Selling Amount",
+          "type": "number"
+        },
+        {
+          "name": "pkr_selling",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "desc[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remarks",
+          "placeholder": "Additional notes or remarks...",
+          "type": "textarea"
+        },
+        {
+          "name": "total_debit",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "final_total_credit",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "+ Add Row",
+        "Save Invoice"
+      ]
+    },
+    {
+      "path": "quick-invoice-voucher",
+      "title": "Entry Quick Invoice",
+      "labels": [
+        "Entry Date",
+        "Manual Voucher #",
+        "Supplier Account",
+        "Customer Account",
+        "Description",
+        "QTY",
+        "Buying Rate",
+        "Total Buying",
+        "Selling Rate",
+        "Total Selling",
+        "Profit / Loss",
+        "Action",
+        "Profit",
+        "Loss",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "PKR Total",
+        "PKR Received",
+        "PKR Remaining"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "supplier",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "customer",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "item[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "qty[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "buy_rate[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "sell_rate[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "buying_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "selling_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "loss_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Add More Items"
+      ]
+    },
+    {
+      "path": "entry-tinvoice-voucher",
+      "title": "Entry Ticket Invoice",
+      "labels": [
+        "Date:",
+        "Select Customer Account",
+        "Phone",
+        "Select Supplier Account",
+        "Description",
+        "Travel Date",
+        "PNR",
+        "Ticket#",
+        "Passport",
+        "Sector",
+        "Currency",
+        "PKR Selling",
+        "PKR Buying",
+        "Profit",
+        "Loss",
+        "Remarks",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "PKR Recevied",
+        "PKR Remaining",
+        "Total Debit",
+        "Total Credit",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "customer_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "phone_no",
+          "placeholder": "Phone No",
+          "type": "text"
+        },
+        {
+          "name": "supplier_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "description1[]",
+          "placeholder": "Enter Description here...",
+          "type": "textarea"
+        },
+        {
+          "name": "ticket_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "pnr_customer[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "tckt_customer[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "pass_customer[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "sector_customer[]",
+          "placeholder": "DXB-JED",
+          "type": "text"
+        },
+        {
+          "name": "currency_selling[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "pkr_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "description2[]",
+          "placeholder": "Enter Description here...",
+          "type": "textarea"
+        },
+        {
+          "name": "currency_buying[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "pkr_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "row_porfit[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "row_loss[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "profit",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "loss",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "remarks",
+          "placeholder": null,
+          "type": "textarea"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "desc[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total_debit",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "final_total_credit",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Add Row"
+      ]
+    },
+    {
+      "path": "entry-ticket-voucher",
+      "title": "Entry Ticket Voucher",
+      "labels": [
+        "Entry Date",
+        "Manual Voucher #",
+        "Consultant",
+        "Supplier Account",
+        "Customer Account",
+        "PAX Name",
+        "Travel Date",
+        "Return Date",
+        "PNR",
+        "Ticket Number",
+        "Airline",
+        "Sector",
+        "Sector Type",
+        "Cabin",
+        "GDS",
+        "EMD",
+        "CC",
+        "SP",
+        "RG",
+        "YD",
+        "E3",
+        "IO",
+        "YI",
+        "XZ",
+        "PK",
+        "ZR",
+        "YQ",
+        "Basic Fare CHGS %",
+        "Basic Fare CHGS PKR",
+        "Total Fare CHGS %",
+        "Total Fare CHGS PKR",
+        "Buying PSF %",
+        "Buying PSF PKR",
+        "Party Comm %",
+        "Party Comm PKR",
+        "Airline Comm %",
+        "Airline Comm PKR",
+        "Party WHT %",
+        "Party WHT PKR",
+        "Airline WHT %",
+        "Airline WHT PKR",
+        "PSF %",
+        "PSF PKR",
+        "Basic Fare",
+        "Other Taxes",
+        "Currency",
+        "ROE",
+        "Total Buying (PKR)",
+        "Total Selling",
+        "Total Selling (PKR)",
+        "Profit",
+        "Loss",
+        "Flight#",
+        "Dep Date",
+        "Dep Time",
+        "Sector From",
+        "Sector To",
+        "Arr Date",
+        "Arr Time",
+        "Action",
+        "Total Buying",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "PKR Received",
+        "PKR Remaining"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "consultant",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "ticket_supplier[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "ticket_customer[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "paxname[]",
+          "placeholder": "Passenger name",
+          "type": "text"
+        },
+        {
+          "name": "travel_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "return_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "pnr[]",
+          "placeholder": "PNR",
+          "type": "text"
+        },
+        {
+          "name": "ticketnumber[]",
+          "placeholder": "Ticket number (optional)",
+          "type": "text"
+        },
+        {
+          "name": "airline[]",
+          "placeholder": "Airline",
+          "type": "text"
+        },
+        {
+          "name": "airline[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "sector[]",
+          "placeholder": "Sector",
+          "type": "text"
+        },
+        {
+          "name": "sector_type[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "cabin[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "gds[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "emd[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "cc[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "sp[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "rg[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "yd[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "e3[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "io[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "yi[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "xz[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "pk[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "zr[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "yq[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "basicfare_chg_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "basicfare_chg_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "totalfare_chg_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "totalfare_chg_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "buying_psf_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "buying_psf_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "party_comm_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "party_comm_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "airline_comm_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "airline_comm_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "party_wht_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "party_wht_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "airline_wht_p[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "airline_wht_r[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "psf_percent[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "psf_rs[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "basic_fare[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "other_taxes[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "ticket_buying_currency[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "ticket_buying_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "ticket_selling[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "ticket_selling_currency[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "ticket_selling_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "loss[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "flightno[]",
+          "placeholder": "Flight number",
+          "type": "text"
+        },
+        {
+          "name": "dep_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "dep_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "sector_from[]",
+          "placeholder": "From",
+          "type": "text"
+        },
+        {
+          "name": "sector_to[]",
+          "placeholder": "To",
+          "type": "text"
+        },
+        {
+          "name": "arr_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "arr_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "buying_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "selling_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "loss_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Add Ticket",
+        "Add Flight"
+      ]
+    },
+    {
+      "path": "new-hotel-voucher",
+      "title": "Entry Hotel Voucher",
+      "labels": [
+        "Entry Date",
+        "Manual Voucher #",
+        "Lead Pax",
+        "Lead Pax Phone",
+        "Consultant",
+        "Payment Status",
+        "Cancel. Deadline:",
+        "Customer",
+        "Supplier",
+        "Shirka",
+        "PAX Name",
+        "Hotel Name",
+        "Country",
+        "City",
+        "Rooms/Beds",
+        "Room Type",
+        "Meal",
+        "View",
+        "Check-in",
+        "Nights",
+        "Check-out",
+        "Adults",
+        "Child",
+        "Confirmation Number",
+        "Buying P.Night",
+        "T.Buying",
+        "ROE",
+        "Currency",
+        "PKR Total Buying",
+        "Sale P.Night",
+        "T.Sale",
+        "PKR Total Selling",
+        "Profit",
+        "Loss",
+        "Total Buying",
+        "Total Selling",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "PKR Received",
+        "PKR Remaining"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "lead_pax",
+          "placeholder": "Lead passenger name",
+          "type": "text"
+        },
+        {
+          "name": "head_phone",
+          "placeholder": "Phone number",
+          "type": "number"
+        },
+        {
+          "name": "consultant",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "psts",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "cancellation_deadline",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "party_account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "hotel_supplier[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "shirqa[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_paxname[]",
+          "placeholder": "Passenger name",
+          "type": "text"
+        },
+        {
+          "name": "h_hotelname[]",
+          "placeholder": "Hotel name",
+          "type": "text"
+        },
+        {
+          "name": "h_country[]",
+          "placeholder": "Country",
+          "type": "text"
+        },
+        {
+          "name": "h_city[]",
+          "placeholder": "City",
+          "type": "text"
+        },
+        {
+          "name": "h_rooms[]",
+          "placeholder": "Number",
+          "type": "number"
+        },
+        {
+          "name": "h_roomtype[]",
+          "placeholder": "Room type",
+          "type": "text"
+        },
+        {
+          "name": "meal_type[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "view[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_checkin[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "h_nights[]",
+          "placeholder": "Nights",
+          "type": "number"
+        },
+        {
+          "name": "h_checkout[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "h_adults[]",
+          "placeholder": "Adults",
+          "type": "number"
+        },
+        {
+          "name": "h_childs[]",
+          "placeholder": "Children",
+          "type": "number"
+        },
+        {
+          "name": "h_confimrationnumber[]",
+          "placeholder": "Confirmation",
+          "type": "text"
+        },
+        {
+          "name": "h_per_night_buying[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "h_total_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_buy_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_currency_buying[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_pkr_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_per_night_selling[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "h_total_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_roe_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_currency_selling[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_pkr_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_loss[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "buying_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "selling_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "loss_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Remove",
+        "Add Hotel"
+      ]
+    },
+    {
+      "path": "visa-voucher",
+      "title": "Entry Visa Voucher",
+      "labels": [
+        "Entry Date",
+        "Manual Voucher #",
+        "Consultant",
+        "Customer Account",
+        "Supplier Account",
+        "Shirka",
+        "Full Name",
+        "Father Name",
+        "Phone No",
+        "Passport No",
+        "Visa Number",
+        "Country",
+        "Visa Type",
+        "Status",
+        "Travel Date",
+        "Exit Date",
+        "Buying Rate",
+        "Buying ROE",
+        "Currency",
+        "PKR Total (Buying)",
+        "Selling Rate",
+        "Selling ROE",
+        "PKR Total (Selling)",
+        "Profit",
+        "Loss",
+        "Total Buying",
+        "Total Selling",
+        "Add Receivings",
+        "Date",
+        "Account",
+        "Debit",
+        "PKR Received",
+        "PKR Remaining"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "consultant",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "party_account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "supplier_acc[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "shirqa[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_paxname[]",
+          "placeholder": "Full name",
+          "type": "text"
+        },
+        {
+          "name": "v_paxlname[]",
+          "placeholder": "Father name",
+          "type": "text"
+        },
+        {
+          "name": "v_paxphone[]",
+          "placeholder": "Phone No",
+          "type": "text"
+        },
+        {
+          "name": "v_passport[]",
+          "placeholder": "Passport number",
+          "type": "text"
+        },
+        {
+          "name": "vnumber[]",
+          "placeholder": "Visa number",
+          "type": "text"
+        },
+        {
+          "name": "v_country[]",
+          "placeholder": "Country",
+          "type": "text"
+        },
+        {
+          "name": "v_type[]",
+          "placeholder": "Visa type",
+          "type": "text"
+        },
+        {
+          "name": "v_status[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_travel_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "v_exit_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "v_total_buying[]",
+          "placeholder": "Rate",
+          "type": "number"
+        },
+        {
+          "name": "v_buy_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_currency_buying[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_pkr_buying[]",
+          "placeholder": "PKR Total",
+          "type": "number"
+        },
+        {
+          "name": "v_total_selling[]",
+          "placeholder": "Rate",
+          "type": "number"
+        },
+        {
+          "name": "v_roe_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_currency_selling[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_pkr_selling[]",
+          "placeholder": "PKR Total",
+          "type": "number"
+        },
+        {
+          "name": "v_profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_loss[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "buying_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "selling_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "loss_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "recv_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Remove",
+        "Add Visa"
+      ]
+    },
+    {
+      "path": "transport-voucher",
+      "title": "Entry Transport Voucher",
+      "labels": [
+        "Entry Date",
+        "Manual Voucher #",
+        "Lead Pax",
+        "Lead Pax Phone",
+        "Supplier Account",
+        "Customer Account",
+        "Transport",
+        "Travel Date",
+        "Travel Time",
+        "Route",
+        "Transport Reg#",
+        "Transport Capacity",
+        "Driver Name",
+        "Driver Number",
+        "Buying Rate",
+        "Buying ROE",
+        "Currency",
+        "PKR Total (Buying)",
+        "Selling Rate",
+        "Selling ROE",
+        "PKR Total (Selling)",
+        "Profit",
+        "Loss",
+        "Flight#",
+        "Dep Date",
+        "Dep Time",
+        "Sector From",
+        "Sector To",
+        "Arr Date",
+        "Arr Time",
+        "Action",
+        "Total Selling",
+        "Total Buying",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "PKR Received",
+        "PKR Remaining"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "lead_name",
+          "placeholder": "Lead Pax Name",
+          "type": "text"
+        },
+        {
+          "name": "lead_phone",
+          "placeholder": "Lead Pax Phone",
+          "type": "text"
+        },
+        {
+          "name": "supplier_acc[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "party_account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "transport[]",
+          "placeholder": "Transport details",
+          "type": "text"
+        },
+        {
+          "name": "travel_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "travel_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "route[]",
+          "placeholder": "Route",
+          "type": "text"
+        },
+        {
+          "name": "transport_reg[]",
+          "placeholder": "Registration",
+          "type": "text"
+        },
+        {
+          "name": "transport_capacity[]",
+          "placeholder": "Capacity",
+          "type": "text"
+        },
+        {
+          "name": "driver_name[]",
+          "placeholder": "Driver name",
+          "type": "text"
+        },
+        {
+          "name": "driver_number[]",
+          "placeholder": "Phone number",
+          "type": "number"
+        },
+        {
+          "name": "t_total_buying[]",
+          "placeholder": "Rate",
+          "type": "number"
+        },
+        {
+          "name": "t_buy_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "t_currency_buying[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "t_pkr_buying[]",
+          "placeholder": "PKR Total",
+          "type": "number"
+        },
+        {
+          "name": "t_total_selling[]",
+          "placeholder": "Rate",
+          "type": "number"
+        },
+        {
+          "name": "t_roe_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "t_currency_selling[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "t_pkr_selling[]",
+          "placeholder": "PKR Total",
+          "type": "number"
+        },
+        {
+          "name": "t_profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "t_loss[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "flightno[]",
+          "placeholder": "Flight number",
+          "type": "text"
+        },
+        {
+          "name": "dep_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "dep_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "sector_from[]",
+          "placeholder": "From",
+          "type": "text"
+        },
+        {
+          "name": "sector_to[]",
+          "placeholder": "To",
+          "type": "text"
+        },
+        {
+          "name": "arr_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "arr_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "selling_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "buying_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "loss_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Remove",
+        "Add Transport",
+        "Add Flight"
+      ]
+    },
+    {
+      "path": "add-quotation",
+      "title": "Quotation Invoice",
+      "labels": [
+        "Entry Date",
+        "Valid Till",
+        "Travel Date",
+        "Manual Quotation#",
+        "Title",
+        "Quotation Title",
+        "Destination",
+        "Quotation Type",
+        "Customer Name",
+        "Customer Phone",
+        "Customer Email",
+        "Customer Company",
+        "Customer Address",
+        "Service Type",
+        "Description",
+        "Pax",
+        "Amount per Passenger",
+        "Total Amount",
+        "Action",
+        "Subtotal",
+        "GST (%)",
+        "GST Amount",
+        "Grand Total"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "valid_till_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "travel_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Quotation Number",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quotation_name",
+          "placeholder": "Quotation Title",
+          "type": "text"
+        },
+        {
+          "name": "destination",
+          "placeholder": "Destination",
+          "type": "text"
+        },
+        {
+          "name": "qtype",
+          "placeholder": "Other Service",
+          "type": "text"
+        },
+        {
+          "name": "cus_name",
+          "placeholder": "Customer Name",
+          "type": "text"
+        },
+        {
+          "name": "cus_phone",
+          "placeholder": "Customer Phone",
+          "type": "text"
+        },
+        {
+          "name": "cus_email",
+          "placeholder": "Customer Email",
+          "type": "email"
+        },
+        {
+          "name": "cus_company",
+          "placeholder": "Customer Company",
+          "type": "text"
+        },
+        {
+          "name": "cus_address",
+          "placeholder": "Customer Address",
+          "type": "text"
+        },
+        {
+          "name": "service[]",
+          "placeholder": "Enter Service",
+          "type": "text"
+        },
+        {
+          "name": "description[]",
+          "placeholder": "Enter Description",
+          "type": "text"
+        },
+        {
+          "name": "pax[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "amount_per[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total_amount[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "subtotal",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "gst_percent",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "gst_amount",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "grand_total",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Add More Items"
+      ]
+    },
+    {
+      "path": "package-voucher",
+      "title": "Entry Package Voucher",
+      "labels": [
+        "Party Account",
+        "Consultant",
+        "Commission Type",
+        "Commission Value",
+        "Entry Date",
+        "Departure Date",
+        "Arrival Date",
+        "Manual Voucher #",
+        "Lead Pax",
+        "Lead Pax Phone",
+        "Supplier",
+        "Customer Name",
+        "Passport No",
+        "Visa Type",
+        "Visa Number",
+        "Country",
+        "Status",
+        "Buying Rate",
+        "Rate of Exchange",
+        "Currency",
+        "PKR Total Buying",
+        "Sale Rate",
+        "PKR Total Selling",
+        "Profit",
+        "Loss",
+        "Supplier Account",
+        "PAX Name",
+        "PNR",
+        "Ticket Number",
+        "Airline",
+        "Sector",
+        "Sector Type",
+        "Basic Fare",
+        "Other Taxes",
+        "ROE",
+        "Total Buying (PKR)",
+        "Total Selling",
+        "Total Selling (PKR)",
+        "Hotel Name",
+        "City",
+        "Rooms/Beds",
+        "Room Type",
+        "Check-in",
+        "Nights",
+        "Check-out",
+        "Adults",
+        "Child",
+        "Confirmation Number",
+        "Meal",
+        "Buying Rate P.Night",
+        "Total Buying Amount",
+        "Sale Rate P.Night",
+        "Total Sale Amount",
+        "Flight No (Optional)",
+        "Select Transport",
+        "Travel Date",
+        "Travel Time",
+        "Route",
+        "Transport Reg#",
+        "Transport Capacity",
+        "Driver Name",
+        "Driver Number",
+        "Buy Rate",
+        "Buying Currency",
+        "T. Buying Rate (PKR)",
+        "Sell Rate",
+        "T. Selling Rate (PKR)",
+        "Flight#",
+        "Dep Date",
+        "Dep Time",
+        "Sector From",
+        "Sector To",
+        "Arr Date",
+        "Arr Time",
+        "Action",
+        "Total Buying",
+        "Profit (Net)",
+        "Loss (Net)",
+        "Add Receivings",
+        "Account",
+        "Debit",
+        "PKR Received",
+        "PKR Remaining"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "party_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "consultant",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "commission_type",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "commission_value",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "voucher_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "depdate",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "arival_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "manual_v_no",
+          "placeholder": "Voucher number",
+          "type": "text"
+        },
+        {
+          "name": "lead_pax",
+          "placeholder": "Lead passenger name",
+          "type": "text"
+        },
+        {
+          "name": "head_phone",
+          "placeholder": "Phone number",
+          "type": "number"
+        },
+        {
+          "name": "visa_supplier[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_paxname[]",
+          "placeholder": "Full name",
+          "type": "text"
+        },
+        {
+          "name": "v_passport[]",
+          "placeholder": "Passport number",
+          "type": "text"
+        },
+        {
+          "name": "v_type[]",
+          "placeholder": "Visa type",
+          "type": "text"
+        },
+        {
+          "name": "vnumber[]",
+          "placeholder": "Visa number",
+          "type": "text"
+        },
+        {
+          "name": "v_country[]",
+          "placeholder": "Country",
+          "type": "text"
+        },
+        {
+          "name": "v_status[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_total_buying[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "v_buy_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_currency_buying[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_pkr_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_total_selling[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "v_roe_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_currency_selling[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "v_pkr_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "v_loss[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "ticket_supplier[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "paxname[]",
+          "placeholder": "Passenger name",
+          "type": "text"
+        },
+        {
+          "name": "pnr[]",
+          "placeholder": "PNR",
+          "type": "text"
+        },
+        {
+          "name": "ticketnumber[]",
+          "placeholder": "Ticket number",
+          "type": "text"
+        },
+        {
+          "name": "airline[]",
+          "placeholder": "Airline",
+          "type": "text"
+        },
+        {
+          "name": "sector[]",
+          "placeholder": "Sector",
+          "type": "text"
+        },
+        {
+          "name": "sector_type[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "basic_fare[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "other_taxes[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "ticket_buying_currency[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "ticket_buying_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "total[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "pkr_selling[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "ticket_selling_currency[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "ticket_selling_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "final_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "loss[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "hotel_supplier[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_paxname[]",
+          "placeholder": "Passenger name",
+          "type": "text"
+        },
+        {
+          "name": "h_hotelname[]",
+          "placeholder": "Hotel name",
+          "type": "text"
+        },
+        {
+          "name": "h_country[]",
+          "placeholder": "Country",
+          "type": "text"
+        },
+        {
+          "name": "h_city[]",
+          "placeholder": "City",
+          "type": "text"
+        },
+        {
+          "name": "h_rooms[]",
+          "placeholder": "Number",
+          "type": "number"
+        },
+        {
+          "name": "h_roomtype[]",
+          "placeholder": "Room type",
+          "type": "text"
+        },
+        {
+          "name": "h_checkin[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "h_nights[]",
+          "placeholder": "Nights",
+          "type": "number"
+        },
+        {
+          "name": "h_checkout[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "h_adults[]",
+          "placeholder": "Adults",
+          "type": "number"
+        },
+        {
+          "name": "h_childs[]",
+          "placeholder": "Children",
+          "type": "number"
+        },
+        {
+          "name": "h_confimrationnumber[]",
+          "placeholder": "Confirmation",
+          "type": "text"
+        },
+        {
+          "name": "meal_type[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_per_night_buying[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "h_total_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_buy_roe[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_currency_buying[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_pkr_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_per_night_selling[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "h_total_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_roe_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_currency_selling[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "h_pkr_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "h_loss[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "transport_supplier[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "flight_no[]",
+          "placeholder": "Flight number",
+          "type": "text"
+        },
+        {
+          "name": "transport[]",
+          "placeholder": "Transport details",
+          "type": "text"
+        },
+        {
+          "name": "travel_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "travel_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "route[]",
+          "placeholder": "Route",
+          "type": "text"
+        },
+        {
+          "name": "transport_reg[]",
+          "placeholder": "Registration",
+          "type": "text"
+        },
+        {
+          "name": "transport_capacity[]",
+          "placeholder": "Capacity",
+          "type": "text"
+        },
+        {
+          "name": "driver_name[]",
+          "placeholder": "Driver name",
+          "type": "text"
+        },
+        {
+          "name": "driver_number[]",
+          "placeholder": "Phone number",
+          "type": "number"
+        },
+        {
+          "name": "transport_buying_rate[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "transport_buying_currency[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "transport_buying_roe[]",
+          "placeholder": "e.g. 74.5",
+          "type": "number"
+        },
+        {
+          "name": "transport_buying[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "transport_selling_rate[]",
+          "placeholder": "0.00",
+          "type": "number"
+        },
+        {
+          "name": "transport_selling_currency[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "transport_selling_roe[]",
+          "placeholder": "e.g. 74.5",
+          "type": "number"
+        },
+        {
+          "name": "transport_selling[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "trans_profit[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "trans_loss[]",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "flightno[]",
+          "placeholder": "Flight number",
+          "type": "text"
+        },
+        {
+          "name": "dep_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "dep_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "sector_from[]",
+          "placeholder": "From",
+          "type": "text"
+        },
+        {
+          "name": "sector_to[]",
+          "placeholder": "To",
+          "type": "text"
+        },
+        {
+          "name": "arr_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "arr_time[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "final_remarks",
+          "placeholder": "Additional remarks",
+          "type": "textarea"
+        },
+        {
+          "name": "buying_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "selling_total",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "profit_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "loss_amount",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "account[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "quantity[]",
+          "placeholder": "Debit",
+          "type": "number"
+        },
+        {
+          "name": "recevied",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "remaining",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "add_entry",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Remove",
+        "Add Visa",
+        "Add Ticket",
+        "Add Hotel",
+        "Add Transport",
+        "Add Flight"
+      ]
+    },
+    {
+      "path": "multi-invoice",
+      "title": "Multi Invoice",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Select Customer"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "from_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "to_date",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "customers",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "shw_voucher",
+          "placeholder": null,
+          "type": "submit"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "add-group",
+      "title": "Add Group Ticket",
+      "labels": [
+        "Supplier",
+        "Sector (e.g., LHE-JED-LHE)",
+        "Airline",
+        "Group Category",
+        "Group Name",
+        "PNR",
+        "Seats",
+        "Flight#",
+        "Class",
+        "Baggage",
+        "Meal",
+        "Dep Date",
+        "Dep Time",
+        "Sector From",
+        "Sector To",
+        "Arr Date",
+        "Arr Time",
+        "Buying Currency",
+        "Buying Price Per Seat (Adult )",
+        "Buying Price Per Seat (Child)",
+        "Buying Price Per Seat (Infant)",
+        "Selling Currency",
+        "Selling Price Per Seat (Adult )",
+        "Selling Price Per Seat (Child)",
+        "Selling Price Per Seat (Infant)",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "placeholder": "Search",
+          "type": "text"
+        },
+        {
+          "name": "supplier_account",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "sector_main",
+          "placeholder": "LHE-JED-LHE",
+          "type": "text"
+        },
+        {
+          "name": "airline",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "group_cat",
+          "placeholder": "KSA",
+          "type": "text"
+        },
+        {
+          "name": "group_name",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "pnr_1",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "seats",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "flight[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "class[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "baggage[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "meal[]",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "dep_dt[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "sec_from[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "sec_to[]",
+          "placeholder": null,
+          "type": "text"
+        },
+        {
+          "name": "arr_date[]",
+          "placeholder": null,
+          "type": "date"
+        },
+        {
+          "name": "arr_dt[]",
+          "placeholder": null,
+          "type": "time"
+        },
+        {
+          "name": "b_currency",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "b_price_adult",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "b_price_child",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "b_price_infant",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "s_currency",
+          "placeholder": null,
+          "type": "select-one"
+        },
+        {
+          "name": "s_price_adult",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "s_price_child",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "s_price_infant",
+          "placeholder": null,
+          "type": "number"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "placeholder": null,
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "+ Add More",
+        "Submit"
+      ]
+    },
+    {
+      "path": "trialbalance",
+      "title": "Trial Balance",
+      "labels": [
+        "Trial Balance As Of",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date",
+          "type": "date"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View"
+      ]
+    },
+    {
+      "path": "head-wise-trialbalance",
+      "title": "Head Wise Trial Balance",
+      "labels": [
+        "Trial Balance As Of",
+        "Head Name",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date",
+          "type": "date"
+        },
+        {
+          "name": "head_name",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter",
+        "Print"
+      ]
+    },
+    {
+      "path": "period-wise-trialbalance",
+      "title": "Trial Balance",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View"
+      ]
+    },
+    {
+      "path": "balance-sheet",
+      "title": "Balance Sheet",
+      "labels": [
+        "Select Date:",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "daily-cash",
+      "title": "Daily Cash Book",
+      "labels": [
+        "Select Date",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View Report"
+      ]
+    },
+    {
+      "path": "daily-bank",
+      "title": "Daily Bank Flow Report",
+      "labels": [
+        "Select Date",
+        "Search:",
+        "#",
+        "Voucher #",
+        "Date",
+        "Bank Account",
+        "Description",
+        "Receipt",
+        "Payment",
+        "Grand Totals for All Bank Accounts:",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View Report",
+        "Print",
+        "Excel",
+        "PDF"
+      ]
+    },
+    {
+      "path": "monthly-profit-loss",
+      "title": "Monthly Profit & Loss",
+      "labels": [
+        "From Month",
+        "To Month",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "month"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "month"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View"
+      ]
+    },
+    {
+      "path": "recovery-report",
+      "title": "Recovery Report",
+      "labels": [
+        "From",
+        "To",
+        "Show 102550100 entries",
+        "Search:",
+        "Sr #",
+        "Voucher #",
+        "Account",
+        "Total",
+        "Recevied",
+        "Remaining",
+        "Pending Since",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "frm_date",
+          "type": "date"
+        },
+        {
+          "name": "to_date",
+          "type": "date"
+        },
+        {
+          "name": "date_fltr",
+          "type": "submit"
+        },
+        {
+          "name": "DataTables_Table_0_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "daily-sales-statement",
+      "title": "Daily Sale Statement",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Sale Type",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "frm_dte",
+          "type": "date"
+        },
+        {
+          "name": "to_dte",
+          "type": "date"
+        },
+        {
+          "name": "type_filter",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View"
+      ]
+    },
+    {
+      "path": "today-activities",
+      "title": "Activities",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Voucher",
+        "Account",
+        "Date",
+        "Description",
+        "Debit",
+        "Credit",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "DataTables_Table_0_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "consultant-report",
+      "title": "Consultant Report",
+      "labels": [
+        "From",
+        "To",
+        "Consultant",
+        "Show 2550100All entries",
+        "Search:",
+        "#",
+        "Date",
+        "Voucher / Package",
+        "Type",
+        "Description",
+        "Buying",
+        "Selling",
+        "P / L",
+        "Commission",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "consultant",
+          "type": "select-one"
+        },
+        {
+          "name": "consultantTable_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter",
+        "Print"
+      ]
+    },
+    {
+      "path": "sale-report",
+      "title": "Invoice Wise Report",
+      "labels": [
+        "Party Type",
+        "Account",
+        "From Date",
+        "To Date",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "party_type",
+          "type": "select-one"
+        },
+        {
+          "name": "acc_id",
+          "type": "select-one"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "See Report"
+      ]
+    },
+    {
+      "path": "bsp-report",
+      "title": "BSP Report",
+      "labels": [
+        "From Date",
+        "To Date",
+        "V #",
+        "Date",
+        "Pax",
+        "Tckt#",
+        "Airline",
+        "Sector",
+        "Buying",
+        "Supplier",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "upcoming-flights",
+      "title": "Upcoming Flights",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Voucher",
+        "Booking Date",
+        "Passenger",
+        "Customer",
+        "Flight Details",
+        "Travel Date",
+        "Days Left",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "upcoming-flights-table_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "airline-report",
+      "title": "Airline Wise Ticket Report",
+      "labels": [
+        "Entry Date From",
+        "Entry Date To",
+        "Airline (Filter)",
+        "#",
+        "Entry Date",
+        "Airline Logo",
+        "Airline Name",
+        "Ticket #",
+        "PNR",
+        "Passenger",
+        "Customer",
+        "Supplier",
+        "Sector",
+        "Travel Date",
+        "Buying (PKR)",
+        "Selling (PKR)",
+        "Profit/Loss",
+        "Grand Total:"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "start_date",
+          "type": "date"
+        },
+        {
+          "name": "end_date",
+          "type": "date"
+        },
+        {
+          "name": "airline_id",
+          "type": "select-one"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Generate Report",
+        "Print Report"
+      ]
+    },
+    {
+      "path": "gds-report",
+      "title": "GDS Wise Report",
+      "labels": [
+        "From Date",
+        "To Date",
+        "GDS",
+        "Show 102550100 entries",
+        "Search:",
+        "Voucher #",
+        "Booking Date",
+        "Passenger",
+        "PNR",
+        "Ticket #",
+        "Sector",
+        "Travel Date",
+        "Buying (PKR)",
+        "Selling (PKR)",
+        "Profit/Loss",
+        "Action"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "gds",
+          "type": "select-one"
+        },
+        {
+          "name": "gds-report-table_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "nearby-checkin",
+      "title": "Nearby Check Inn",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Status",
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Voucher",
+        "Booking Date",
+        "Customer",
+        "Supplier",
+        "Passenger",
+        "Hotel Name",
+        "Room",
+        "Conf. Num",
+        "Meal",
+        "Check-In Date",
+        "Check-Out Date",
+        "Nights",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sts",
+          "type": "select-one"
+        },
+        {
+          "name": "upcoming-flights-table_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "nearby-checkout",
+      "title": "Nearby Check Out",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Status",
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Voucher",
+        "Booking Date",
+        "Customer",
+        "Supplier",
+        "Passenger",
+        "Hotel Name",
+        "Room",
+        "Conf. Num",
+        "Meal",
+        "Check-In Date",
+        "Check-Out Date",
+        "Nights",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sts",
+          "type": "select-one"
+        },
+        {
+          "name": "upcoming-flights-table_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "nearby-transort",
+      "title": "Nearby Transport",
+      "labels": [
+        "From Date",
+        "To Date",
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Voucher",
+        "Booking Date",
+        "Travel Date",
+        "Travel Time",
+        "Customer",
+        "Supplier",
+        "Transport",
+        "Reg #",
+        "Route",
+        "Driver",
+        "Driver Phone",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "DataTables_Table_0_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter"
+      ]
+    },
+    {
+      "path": "all-vouchers",
+      "title": "All Journal Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Dated",
+        "Account - Description",
+        "Added by",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View",
+        "Print"
+      ]
+    },
+    {
+      "path": "all-jvouchers",
+      "title": "All Journal Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Dated",
+        "Account - Description",
+        "No. Of Entries",
+        "Added by",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View",
+        "Print"
+      ]
+    },
+    {
+      "path": "all-cvouchers",
+      "title": "All Cash Vouchers",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Dated",
+        "Short Descp",
+        "Entries",
+        "Added by",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "View",
+        "Print"
+      ]
+    },
+    {
+      "path": "all-invoice-voucher",
+      "title": "All Invoice",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-invoice-vouchers",
+      "title": "All Quick Invoice",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-tinvoice-voucher",
+      "title": "All Ticket Invoice",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-ticket-voucher",
+      "title": "All Ticket Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Customer Acc",
+        "Description",
+        "Supplier Account",
+        "Added by",
+        "Price",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-refund-ticket-vouchers",
+      "title": "All Refunded Ticket Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Customer Acc",
+        "Description",
+        "Supplier Account",
+        "Added by",
+        "Price",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-hotel-vouchers",
+      "title": "All Hotel Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Payment Status",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Customer Acc",
+        "Description",
+        "Supplier Account",
+        "Added by",
+        "Price",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "p_sts",
+          "type": "select-one"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-hvouchers",
+      "title": "All Hotel Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Customer Acc",
+        "Description",
+        "Supplier Account",
+        "Added by",
+        "Price",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-visa-vouchers",
+      "title": "All Visa Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "VV #",
+        "Customer Acc",
+        "Paxes",
+        "Supplier Acc",
+        "Visa Status",
+        "Price",
+        "Add/Edit By",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-vvouchers",
+      "title": "All Visa Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "VV #",
+        "Customer Acc",
+        "Description",
+        "Supplier Acc",
+        "Add by",
+        "Visa Status",
+        "Price",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-transport-vouchers",
+      "title": "All Transport Voucher",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "VV #",
+        "Customer Acc",
+        "Description",
+        "Supplier Acc",
+        "Add by",
+        "Price",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-quotation-form",
+      "title": "All Quotation Forms",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 102550100 entries",
+        "Search:",
+        "Q. ID #",
+        "Dated",
+        "Quotation Title",
+        "Customer",
+        "Destination",
+        "Grand Total (PKR)",
+        "Added by",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "DataTables_Table_0_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-pvouchers",
+      "title": "All Package Vouchers",
+      "labels": [
+        "From Month:",
+        "To Month:",
+        "Show 50100200All entries",
+        "Search:",
+        "V. ID #",
+        "Date",
+        "Party Account",
+        "Description",
+        "Lead Pax Details",
+        "Added By",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "selected_date_from",
+          "type": "date"
+        },
+        {
+          "name": "selected_date_to",
+          "type": "date"
+        },
+        {
+          "name": "submit_date",
+          "type": "submit"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-groups",
+      "title": "All Groups",
+      "labels": [
+        "Date From",
+        "Date To",
+        "Sector",
+        "Show 102550100 entries",
+        "Search:",
+        "ID",
+        "Group Name",
+        "Airline",
+        "Dates",
+        "Prices",
+        "Seat Status",
+        "Status",
+        "Actions",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sector_filter",
+          "type": "select-one"
+        },
+        {
+          "name": "filter",
+          "type": "submit"
+        },
+        {
+          "name": "destinations_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "all-group-bookings",
+      "title": "All Groups Bookings",
+      "labels": [
+        "Date From",
+        "Date To",
+        "Sector",
+        "Status",
+        "ID",
+        "Booking Details",
+        "Agent/Supplier",
+        "Group Info",
+        "Passengers",
+        "Financials",
+        "Actions",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sector_filter",
+          "type": "select-one"
+        },
+        {
+          "name": "status_filter",
+          "type": "select-one"
+        },
+        {
+          "name": "filter",
+          "type": "submit"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "head-wise-accounts",
+      "title": "All Head Wise Accounts",
+      "labels": [
+        "Filter by Head",
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Account Name",
+        "Head",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "head_name",
+          "type": "select-one"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Filter",
+        "Print"
+      ]
+    },
+    {
+      "path": "chart-of-accounts",
+      "title": "Chart Of Accounts",
+      "labels": [
+        "#",
+        "Account Name",
+        "ID",
+        "Added By",
+        "Opening Dr",
+        "Opening Cr",
+        "Actions",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "add-user",
+      "title": "Add User",
+      "labels": [
+        "Full Name *",
+        "Email Address *",
+        "Username * (no spaces)",
+        "Password *",
+        "Select All Permissions",
+        "Chart of Accounts",
+        "Trial Balance",
+        "Daily Cash",
+        "Daily Sale",
+        "Add/View Entry Voucher",
+        "Edit Entry Voucher",
+        "Add/View Invoice",
+        "Edit Invoice",
+        "Add/View Ticket Invoice",
+        "Edit Ticket Invoice",
+        "Add/View Hotel Invoice",
+        "Edit Hotel Invoice",
+        "Add/View Visa Invoice",
+        "Edit Visa Invoice",
+        "Add/View Transport Invoice",
+        "Edit Transport Invoice",
+        "Multi Invoice",
+        "Quotation Voucher",
+        "Recovery Report",
+        "Profit/Loss Report",
+        "Add/EDT RECV",
+        "Edit/Change Entry Date",
+        "Void Invoice",
+        "Add/Edit Buying",
+        "Add/View Package Voucher",
+        "Edit Package Voucher",
+        "Add/Edit User",
+        "Company Profile",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "admin_name",
+          "type": "text"
+        },
+        {
+          "name": "admin_email",
+          "type": "email"
+        },
+        {
+          "name": "admin_username",
+          "type": "text"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "formDoor[]",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Create User"
+      ]
+    },
+    {
+      "path": "all-users",
+      "title": "All Users",
+      "labels": [
+        "Show 102550100 entries",
+        "Search:",
+        "#",
+        "Name",
+        "Email",
+        "Username",
+        "Status",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "omlist_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO"
+      ]
+    },
+    {
+      "path": "consultant",
+      "title": "Add Consultant",
+      "labels": [
+        "Name",
+        "Phone",
+        "Email",
+        "Sale %",
+        "Show 102550100 entries",
+        "Search:",
+        "Sr#",
+        "Status",
+        "Actions",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "cons_name",
+          "type": "text"
+        },
+        {
+          "name": "cons_phone",
+          "type": "text"
+        },
+        {
+          "name": "cons_email",
+          "type": "email"
+        },
+        {
+          "name": "cons_sale_percent",
+          "type": "number"
+        },
+        {
+          "name": "crt_cons",
+          "type": "submit"
+        },
+        {
+          "name": "DataTables_Table_0_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "phone",
+          "type": "text"
+        },
+        {
+          "name": "email",
+          "type": "email"
+        },
+        {
+          "name": "sale_percent",
+          "type": "number"
+        },
+        {
+          "name": "status",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Edit",
+        "Close",
+        "Update"
+      ]
+    },
+    {
+      "path": "shirka",
+      "title": "Add Shirka",
+      "labels": [
+        "Sr#",
+        "Shirka Type",
+        "Name",
+        "Phone",
+        "Email",
+        "Action",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "shirka_type",
+          "type": "select-one"
+        },
+        {
+          "name": "shirka_name",
+          "type": "text"
+        },
+        {
+          "name": "shirka_phone",
+          "type": "text"
+        },
+        {
+          "name": "shirka_email",
+          "type": "email"
+        },
+        {
+          "name": "crt_shirka",
+          "type": "submit"
+        },
+        {
+          "name": "type",
+          "type": "select-one"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "phone",
+          "type": "text"
+        },
+        {
+          "name": "email",
+          "type": "email"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Edit",
+        "Close",
+        "Update"
+      ]
+    },
+    {
+      "path": "company-profile",
+      "title": "Company Profile",
+      "labels": [
+        "Company Name:",
+        "Phone 1:",
+        "Phone 2:",
+        "Email 1:",
+        "Email 2:",
+        "NTN",
+        "License No.",
+        "VAT No.",
+        "Show Logo On Invoice",
+        "Show Stamp On Invoice",
+        "Show Banks",
+        "Address:",
+        "Website:",
+        "Company Logo:",
+        "Company Stamp:",
+        "Voucher Banner:",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "CompanyName",
+          "type": "text"
+        },
+        {
+          "name": "CompanyPhone1",
+          "type": "text"
+        },
+        {
+          "name": "CompanyPhone2",
+          "type": "text"
+        },
+        {
+          "name": "CompanyEmail1",
+          "type": "email"
+        },
+        {
+          "name": "CompanyEmail2",
+          "type": "email"
+        },
+        {
+          "name": "ntn",
+          "type": "text"
+        },
+        {
+          "name": "lcn_no",
+          "type": "text"
+        },
+        {
+          "name": "vat",
+          "type": "text"
+        },
+        {
+          "name": "shw_logo_inv",
+          "type": "select-one"
+        },
+        {
+          "name": "inv_stamp",
+          "type": "select-one"
+        },
+        {
+          "name": "show_bank",
+          "type": "select-one"
+        },
+        {
+          "name": "CompanyAddress",
+          "type": "textarea"
+        },
+        {
+          "name": "web_url",
+          "type": "text"
+        },
+        {
+          "name": "compny_logo",
+          "type": "file"
+        },
+        {
+          "name": "compny_stamp",
+          "type": "file"
+        },
+        {
+          "name": "compny_banner",
+          "type": "file"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Update"
+      ]
+    },
+    {
+      "path": "add-bank",
+      "title": "Add Bank",
+      "labels": [
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "account_name[]",
+          "type": "text"
+        },
+        {
+          "name": "account_number[]",
+          "type": "text"
+        },
+        {
+          "name": "iban_number[]",
+          "type": "text"
+        },
+        {
+          "name": "bank_name[]",
+          "type": "text"
+        },
+        {
+          "name": "address[]",
+          "type": "text"
+        },
+        {
+          "name": "account_name[]",
+          "type": "text"
+        },
+        {
+          "name": "account_number[]",
+          "type": "text"
+        },
+        {
+          "name": "iban_number[]",
+          "type": "text"
+        },
+        {
+          "name": "bank_name[]",
+          "type": "text"
+        },
+        {
+          "name": "address[]",
+          "type": "text"
+        },
+        {
+          "name": "account_name[]",
+          "type": "text"
+        },
+        {
+          "name": "account_number[]",
+          "type": "text"
+        },
+        {
+          "name": "iban_number[]",
+          "type": "text"
+        },
+        {
+          "name": "bank_name[]",
+          "type": "text"
+        },
+        {
+          "name": "address[]",
+          "type": "text"
+        },
+        {
+          "name": "account_name[]",
+          "type": "text"
+        },
+        {
+          "name": "account_number[]",
+          "type": "text"
+        },
+        {
+          "name": "iban_number[]",
+          "type": "text"
+        },
+        {
+          "name": "bank_name[]",
+          "type": "text"
+        },
+        {
+          "name": "address[]",
+          "type": "text"
+        },
+        {
+          "name": "account_name[]",
+          "type": "text"
+        },
+        {
+          "name": "account_number[]",
+          "type": "text"
+        },
+        {
+          "name": "iban_number[]",
+          "type": "text"
+        },
+        {
+          "name": "bank_name[]",
+          "type": "text"
+        },
+        {
+          "name": "address[]",
+          "type": "text"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Save Banks"
+      ]
+    },
+    {
+      "path": "add-airline",
+      "title": "Add Airline",
+      "labels": [
+        "Airline Name",
+        "Shortcode(PK)",
+        "Code(123)",
+        "Airline Logo (Max 2MB) JPEG, PNG, GIF, WebP only",
+        "Show 102550100 entries",
+        "Search:",
+        "Sr#",
+        "Logo",
+        "Name",
+        "Short Code",
+        "Code",
+        "Action",
+        "Airline Code",
+        "Current Logo",
+        "Upload New Logo (Max 2MB)",
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "airline_name",
+          "type": "text"
+        },
+        {
+          "name": "short_code",
+          "type": "text"
+        },
+        {
+          "name": "airline_code",
+          "type": "text"
+        },
+        {
+          "name": "airline_logo",
+          "type": "file"
+        },
+        {
+          "name": "add_airline",
+          "type": "submit"
+        },
+        {
+          "name": "DataTables_Table_0_length",
+          "type": "select-one"
+        },
+        {
+          "name": "",
+          "type": "search"
+        },
+        {
+          "name": "edit_airline_name",
+          "type": "text"
+        },
+        {
+          "name": "edit_short_code",
+          "type": "text"
+        },
+        {
+          "name": "edit_airline_code",
+          "type": "text"
+        },
+        {
+          "name": "edit_airline_logo",
+          "type": "file"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Edit",
+        "Close",
+        "Update"
+      ]
+    },
+    {
+      "path": "change-password",
+      "title": "Change Password",
+      "labels": [
+        "Light Mode",
+        "Dark Mode"
+      ],
+      "fields": [
+        {
+          "name": "",
+          "type": "text"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        },
+        {
+          "name": "",
+          "type": "checkbox"
+        }
+      ],
+      "buttons": [
+        "DEMO",
+        "Change Password"
+      ]
+    }
+  ]
+}
