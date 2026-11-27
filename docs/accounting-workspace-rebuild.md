@@ -51,8 +51,9 @@ This foundation does NOT mean feature or visual parity is complete.
    backend/schema code. Public inquiries still use leads; linked relations and
    financial constraints must be migrated deliberately rather than dropped.
 
-No production deletion, migration or deployment has been performed by this
-foundation. Owner says old data is disposable and no new backup is required;
+The foundation shipped through PR49 as 8a49a822. Hostinger deployment
+01a21895-42cb-709b-854f-9f305650e906 was verified Completed/Current.
+No production deletion or migration was performed. Owner says old data is disposable and no new backup is required;
 there is no reason to erase data merely to restyle and replace the workspace.
 Old source data is not proof of customer selling prices or receipts.
 
@@ -76,4 +77,27 @@ behavior without explicit formula/reconciliation tests.
   opened and the ticket page had no document horizontal overflow. A reproduced
   desktop overflow from screen-reader labels inside the scrolling records table
   was corrected by positioning their container; desktop recheck passed.
-- These are local results. Remote CI and production deployment remain pending.
+- PR49 and merge CI both passed. Production homepage, health (database healthy),
+  both recovery pages and anonymous denial on operations/audit/manual-journal
+  passed. Auto-deployment was restored off after publishing. Authenticated
+  production form acceptance was not executed in that release.
+
+## Next module parity increment — not deployed
+
+- Remove the duplicate agency masthead from all management forms; retain the
+  shared company header and branding on generated documents.
+- Add a Super Admin-only reports workspace using the existing guarded catalogue,
+  date filters, 50-row pagination and CSV exporter. No financial formulas or
+  report posting behavior are changed. Current receivables explicitly omit date
+  filtering. Displayed scalar values retain their original decimal strings.
+- This is not the full reference reports suite. Account ledger, balance sheet,
+  consultant/GDS/BSP analysis, PDF/print and additional service editors still
+  require their own implemented and verified behavior.
+- Executed local checks: website lint/typecheck, 17 staff tests, production build
+  and standalone packaging passed. Synthetic browser trial balance and current
+  receivables rendered, and downloaded CSV preserved the exact `70.26` value.
+  A scoped staff user with `report.view` could sign in through the staff portal
+  but could not see the report navigation or directly open global report data.
+  Trial balance's unused start filter was subsequently removed and its cutoff
+  explicitly labeled UTC midnight; lint/typecheck passed after that correction.
+  Remote CI and the final filter browser recheck remain pending.

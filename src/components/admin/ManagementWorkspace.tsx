@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RecordSummary, RecordResults } from "./RecordSummary";
 import { CrmRelatedWork } from "./CrmRelatedWork";
 import { moduleCapabilities, moduleHref } from "@/lib/staff-navigation";
-import { AgencyMasthead } from "@/components/admin/AgencyMasthead";
 import {
   bookingDocumentUrl,
   bookingFieldSection,
@@ -1116,9 +1115,6 @@ export function ManagementWorkspace({
     );
   return (
     <section>
-      {!["leads", "customers", "tasks", "follow-ups", "quotations"].includes(
-        resource,
-      ) && <AgencyMasthead />}
       <Link href="/admin/manage" className="text-sm underline">
         All management modules
       </Link>
