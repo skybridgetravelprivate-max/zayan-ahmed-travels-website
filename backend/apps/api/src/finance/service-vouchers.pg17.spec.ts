@@ -67,3 +67,38 @@ test("PG17 service invoice buying, supplier ledger, receipt allocation and retri
     assert.equal(legacy.supplierId, null); assert.equal(legacy.lines[0].unitCost, null);
   } finally { await db.$disconnect(); }
 });
+
+
+test("PG17 schema reconciliation preserves rows and refuses duplicate email repair", { skip: !process.env.ZAT_SYNTHETIC_DATABASE_URL }, async () => {
+  const target = new URL(process.env.ZAT_SYNTHETIC_DATABASE_URL!);
+  assert.equal(target.hostname, "127.0.0.1"); assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
+  const { readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const root = process.cwd().endsWith("backend") ? process.cwd() : resolve(process.cwd(), "backend");
+  const sql = readFileSync(resolve(root, "packages/database/prisma/migrations/20261127150000_reconcile_deployed_schema/migration.sql"), "utf8");
+  const statements = sql.replace(/^--.*$/gm, "").split(";").map(s => s.trim()).filter(s => s && !["BEGIN", "COMMIT"].includes(s));
+  const db = new PrismaClient({ datasourceUrl: target.toString() });
+  const rollback = new Error("synthetic rollback");
+  try {
+    await assert.rejects(db.$transaction(async tx => {
+      const before = await tx.customer.count();
+      await tx.$executeRawUnsafe('DROP INDEX "Customer_email_key"');
+      await tx.$executeRawUnsafe(`ALTER TABLE "TransportBooking" ALTER COLUMN "status" SET DEFAULT 'historical-test'`);
+      for (const statement of statements) await tx.$executeRawUnsafe(statement);
+      const indexes = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='Customer_email_key' AND indexdef LIKE 'CREATE UNIQUE INDEX%'`;
+      assert.equal(Number(indexes[0].count), 1);
+      const defaults = await tx.$queryRaw<{ column_default: string }[]>`SELECT column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='TransportBooking' AND column_name='status'`;
+      assert.match(defaults[0].column_default, /Reserved/);
+      assert.equal(await tx.customer.count(), before);
+      throw rollback;
+    }), error => error === rollback);
+    await assert.rejects(db.$transaction(async tx => {
+      await tx.$executeRawUnsafe('DROP INDEX "Customer_email_key"');
+      const email = randomUUID() + "@example.invalid";
+      for (let i = 0; i < 2; i++) await tx.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic duplicate", email } });
+      for (const statement of statements) await tx.$executeRawUnsafe(statement);
+    }), /unique|duplicate/i);
+    const indexes = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='Customer_email_key'`;
+    assert.equal(Number(indexes[0].count), 1);
+  } finally { await db.$disconnect(); }
+});

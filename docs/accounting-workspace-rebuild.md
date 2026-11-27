@@ -158,3 +158,9 @@ behavior without explicit formula/reconciliation tests.
 - Remaining full-reference work: multi-ticket vouchers, complete cash/bank/expense
   editors, combined packages, remaining service/group-seat editors, advanced
   ledgers/reports and deliberate removal of legacy dependencies.
+
+### Deployed schema reconciliation
+
+Read-only production comparison found a missing `Customer_email_key` unique index, five historical `updatedAt` defaults, and a different transport status default. Duplicate non-null email groups: zero. Migration `20261127150000_reconcile_deployed_schema` restores the declared schema in a bounded transaction without updating/deleting rows. A disposable regression recreates the drift, checks row preservation and verifies that duplicate emails abort rather than merge/delete records.
+
+Two already-completed historical migration checksums differ from both reviewed LF and CRLF bytes: editorial revisions and customer password recovery. Existing production tables, foreign keys, checks, RLS and public access restrictions were inspected; historical checksums must remain unchanged. This is recorded historical provenance drift, not proof that the original applied files were recovered. Deployment requires catalog/schema reconciliation and both pending additive migrations, with exact history identities retained.
