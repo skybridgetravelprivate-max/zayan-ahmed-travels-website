@@ -13,7 +13,7 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
 import { AccountingService } from "./accounting.service";
-import { postManualVoucher } from "./manual-vouchers";
+import { postCashVoucher, postManualVoucher } from "./manual-vouchers";
 import { submissionId } from "../common/submission-id";
 import { postServiceVoucher } from "./service-vouchers";
 
@@ -29,6 +29,12 @@ export class FinanceController {
 
   private async account(code: string) {
     return this.accounting.accountByCode(code);
+  }
+
+  @Post("cash-vouchers")
+  @RequirePermission("account.post")
+  cashVoucher(@Body() body: unknown, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    return postCashVoucher(this.prisma, this.accounting, this.audit, req.user, body, key);
   }
 
   @Post("vouchers")

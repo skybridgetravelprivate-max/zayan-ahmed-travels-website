@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { postManualVoucher } from "./manual-vouchers";
+import { postCashVoucher, postManualVoucher } from "./manual-vouchers";
 import { AccountingService } from "./accounting.service";
 import { SequenceService } from "../common/sequence.service";
 import { AuditService } from "../common/audit.service";
@@ -45,6 +45,21 @@ test("PG17 manual vouchers serialize retries, preserve exact cents and roll back
     await db.chartOfAccount.update({ where: { id: a.id }, data: { status: "INACTIVE" } });
     await assert.rejects(postManualVoucher(db as never, accounting, audit, user, body, randomUUID()), { status: 400 });
     assert.equal(await db.journalEntry.count({ where: { branchId: branch.id } }), count + 1);
+    const cash = await db.chartOfAccount.upsert({ where: { code: "1100" }, update: {}, create: { code: "1100", name: "Synthetic cash", type: "ASSET" } });
+    const cashBody = { date: "2035-01-02", memo: "Synthetic gross cash", lines: [{ accountId: b.id, debit: "10.25", credit: "0" }, { accountId: b.id, debit: "0", credit: "10.25" }] };
+    const cashKey = randomUUID();
+    const cashResults = await Promise.all(Array.from({ length: 4 }, () => postCashVoucher(db as never, accounting, audit, user, cashBody, cashKey)));
+    assert.equal(new Set(cashResults.map(r => r.id)).size, 1);
+    const cashLines = cashResults[0].lines.filter(l => l.accountId === cash.id);
+    assert.equal(cashLines.length, 2);
+    assert.deepEqual(cashLines.map(l => l.debit.toFixed(2)).sort(), ["0.00", "10.25"]);
+    assert.deepEqual(cashLines.map(l => l.credit.toFixed(2)).sort(), ["0.00", "10.25"]);
+    await assert.rejects(postCashVoucher(db as never, accounting, audit, user, { ...cashBody, memo: "Changed" }, cashKey), { status: 409 });
+    await db.chartOfAccount.update({ where: { id: cash.id }, data: { status: "INACTIVE" } });
+    try {
+      assert.equal((await postCashVoucher(db as never, accounting, audit, user, cashBody, cashKey)).id, cashResults[0].id);
+      await assert.rejects(postCashVoucher(db as never, accounting, audit, user, cashBody, randomUUID()), { status: 400 });
+    } finally { await db.chartOfAccount.update({ where: { id: cash.id }, data: { status: "ACTIVE" } }); }
   } finally { await db.$disconnect(); }
 });
 

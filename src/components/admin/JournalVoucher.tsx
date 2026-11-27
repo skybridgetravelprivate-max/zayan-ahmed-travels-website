@@ -14,20 +14,20 @@ const subscribeStorage = (changed: () => void) => { window.addEventListener("sto
 const cents = (text: string) => BigInt(canonicalMoney(text || "0").replace(".", ""));
 const amount = (value: bigint) => `${value < BigInt(0) ? "-" : ""}${(value < BigInt(0) ? -value : value) / BigInt(100)}.${String((value < BigInt(0) ? -value : value) % BigInt(100)).padStart(2, "0")}`;
 
-export function JournalVoucher({ username }: { username: string }) {
+export function JournalVoucher({ username, cash = false }: { username: string; cash?: boolean }) {
   const [revision, setRevision] = useState(0);
-  return <JournalVoucherForm key={revision} username={username} onNew={() => setRevision(value => value + 1)} />;
+  return <JournalVoucherForm key={revision} username={username} cash={cash} onNew={() => setRevision(value => value + 1)} />;
 }
 
-function JournalVoucherForm({ username, onNew }: { username: string; onNew: () => void }) {
-  const [lines, setLines] = useState<Line[]>(zero);
+function JournalVoucherForm({ username, cash, onNew }: { username: string; cash: boolean; onNew: () => void }) {
+  const [lines, setLines] = useState<Line[]>(() => cash ? zero().slice(0, 1) : zero());
   const serial = useRef(2);
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [recovery, setRecovery] = useState(false);
-  const scope = `manual-voucher:${username}`;
+  const scope = `${cash ? "cash" : "manual"}-voucher:${username}`;
   const savedKey = useSyncExternalStore(subscribeStorage, () => { try { return savedReceiptRetryKey(localStorage, scope) || ""; } catch { return "!unavailable"; } }, () => "!loading");
   const storageBlocked = savedKey.startsWith("!");
 
@@ -50,7 +50,7 @@ function JournalVoucherForm({ username, onNew }: { username: string; onNew: () =
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current || busy || saved || !valid || debit !== credit || debit === BigInt(0)) return;
+    if (pending.current || busy || saved || !valid || (!cash && debit !== credit) || debit + credit === BigInt(0)) return;
     const form = new FormData(event.currentTarget);
     if (form.get("review") !== "yes") return;
     pending.current = true; setBusy(true); setError("");
@@ -58,7 +58,7 @@ function JournalVoucherForm({ username, onNew }: { username: string; onNew: () =
       const payload = { date: String(form.get("date")), memo: String(form.get("memo")), lines: lines.map(line => ({ accountId: String(form.get(`account_${line.id}`) || ""), debit: canonicalMoney(line.debit || "0"), credit: canonicalMoney(line.credit || "0"), memo: String(form.get(`memo_${line.id}`) || ""), ...(line.party ? { partyType: line.party, partyId: String(form.get(`party_${line.id}`) || "") } : {}) })) };
       const key = await receiptRetryKey(localStorage, scope, payload);
       setRecovery(true);
-      const response = await fetch("/api/v1/finance/vouchers", { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
+      const response = await fetch(`/api/v1/finance/${cash ? "cash-vouchers" : "vouchers"}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
       if ([400, 404].includes(response.status)) {
         clearReceiptRetry(localStorage, scope); setRecovery(false);
         throw new Error("Voucher was rejected without posting. Check that accounts are active, receivable/payable parties match the voucher branch, and each line has either debit or credit.");
@@ -71,7 +71,7 @@ function JournalVoucherForm({ username, onNew }: { username: string; onNew: () =
     finally { pending.current = false; setBusy(false); }
   }
 
-  return <section className="space-y-4"><header><h1>Journal voucher</h1><p>Post a balanced journal in PKR to your default branch. Voucher dates are recorded at UTC midnight. This records ledger entries; it does not transfer money or settle booking balances. Use customer receipts and supplier payments for settlements.</p></header>
+  return <section className="space-y-4"><header><h1>{cash ? "Cash voucher" : "Journal voucher"}</h1><p>{cash ? "Record cash payments and receipts in PKR against ledger accounts in your default branch." : "Post a balanced journal in PKR to your default branch."} Voucher dates are recorded at UTC midnight. This records ledger entries; it does not transfer money or settle booking balances. Use customer receipts and supplier payments for settlements.</p></header>
     {error && <p role="alert">{error}</p>}{savedKey === "!unavailable" && <p role="alert">Saved voucher recovery is unavailable. Review voucher history before posting.</p>}{saved && <div><p role="status">Voucher confirmed: {saved}.</p><Link className="mr-4 underline" href="/admin/manage/journals">Review journal history</Link><button className="underline" type="button" onClick={onNew}>Start another voucher</button></div>}
     {(recovery || (savedKey && !storageBlocked)) && <div className="rounded border border-line bg-white p-4"><p>An earlier voucher submission needs confirmation. Preserve its original details.</p><button className={button} type="button" disabled={busy} onClick={() => void recover()}>Check saved submission</button></div>}
     <form onSubmit={submit} className="space-y-4"><fieldset disabled={busy || !!saved || storageBlocked} className="space-y-4"><legend className="sr-only">Voucher details</legend>
@@ -79,16 +79,16 @@ function JournalVoucherForm({ username, onNew }: { username: string; onNew: () =
       {lines.map((line, index) => <fieldset key={line.id} className="grid gap-3 rounded border border-line bg-white p-4 sm:grid-cols-2 xl:grid-cols-4"><legend>Line {index + 1}</legend>
         <div><ReferenceInput field={{ name: `account_${line.id}`, label: `Account for line ${index + 1}`, type: "String", reference: "chart-of-accounts", required: true, nullable: false }} value="" disabled={busy || !!saved} /></div>
         <label>Description<input className={control} name={`memo_${line.id}`} maxLength={500} /></label>
-        <label>Debit<input className={control} inputMode="decimal" value={line.debit} onChange={e => update(line.id, "debit", e.target.value)} /></label>
-        <label>Credit<input className={control} inputMode="decimal" value={line.credit} onChange={e => update(line.id, "credit", e.target.value)} /></label>
+        <label>{cash ? "Payment" : "Debit"}<input className={control} inputMode="decimal" value={line.debit} onChange={e => update(line.id, "debit", e.target.value)} /></label>
+        <label>{cash ? "Receipt" : "Credit"}<input className={control} inputMode="decimal" value={line.credit} onChange={e => update(line.id, "credit", e.target.value)} /></label>
         <label>Party type<select className={control} value={line.party} onChange={e => update(line.id, "party", e.target.value)}><option value="">No party</option><option value="customer">Customer</option><option value="supplier">Supplier</option></select></label>
         {line.party && <ReferenceInput key={line.party} field={{ name: `party_${line.id}`, label: `Party for line ${index + 1}`, type: "String", reference: line.party === "customer" ? "customers" : "suppliers", required: true, nullable: false }} value="" disabled={busy || !!saved} />}
-        <button className={button} type="button" disabled={lines.length <= 2} onClick={() => setLines(prior => prior.filter(item => item.id !== line.id))}>Remove line {index + 1}</button>
+        <button className={button} type="button" disabled={lines.length <= (cash ? 1 : 2)} onClick={() => setLines(prior => prior.filter(item => item.id !== line.id))}>Remove line {index + 1}</button>
       </fieldset>)}
-      <button type="button" className={button} disabled={lines.length >= 200} onClick={() => setLines(prior => [...prior, { id: serial.current++, debit: "", credit: "", party: "" }])}>Add line</button>
-      <p aria-live="polite">{valid ? `Debit ${amount(debit)} · Credit ${amount(credit)} · Difference ${amount(debit - credit)}` : "Use a debit or a credit on every line, with up to two decimal places."}</p>
+      <button type="button" className={button} disabled={lines.length >= (cash ? 100 : 200)} onClick={() => setLines(prior => [...prior, { id: serial.current++, debit: "", credit: "", party: "" }])}>Add line</button>
+      <p aria-live="polite">{valid ? cash ? `Total payment ${amount(debit)} · Total receipt ${amount(credit)} · Cash movement ${amount(credit - debit)}` : `Debit ${amount(debit)} · Credit ${amount(credit)} · Difference ${amount(debit - credit)}` : "Use a debit or a credit on every line, with up to two decimal places."}</p>
       <label className="flex gap-2"><input type="checkbox" name="review" value="yes" required />I reviewed the accounts, parties and balanced amounts and authorize posting this voucher.</label>
-      <button className={button} disabled={!valid || debit !== credit || debit === BigInt(0)}>Post journal voucher</button>
+      <button className={button} disabled={!valid || (!cash && debit !== credit) || debit + credit === BigInt(0)}>{cash ? "Post cash voucher" : "Post journal voucher"}</button>
     </fieldset></form></section>;
 }
 

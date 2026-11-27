@@ -67,3 +67,24 @@ export async function postManualVoucher(db: PrismaService, accounting: Accountin
     return journal;
   });
 }
+
+
+/** Counterparty payment = debit; receipt = credit. Preserve gross cash legs per row. */
+export function cashVoucherInput(body: unknown, cashAccountId: string) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new BadRequestException("Expected a cash voucher");
+  const value = body as Record<string, unknown>;
+  if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 100) throw new BadRequestException("Use between 1 and 100 cash voucher rows");
+  const expanded = value.lines.flatMap((raw: unknown) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new BadRequestException("Invalid cash voucher row");
+    const row = raw as Record<string, unknown>;
+    if (row.accountId === cashAccountId) throw new BadRequestException("Choose a counterparty account instead of cash");
+    return [row, { accountId: cashAccountId, debit: row.credit, credit: row.debit, memo: row.memo }];
+  });
+  return voucherInput({ ...value, lines: expanded });
+}
+
+export async function postCashVoucher(db: PrismaService, accounting: AccountingService, audit: AuditService, user: AuthUser, body: unknown, key: unknown) {
+  const cash = await db.chartOfAccount.findUnique({ where: { code: "1100" } });
+  if (!cash || cash.type !== "ASSET") throw new BadRequestException("Cash ledger account is unavailable");
+  return postManualVoucher(db, accounting, audit, user, cashVoucherInput(body, cash.id), key);
+}
