@@ -169,7 +169,7 @@ export function ManagementHub({
   );
 }
 
-function ReferenceInput({
+export function ReferenceInput({
   field,
   value,
   disabled,

@@ -87,6 +87,7 @@ export class AccountingService {
   }
 
   async postJournal(params: {
+    id?: string;
     date: Date;
     memo: string;
     branchId?: string | null;
@@ -118,6 +119,7 @@ export class AccountingService {
     const entryNumber = await this.seq.next("jv", "ZAT-JV", db);
     const entry = await db.journalEntry.create({
       data: {
+        id: params.id,
         entryNumber,
         date: params.date,
         memo: params.memo,

@@ -100,4 +100,28 @@ behavior without explicit formula/reconciliation tests.
   but could not see the report navigation or directly open global report data.
   Trial balance's unused start filter was subsequently removed and its cutoff
   explicitly labeled UTC midnight; lint/typecheck passed after that correction.
-  Remote CI and the final filter browser recheck remain pending.
+  Reports-only commit b191580 passed remote CI. The final filter browser recheck
+  passed after the voucher increment: trial balance has no unused From input
+  and its cutoff is explicitly labeled UTC midnight.
+
+### Journal voucher increment — not deployed
+
+- Multi-line journal editor with account/party search, exact debit/credit totals,
+  balance validation, review confirmation and an explicit fresh-voucher action.
+- Posting and recovery routes retain the controller's global finance guard.
+  A per-operator persisted retry key, transaction lock, deterministic journal ID
+  and request fingerprint prevent duplicate concurrent/reloaded submissions.
+  Changed payloads or missing replay proof fail closed instead of posting again.
+- Uses the existing posting account validation, PKR basis and journal transaction.
+  Customer branch/linked-lead scope is checked; AR/AP lines require matching
+  parties. Receipt settlement/review remains a separate existing workflow.
+- No schema migration, supplier transfer, production journal or booking changes.
+- Executed: 174 backend tests, 17 staff tests, lint/typechecks, production build,
+  18 selected PostgreSQL 17 checks and the full HTTP/SMTP journey passed. HTTP
+  also proves a branch admin with account.post is denied voucher submission and
+  recovery. A browser posted one synthetic 100.25/100.25 journal, rejected an
+  imbalance, reset the form and added/removed a row; database proof found one
+  posted journal with a 0.00 difference. The fresh-voucher action was checked
+  after its final correction. No production financial write was executed.
+- This is a journal voucher, not full parity for cash/bank/expense vouchers,
+  multi-ticket invoices or combined packages. Those remain separate work.

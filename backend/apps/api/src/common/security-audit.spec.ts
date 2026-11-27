@@ -201,6 +201,7 @@ test("legacy admin audit and manual journal require global finance authorization
   const guards = (handler: object) => Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[] | undefined;
   assert.ok(guards(AdminController.prototype.auditLog)?.includes(GlobalFinanceGuard));
   assert.ok(guards(AdminController.prototype.journal)?.includes(GlobalFinanceGuard));
+  assert.ok(guards(FinanceController)?.includes(GlobalFinanceGuard));
 });
 
 test("invoice posting failure propagates within the invoice transaction", async () => {

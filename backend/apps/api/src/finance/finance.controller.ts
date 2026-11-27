@@ -13,6 +13,8 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
 import { AccountingService } from "./accounting.service";
+import { postManualVoucher } from "./manual-vouchers";
+import { submissionId } from "../common/submission-id";
 
 @Controller("v1/finance")
 @UseGuards(JwtAuthGuard, PermissionGuard, GlobalFinanceGuard)
@@ -26,6 +28,22 @@ export class FinanceController {
 
   private async account(code: string) {
     return this.accounting.accountByCode(code);
+  }
+
+  @Post("vouchers")
+  @RequirePermission("account.post")
+  voucher(@Body() body: unknown, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    return postManualVoucher(this.prisma, this.accounting, this.audit, req.user, body, key);
+  }
+
+  @Get("vouchers/submission/:key")
+  @Header("Cache-Control", "private, no-store")
+  @RequirePermission("account.post")
+  async voucherSubmission(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
+    const id = submissionId("manual-voucher", [req.user.id], key).replace(":", "_");
+    const saved = await this.prisma.journalEntry.findUnique({ where: { id }, include: { lines: true } });
+    if (!saved) throw new NotFoundException("Voucher is not confirmed. Retry the original submission.");
+    return saved;
   }
 
   private receiptId(userId: string, key: unknown) { return receiptSubmissionId(userId, key); }

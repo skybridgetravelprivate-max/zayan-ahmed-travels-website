@@ -143,7 +143,7 @@ async function journey() {
     const admin = await db.user.create({ data: { email: `${tag}@example.test`, username: tag, fullName: "Synthetic HTTP administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: adminRole.id } } } });
     const outsider = await db.user.create({ data: { email: `${tag}-staff@example.test`, username: `${tag}-staff`, fullName: "Synthetic foreign staff", passwordHash: hash, defaultBranchId: otherBranch.id, roles: { create: { roleId: scopedRole.id } } } });
     const branchAdminRole = await db.role.create({ data: { name: `SyntheticAdmin-${tag}` } });
-    const branchAdminPermissions = await Promise.all(["audit.view", "account.adjust"].map(code => db.permission.upsert({ where: { code }, update: {}, create: { code } })));
+    const branchAdminPermissions = await Promise.all(["audit.view", "account.adjust", "account.post"].map(code => db.permission.upsert({ where: { code }, update: {}, create: { code } })));
     await db.rolePermission.createMany({ data: branchAdminPermissions.map(permission => ({ roleId: branchAdminRole.id, permissionId: permission.id })) });
     const branchAdmin = await db.user.create({ data: { email: `${tag}-admin@example.test`, username: `${tag}-admin`, fullName: "Synthetic branch administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: branchAdminRole.id } }, branches: { create: { branchId: branch.id } } } });
     for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["4200", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
@@ -211,6 +211,9 @@ async function journey() {
       body: { memo: deniedJournalMemo, reason: "Synthetic authorization check", lines: journalLines },
     });
     assert.equal(deniedJournal.status, 403);
+    const deniedVoucher = await request("/api/v1/finance/vouchers", { actor: "branch-admin", method: "POST", body: { date: "2035-01-02", memo: deniedJournalMemo, lines: journalLines } });
+    assert.equal(deniedVoucher.status, 403);
+    assert.equal((await request("/api/v1/finance/vouchers/submission/synthetic-denied-key", { actor: "branch-admin" })).status, 403);
     assert.equal(await db.journalEntry.count({ where: { memo: deniedJournalMemo } }), journalCountBefore);
     const allowedJournal = await request("/api/v1/admin/manual-journal", {
       actor: "staff",
