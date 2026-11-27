@@ -1,0 +1,104 @@
+import "reflect-metadata";
+import assert from "node:assert/strict";
+import test from "node:test";
+import { randomUUID } from "node:crypto";
+import { PrismaClient, Prisma } from "@prisma/client";
+import { postServiceVoucher } from "./service-vouchers";
+import { AccountingService } from "./accounting.service";
+import { ReceiptOperations } from "./receipt-operations";
+import { SequenceService } from "../common/sequence.service";
+import { AuditService } from "../common/audit.service";
+import type { AuthUser } from "../auth/auth.types";
+
+test("PG17 service invoice buying, supplier ledger, receipt allocation and retries reconcile", { skip: !process.env.ZAT_SYNTHETIC_DATABASE_URL }, async () => {
+  const target = new URL(process.env.ZAT_SYNTHETIC_DATABASE_URL!);
+  assert.equal(target.hostname, "127.0.0.1"); assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
+  const db = new PrismaClient({ datasourceUrl: target.toString() });
+  try {
+    const [server] = await db.$queryRaw<{ version: number }[]>`SELECT current_setting('server_version_num')::int AS version`;
+    assert.ok(server.version >= 170000 && server.version < 180000);
+    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4600", "REVENUE"], ["5100", "EXPENSE"]] as const) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: "Synthetic invoice account", type } });
+    const tag = randomUUID();
+    const branch = await db.branch.create({ data: { code: tag, name: "Synthetic invoice branch" } });
+    const foreign = await db.branch.create({ data: { code: randomUUID(), name: "Synthetic foreign invoice branch" } });
+    const staff = await db.user.create({ data: { username: tag, email: tag + "@example.invalid", fullName: "Synthetic invoice operator", passwordHash: "invalid" } });
+    const customer = await db.customer.create({ data: { customerNumber: tag, fullName: "Synthetic invoice customer", branchId: branch.id } });
+    const other = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic foreign invoice customer", branchId: foreign.id } });
+    const supplier = await db.supplier.create({ data: { name: "Synthetic invoice supplier" } });
+    const user = { id: staff.id, isSuperAdmin: true, defaultBranchId: branch.id } as AuthUser;
+    const audit = new AuditService(db as never), seq = new SequenceService(db as never), accounting = new AccountingService(db as never, seq, audit), receipts = new ReceiptOperations(db as never, seq, audit, accounting);
+    const body = { date: "2035-01-02", customerId: customer.id, supplierId: supplier.id, lines: [{ description: "Synthetic quantity service", qty: 3, unitPrice: "0.20", cost: "0.10" }] };
+    const key = randomUUID();
+    const invoices = await Promise.all(Array.from({ length: 4 }, () => postServiceVoucher(db as never, seq, accounting, audit, user, body, key)));
+    const invoice = invoices[0];
+    assert.equal(new Set(invoices.map(row => row.id)).size, 1);
+    assert.equal(await db.serviceInvoice.count({ where: { customerId: customer.id } }), 1);
+    assert.equal(invoice.net.toFixed(2), "0.60"); assert.equal(invoice.cost.toFixed(2), "0.30");
+    assert.equal(invoice.lines[0].unitCost?.toFixed(2), "0.10"); assert.equal(invoice.supplierId, supplier.id);
+    const journals = await db.journalEntry.findMany({ where: { sourceId: invoice.id }, include: { lines: true } });
+    assert.equal(journals.length, 2);
+    for (const journal of journals) assert.equal(journal.lines.reduce((n, l) => n.plus(l.debit).minus(l.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
+    const ar = async () => (await accounting.arAp("customer")).find(row => row.partyId === customer.id)?.balance || "0.00";
+    const ap = async () => (await accounting.arAp("supplier")).find(row => row.partyId === supplier.id)?.balance || "0.00";
+    assert.equal(await ar(), "0.60"); assert.equal(await ap(), "0.30");
+    await assert.rejects(postServiceVoucher(db as never, seq, accounting, audit, user, { ...body, notes: "Changed" }, key), { status: 409 });
+    await assert.rejects(postServiceVoucher(db as never, seq, accounting, audit, user, { ...body, customerId: other.id }, randomUUID()), { status: 404 });
+    const alternate = await postServiceVoucher(db as never, seq, accounting, audit, user, { ...body, branchId: foreign.id, customerId: other.id, lines: [{ ...body.lines[0], cost: "0" }] }, randomUUID());
+    assert.equal(alternate.branchId, foreign.id);
+    const firstKey = randomUUID(), firstBody = { serviceInvoiceId: invoice.id, amount: "0.20", method: "CASH" };
+    const first = await receipts.create(firstBody, user, firstKey);
+    assert.equal((await receipts.create(firstBody, user, firstKey)).id, first.id);
+    assert.equal((await db.serviceInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).paid.toFixed(2), "0.20");
+    await assert.rejects(receipts.create({ ...firstBody, amount: "0.10" }, user, randomUUID()), { status: 409 });
+    await receipts.review(first.id, true, user);
+    const finalKey = randomUUID(), finalBody = { ...firstBody, amount: "0.40" };
+    const final = await Promise.all([receipts.create(finalBody, user, finalKey), receipts.create(finalBody, user, finalKey)]);
+    assert.equal(final[0].id, final[1].id);
+    await receipts.review(final[0].id, true, user);
+    assert.equal(await db.receipt.count({ where: { serviceInvoiceId: invoice.id } }), 2);
+    assert.equal((await db.serviceInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).paid.toFixed(2), "0.60");
+    assert.equal(await ar(), "0.00"); assert.equal(await ap(), "0.30");
+    await assert.rejects(receipts.create({ ...firstBody, amount: "0.01" }, user, randomUUID()), { status: 400 });
+    await assert.rejects(receipts.create(firstBody, { ...user, isSuperAdmin: false }, randomUUID()), { status: 403 });
+    const failing = { log: async () => { throw new Error("Synthetic invoice audit failure"); } } as unknown as AuditService;
+    await assert.rejects(postServiceVoucher(db as never, seq, accounting, failing, user, body, randomUUID()), /Synthetic invoice audit failure/);
+    assert.equal(await db.serviceInvoice.count({ where: { customerId: customer.id } }), 1);
+    const legacy = await db.serviceInvoice.create({ data: { invoiceNumber: randomUUID(), cost: "0.30", lines: { create: { description: "Historical unit cost unknown", qty: 3, unitPrice: "0.20", amount: "0.60" } } }, include: { lines: true } });
+    assert.equal(legacy.supplierId, null); assert.equal(legacy.lines[0].unitCost, null);
+  } finally { await db.$disconnect(); }
+});
+
+
+test("PG17 schema reconciliation preserves rows and refuses duplicate email repair", { skip: !process.env.ZAT_SYNTHETIC_DATABASE_URL }, async () => {
+  const target = new URL(process.env.ZAT_SYNTHETIC_DATABASE_URL!);
+  assert.equal(target.hostname, "127.0.0.1"); assert.match(target.pathname, /^\/zat_synthetic_[a-z0-9_]+$/);
+  const { readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const root = process.cwd().endsWith("backend") ? process.cwd() : resolve(process.cwd(), "backend");
+  const sql = readFileSync(resolve(root, "packages/database/prisma/migrations/20261127150000_reconcile_deployed_schema/migration.sql"), "utf8");
+  const statements = sql.replace(/^--.*$/gm, "").split(";").map(s => s.trim()).filter(s => s && !["BEGIN", "COMMIT"].includes(s));
+  const db = new PrismaClient({ datasourceUrl: target.toString() });
+  const rollback = new Error("synthetic rollback");
+  try {
+    await assert.rejects(db.$transaction(async tx => {
+      const before = await tx.customer.count();
+      await tx.$executeRawUnsafe('DROP INDEX "Customer_email_key"');
+      await tx.$executeRawUnsafe(`ALTER TABLE "TransportBooking" ALTER COLUMN "status" SET DEFAULT 'historical-test'`);
+      for (const statement of statements) await tx.$executeRawUnsafe(statement);
+      const indexes = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='Customer_email_key' AND indexdef LIKE 'CREATE UNIQUE INDEX%'`;
+      assert.equal(Number(indexes[0].count), 1);
+      const defaults = await tx.$queryRaw<{ column_default: string }[]>`SELECT column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='TransportBooking' AND column_name='status'`;
+      assert.match(defaults[0].column_default, /Reserved/);
+      assert.equal(await tx.customer.count(), before);
+      throw rollback;
+    }), error => error === rollback);
+    await assert.rejects(db.$transaction(async tx => {
+      await tx.$executeRawUnsafe('DROP INDEX "Customer_email_key"');
+      const email = randomUUID() + "@example.invalid";
+      for (let i = 0; i < 2; i++) await tx.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic duplicate", email } });
+      for (const statement of statements) await tx.$executeRawUnsafe(statement);
+    }), /unique|duplicate/i);
+    const indexes = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='Customer_email_key'`;
+    assert.equal(Number(indexes[0].count), 1);
+  } finally { await db.$disconnect(); }
+});

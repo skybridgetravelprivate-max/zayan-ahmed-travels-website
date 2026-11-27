@@ -1557,6 +1557,7 @@ model Supplier {
   vehicles      Vehicle[]
   drivers       Driver[]
   starBookings  StarBooking[]
+  serviceInvoices ServiceInvoice[]
 
   @@index([kind])
   @@index([name])
@@ -1952,11 +1953,14 @@ model Receipt {
   starBookingId         String?
   starBooking           StarBooking? @relation(fields: [starBookingId], references: [id], onDelete: Restrict)
   submissionFingerprint String? @db.VarChar(64)
+  serviceInvoiceId      String?
+  serviceInvoice        ServiceInvoice? @relation(fields: [serviceInvoiceId], references: [id], onDelete: Restrict)
 
   @@index([ticketSaleId])
   @@index([hotelBookingId])
   @@index([transportBookingId])
   @@index([starBookingId])
+  @@index([serviceInvoiceId])
 
 }
 
@@ -1979,6 +1983,8 @@ model ServiceInvoice {
   invoiceNumber String               @unique
   customerId    String?
   customer      Customer?            @relation(fields: [customerId], references: [id])
+  supplierId    String?
+  supplier      Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   branchId      String?
   branch        Branch?              @relation(fields: [branchId], references: [id])
   date          DateTime             @default(now())
@@ -1994,8 +2000,10 @@ model ServiceInvoice {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   lines         ServiceInvoiceLine[]
+  receipts      Receipt[]
 
   @@index([customerId])
+  @@index([supplierId])
   @@index([status])
 }
 
@@ -2008,6 +2016,7 @@ model ServiceInvoiceLine {
   description String
   qty         Int            @default(1)
   unitPrice   Decimal        @default(0) @db.Decimal(18, 2)
+  unitCost    Decimal?       @db.Decimal(18, 2)
   amount      Decimal        @default(0) @db.Decimal(18, 2)
 }
 

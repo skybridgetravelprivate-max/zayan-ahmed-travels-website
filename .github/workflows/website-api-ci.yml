@@ -126,6 +126,8 @@ jobs:
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/workflows/ticket-journey.pg17.spec.ts
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/management/historical-tickets.pg17.spec.ts
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/dashboard/operations.pg17.spec.ts
+          node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/finance/manual-vouchers.pg17.spec.ts
+          node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/finance/service-vouchers.pg17.spec.ts
           node backend/node_modules/tsx/dist/cli.mjs --tsconfig backend/apps/api/tsconfig.json --test backend/apps/api/src/documents/private-storage.pg17.spec.ts
           npm run test:document-backup --prefix backend
 

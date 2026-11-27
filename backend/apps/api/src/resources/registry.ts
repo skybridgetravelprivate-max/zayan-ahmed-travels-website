@@ -55,6 +55,7 @@ export const RESOURCES: Record<string, ResourceMeta> = {
   journals: { model: "journalEntry", permission: "account", search: ["entryNumber", "memo"], number: { field: "entryNumber", key: "jv", prefix: "ZAT-JV" }, branchField: "branchId" },
   payments: { model: "payment", permission: "account", search: ["paymentNo"], number: { field: "paymentNo", key: "pay", prefix: "ZAT-PAY" }, branchField: "branchId" },
   receipts: { model: "receipt", permission: "account", search: ["receiptNo"], number: { field: "receiptNo", key: "rec", prefix: "ZAT-REC" }, branchField: "branchId" },
+  "service-invoices": { model: "serviceInvoice", permission: "account", search: ["invoiceNumber"], branchField: "branchId" },
   expenses: { model: "expense", permission: "account", search: ["expenseNo", "category"], number: { field: "expenseNo", key: "exp", prefix: "ZAT-EXP" }, branchField: "branchId" },
   "bank-accounts": { model: "bankAccount", permission: "account", search: ["name", "accountNumber", "iban"], defaultSort: "name" },
   "cash-accounts": { model: "cashAccount", permission: "account", search: ["name"], defaultSort: "name" },

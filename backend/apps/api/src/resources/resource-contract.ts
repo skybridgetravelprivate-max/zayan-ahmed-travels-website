@@ -290,8 +290,15 @@ export const MANAGEMENT: Record<string, ModuleSpec> = {
     title: "Receipts",
     group: "Finance",
     fields:
-      "receiptNo customerId bookingId date amount method branchId notes journalId",
+      "receiptNo customerId bookingId ticketSaleId hotelBookingId transportBookingId starBookingId serviceInvoiceId date amount method branchId notes journalId",
     superOnly: true,
+  },
+  "service-invoices": {
+    title: "General invoices",
+    group: "Finance",
+    fields: "invoiceNumber date customerId supplierId branchId status sellingPrice cost tax discount net paid notes journalId",
+    superOnly: true,
+    create: false,
   },
   expenses: {
     title: "Expenses",

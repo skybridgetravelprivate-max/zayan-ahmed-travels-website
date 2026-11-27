@@ -327,6 +327,7 @@ export class ManagementService {
         "bookingNumber",
         "ticketNumber",
         "receiptNo",
+        "invoiceNumber",
         "code",
         "roomNumber",
       ];

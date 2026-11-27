@@ -4,7 +4,7 @@ import { PaymentOperations, paymentSubmissionId, type PaymentInput } from "./pay
 import { money, type MoneyInput } from "./money";
 import { GlobalFinanceGuard } from "../auth/global-finance.guard";
 import { ReceiptOperations, receiptSubmissionId, type ReceiptInput } from "./receipt-operations";
-import { NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, NotFoundException, Body, Controller, Get, Header, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { PrismaService } from "../common/prisma.service";
 import { SequenceService } from "../common/sequence.service";
@@ -13,6 +13,9 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { PermissionGuard, RequirePermission } from "../auth/permission.guard";
 import { AuthUser } from "../auth/auth.types";
 import { AccountingService } from "./accounting.service";
+import { postManualVoucher } from "./manual-vouchers";
+import { submissionId } from "../common/submission-id";
+import { postServiceVoucher } from "./service-vouchers";
 
 @Controller("v1/finance")
 @UseGuards(JwtAuthGuard, PermissionGuard, GlobalFinanceGuard)
@@ -26,6 +29,51 @@ export class FinanceController {
 
   private async account(code: string) {
     return this.accounting.accountByCode(code);
+  }
+
+  @Post("vouchers")
+  @RequirePermission("account.post")
+  voucher(@Body() body: unknown, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    return postManualVoucher(this.prisma, this.accounting, this.audit, req.user, body, key);
+  }
+
+  @Get("vouchers/submission/:key")
+  @Header("Cache-Control", "private, no-store")
+  @RequirePermission("account.post")
+  async voucherSubmission(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
+    const id = submissionId("manual-voucher", [req.user.id], key).replace(":", "_");
+    const saved = await this.prisma.journalEntry.findUnique({ where: { id }, include: { lines: true } });
+    if (!saved) throw new NotFoundException("Voucher is not confirmed. Retry the original submission.");
+    return saved;
+  }
+
+  @Post("service-vouchers")
+  @RequirePermission("account.create")
+  serviceVoucher(@Body() body: unknown, @Req() req: Request & { user: AuthUser }, @Headers("idempotency-key") key?: string) {
+    return postServiceVoucher(this.prisma, this.seq, this.accounting, this.audit, req.user, body, key);
+  }
+
+  @Get("service-vouchers/submission/:key")
+  @Header("Cache-Control", "private, no-store")
+  @RequirePermission("account.create")
+  async serviceVoucherSubmission(@Param("key") key: string, @Req() req: Request & { user: AuthUser }) {
+    const id = submissionId("service-voucher", [req.user.id], key).replace(":", "_");
+    const saved = await this.prisma.serviceInvoice.findUnique({ where: { id }, include: { lines: true } });
+    if (!saved) throw new NotFoundException("Invoice is not confirmed. Retry the original submission.");
+    return saved;
+  }
+
+  @Get("service-vouchers")
+  @Header("Cache-Control", "private, no-store")
+  @RequirePermission("account.view")
+  async serviceVoucherList(@Query() q: { page?: string }) {
+    const page = Number(q.page || "1");
+    if (!Number.isSafeInteger(page) || page < 1 || page > 100000) throw new BadRequestException("Use a positive invoice page number");
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.serviceInvoice.count(),
+      this.prisma.serviceInvoice.findMany({ orderBy: [{ date: "desc" }, { id: "desc" }], skip: (page - 1) * 50, take: 50, select: { id: true, invoiceNumber: true, date: true, status: true, net: true, cost: true, paid: true, customer: { select: { fullName: true } }, supplier: { select: { name: true } } } }),
+    ]);
+    return { rows, total, page, pageSize: 50 };
   }
 
   private receiptId(userId: string, key: unknown) { return receiptSubmissionId(userId, key); }

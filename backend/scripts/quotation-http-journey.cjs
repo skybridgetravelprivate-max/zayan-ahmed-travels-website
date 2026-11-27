@@ -143,10 +143,10 @@ async function journey() {
     const admin = await db.user.create({ data: { email: `${tag}@example.test`, username: tag, fullName: "Synthetic HTTP administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: adminRole.id } } } });
     const outsider = await db.user.create({ data: { email: `${tag}-staff@example.test`, username: `${tag}-staff`, fullName: "Synthetic foreign staff", passwordHash: hash, defaultBranchId: otherBranch.id, roles: { create: { roleId: scopedRole.id } } } });
     const branchAdminRole = await db.role.create({ data: { name: `SyntheticAdmin-${tag}` } });
-    const branchAdminPermissions = await Promise.all(["audit.view", "account.adjust"].map(code => db.permission.upsert({ where: { code }, update: {}, create: { code } })));
+    const branchAdminPermissions = await Promise.all(["audit.view", "account.adjust", "account.post", "account.create", "account.view"].map(code => db.permission.upsert({ where: { code }, update: {}, create: { code } })));
     await db.rolePermission.createMany({ data: branchAdminPermissions.map(permission => ({ roleId: branchAdminRole.id, permissionId: permission.id })) });
     const branchAdmin = await db.user.create({ data: { email: `${tag}-admin@example.test`, username: `${tag}-admin`, fullName: "Synthetic branch administrator", passwordHash: hash, defaultBranchId: branch.id, roles: { create: { roleId: branchAdminRole.id } }, branches: { create: { branchId: branch.id } } } });
-    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["4200", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
+    for (const [code, type] of [["1100", "ASSET"], ["1300", "ASSET"], ["2100", "LIABILITY"], ["4100", "REVENUE"], ["4200", "REVENUE"], ["4600", "REVENUE"], ["5100", "EXPENSE"]]) await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name: `Synthetic ${code}`, type } });
     const lead = await db.lead.create({ data: { leadNumber: randomUUID(), fullName: "Synthetic HTTP traveler", mobile: "+923000000000", email: `${tag}-customer@example.test`, adults: 3, budget: 1000.03, branchId: branch.id } });
     const environment = {};
     for (const key of ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "USERPROFILE", "LOCALAPPDATA"]) if (process.env[key]) environment[key] = process.env[key];
@@ -211,6 +211,9 @@ async function journey() {
       body: { memo: deniedJournalMemo, reason: "Synthetic authorization check", lines: journalLines },
     });
     assert.equal(deniedJournal.status, 403);
+    const deniedVoucher = await request("/api/v1/finance/vouchers", { actor: "branch-admin", method: "POST", body: { date: "2035-01-02", memo: deniedJournalMemo, lines: journalLines } });
+    assert.equal(deniedVoucher.status, 403);
+    assert.equal((await request("/api/v1/finance/vouchers/submission/synthetic-denied-key", { actor: "branch-admin" })).status, 403);
     assert.equal(await db.journalEntry.count({ where: { memo: deniedJournalMemo } }), journalCountBefore);
     const allowedJournal = await request("/api/v1/admin/manual-journal", {
       actor: "staff",
@@ -223,6 +226,31 @@ async function journey() {
     assert.equal(persistedJournal.status, "POSTED");
     assert.equal(persistedJournal.lines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0)).toFixed(2), "0.00");
     checks.push("real HTTP auth: branch admin with audit.view/account.adjust receives 403 and no audit data/journal write; Super Admin reads synthetic audit row and posts a balanced journal");
+
+    const invoiceCustomer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic HTTP invoice customer", branchId: branch.id } });
+    const invoiceSupplier = await db.supplier.create({ data: { name: "Synthetic HTTP invoice supplier" } });
+    const invoiceBody = { date: "2035-01-02", branchId: branch.id, customerId: invoiceCustomer.id, supplierId: invoiceSupplier.id, lines: [{ description: "Synthetic invoice service", qty: 2, unitPrice: "10.25", cost: "6.20" }] };
+    const invoiceKey = randomUUID();
+    assert.equal((await request("/api/v1/finance/service-vouchers", { actor: "branch-admin", method: "POST", body: invoiceBody, headers: { "Idempotency-Key": invoiceKey } })).status, 403);
+    assert.equal((await request("/api/v1/finance/service-vouchers", { method: "POST", body: invoiceBody, headers: { "Idempotency-Key": invoiceKey } })).status, 401);
+    const invoice = await json("/api/v1/finance/service-vouchers", { actor: "staff", method: "POST", body: invoiceBody, headers: { "Idempotency-Key": invoiceKey } }, 201);
+    const invoiceRetry = await json("/api/v1/finance/service-vouchers", { actor: "staff", method: "POST", body: invoiceBody, headers: { "Idempotency-Key": invoiceKey } }, 201);
+    assert.equal(invoiceRetry.id, invoice.id);
+    assert.equal(new Prisma.Decimal(invoice.net).toFixed(2), "20.50");
+    assert.equal(new Prisma.Decimal(invoice.cost).toFixed(2), "12.40");
+    assert.equal(new Prisma.Decimal(invoice.lines[0].unitCost).toFixed(2), "6.20");
+    assert.equal((await request("/api/v1/finance/service-vouchers", { actor: "staff", method: "POST", body: { ...invoiceBody, notes: "Changed" }, headers: { "Idempotency-Key": invoiceKey } })).status, 409);
+    const invoicePaymentKey = randomUUID();
+    const invoiceReceipt = await json("/api/v1/finance/receipts", { actor: "staff", method: "POST", body: { serviceInvoiceId: invoice.id, amount: "20.50", method: "CASH" }, headers: { "Idempotency-Key": invoicePaymentKey } }, 201);
+    assert.equal(invoiceReceipt.serviceInvoiceId, invoice.id);
+    assert.equal((await db.serviceInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).paid.toFixed(2), "20.50");
+    assert.equal(await db.receipt.count({ where: { serviceInvoiceId: invoice.id } }), 1);
+    await json(`/api/v1/finance/receipts/${invoiceReceipt.id}/review`, { actor: "staff", method: "POST", body: { reviewed: true } }, 201);
+    for (const mode of ["INCLUDED", "EXCLUDED"]) {
+      const pdf = await request(`/api/v1/pdf/service-invoice/${invoice.id}?mode=${mode}`, { actor: "staff" });
+      assert.equal(pdf.status, 200); assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,5).toString(), "%PDF-");
+    }
+    checks.push("service invoice HTTP posting/retry, independent supplier unit costs, linked cash receipt/review and both PDF modes pass; scoped/anonymous creation denied");
     assert.equal((await request("/api/v1/crm/quotations")).status, 401);
     checks.push("real staff login cookies; anonymous staff access denied (401)");
     const quote = await json(`/api/v1/crm/leads/${lead.id}/quotation`, { actor: "staff", method: "POST", body: {} }, 201);

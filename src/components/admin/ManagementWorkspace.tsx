@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RecordSummary, RecordResults } from "./RecordSummary";
 import { CrmRelatedWork } from "./CrmRelatedWork";
 import { moduleCapabilities, moduleHref } from "@/lib/staff-navigation";
-import { AgencyMasthead } from "@/components/admin/AgencyMasthead";
 import {
   bookingDocumentUrl,
   bookingFieldSection,
@@ -170,7 +169,7 @@ export function ManagementHub({
   );
 }
 
-function ReferenceInput({
+export function ReferenceInput({
   field,
   value,
   disabled,
@@ -1116,15 +1115,13 @@ export function ManagementWorkspace({
     );
   return (
     <section>
-      {!["leads", "customers", "tasks", "follow-ups", "quotations"].includes(
-        resource,
-      ) && <AgencyMasthead />}
       <Link href="/admin/manage" className="text-sm underline">
         All management modules
       </Link>
       {resource === "tickets" && isSuperAdmin && (
         <Link href="/admin/manage/tickets/historical" className="ml-4 text-sm underline">Historical supplier tickets by PNR</Link>
       )}
+      {resource === "service-invoices" && isSuperAdmin && <Link href="/admin/invoices" className="ml-4 text-sm underline">New general / quick invoice</Link>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold text-zayan-blue">{contract.title}</h1>
         {contract.canCreate && !editing && (
