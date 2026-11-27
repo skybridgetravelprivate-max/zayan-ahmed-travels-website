@@ -166,7 +166,7 @@ test("PG17 HTTP hardening: payroll, exact invoices and FX containment", { skip: 
       } finally { mail.send = original; }
     });
     await t.test("concurrent log-only retries create one row and reject changed delivery intent before SMTP", async () => {
-      const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic call log", email: "synthetic@example.test", branchId: branch.id } });
+      const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic call log", email: `${randomUUID()}@example.test`, branchId: branch.id } });
       const path = `/api/v1/crm/customers/${customer.id}/communications`, key = randomUUID();
       const body = { channel: "CALL", message: "Synthetic recorded call", send: false };
       const outboundBefore = await db.outboundMessage.count();
@@ -205,9 +205,9 @@ test("PG17 HTTP hardening: payroll, exact invoices and FX containment", { skip: 
       const mail = app.get(MailService), oldMail = mail.send, wa = app.get(WhatsAppService), oldWa = wa.send;
       let emailCalls = 0, waCalls = 0;
       try {
-        mail.send = async () => { emailCalls++; return { accepted: ["synthetic@example.test"], messageId: "synthetic-quotation-mail" }; };
+        mail.send = async () => { emailCalls++; return { accepted: ["synthetic-quote@example.test"], messageId: "synthetic-quotation-mail" }; };
         wa.send = async () => { waCalls++; throw new BadGatewayException("Synthetic response lost"); };
-        const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic quote recipient", email: "synthetic@example.test", whatsapp: "+10000000009", branchId: branch.id } });
+        const customer = await db.customer.create({ data: { customerNumber: randomUUID(), fullName: "Synthetic quote recipient", email: "synthetic-quote@example.test", whatsapp: "+10000000009", branchId: branch.id } });
         const quote = await db.quotation.create({ data: { quotationNumber: randomUUID(), customerId: customer.id, branchId: branch.id } });
         const path = `/api/v1/crm/quotations/${quote.id}/send`, key = randomUUID();
         assert.equal((await post(path, {}, key)).status, 502);
@@ -221,7 +221,7 @@ test("PG17 HTTP hardening: payroll, exact invoices and FX containment", { skip: 
         assert.equal(await db.auditLog.count({ where: { entity: "quotation", entityId: quote.id, action: "SEND" } }), 1);
         assert.equal((await db.quotation.findUniqueOrThrow({ where: { id: quote.id } })).status, "SENT");
         const changed = await db.quotation.create({ data: { quotationNumber: randomUUID(), customerId: customer.id, branchId: branch.id } });
-        mail.send = async () => { emailCalls++; await db.quotation.update({ where: { id: changed.id }, data: { status: "CONVERTED" } }); return { accepted: ["synthetic@example.test"] }; };
+        mail.send = async () => { emailCalls++; await db.quotation.update({ where: { id: changed.id }, data: { status: "CONVERTED" } }); return { accepted: ["synthetic-quote@example.test"] }; };
         wa.send = async () => ({ id: "synthetic-accepted" });
         assert.equal((await post(`/api/v1/crm/quotations/${changed.id}/send`, {}, randomUUID())).status, 409);
         assert.equal((await db.quotation.findUniqueOrThrow({ where: { id: changed.id } })).status, "CONVERTED");
