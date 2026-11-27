@@ -7,6 +7,7 @@ const profile: Record<string, { title: string; group: string }> = {
   agents: { title: "Agent accounts", group: "Accounts" },
   "chart-of-accounts": { title: "Chart of accounts", group: "Accounts" },
   journals: { title: "Journal vouchers", group: "Vouchers" },
+  "service-invoices": { title: "General invoices", group: "Vouchers" },
   receipts: { title: "Customer receipts", group: "Vouchers" },
   payments: { title: "Supplier payments", group: "Vouchers" },
   expenses: { title: "Expenses", group: "Vouchers" },

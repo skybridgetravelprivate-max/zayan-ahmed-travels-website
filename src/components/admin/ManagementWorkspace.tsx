@@ -1121,6 +1121,7 @@ export function ManagementWorkspace({
       {resource === "tickets" && isSuperAdmin && (
         <Link href="/admin/manage/tickets/historical" className="ml-4 text-sm underline">Historical supplier tickets by PNR</Link>
       )}
+      {resource === "service-invoices" && isSuperAdmin && <Link href="/admin/invoices" className="ml-4 text-sm underline">New general / quick invoice</Link>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold text-zayan-blue">{contract.title}</h1>
         {contract.canCreate && !editing && (

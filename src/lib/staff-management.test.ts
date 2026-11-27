@@ -29,6 +29,10 @@ test("accounting workspace retires unrelated modules without adding permissions 
   assert.deepEqual(accountingModules([]), []);
 });
 
+test("invoice records use the invoice number instead of their retry identity", () => {
+  assert.equal(rowLabel({ id: "service-voucher-private-retry-id", invoiceNumber: "INV-2035-000001" }), "INV-2035-000001");
+});
+
 test("ticket creators cannot enter an initial payment without global finance authority", () => {
   const before = JSON.stringify(STAFF_WORKFLOWS.tickets);
   const staff = workflowsFor("tickets", false, ["ticket.create", "account.post"], false).find(w => w.key === "create")!;

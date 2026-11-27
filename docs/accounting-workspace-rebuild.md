@@ -125,3 +125,36 @@ behavior without explicit formula/reconciliation tests.
   after its final correction. No production financial write was executed.
 - This is a journal voucher, not full parity for cash/bank/expense vouchers,
   multi-ticket invoices or combined packages. Those remain separate work.
+
+### General / quantity invoice increment
+
+- A general/quick service invoice editor now captures a billing customer, branch,
+  supplier, quantities, unit buying/selling rates, tax and discount amounts.
+  Exact existing invoice calculations post the customer sale and supplier cost
+  atomically. Saved request identities prevent duplicate retries/concurrent posts.
+- Additive migration `20261127123000_service_invoice_supplier_cost` adds nullable
+  invoice supplier, historical unit-cost snapshot and receipt allocation fields,
+  indexed foreign keys and restricted deletion. Historical unknown values remain
+  NULL. It runs in a bounded-lock transaction and does not repost old journals.
+  **Apply/verify this migration before deploying dependent code.**
+- Invoice cash/bank receipts reuse the existing finance guard, one-source rule,
+  idempotency, outstanding amount checks and mandatory receipt-review workflow.
+  Receipt records link back to the invoice. Customer PDFs retain price modes and
+  supplier-cost confidentiality; included prices now use two decimal places.
+- Local verification: 176 backend tests, 18 staff tests, lint/typechecks,
+  backend/website builds and packaging; 19 disposable PostgreSQL 17 checks; full
+  HTTP/SMTP journey including invoice retries, supplier unit costs, linked receipt
+  review, both PDF modes, scoped/anonymous denial and existing recovery passed.
+- Synthetic browser invoice: quantity 2, unit buying 60.25, unit selling 100.25,
+  tax 1.25, discount 0.25 => buying 120.50, selling 200.50, customer total 201.50.
+  Cash receipt 201.50 updated the invoice, review succeeded and its invoice link
+  opened the authorized saved record. Add/remove line controls passed. Final
+  display corrections (invoice-number heading/two-place history amounts) passed
+  lint/typecheck and the invoice-label regression; exact remote CI is pending.
+- Owner authorized finishing this increment and deploying all ready changes once,
+  without external notifications. The owner also authorized deleting old CRM
+  vouchers, but none have been deleted; that reset remains a separate cutover
+  after the replacement voucher set is ready. No new backup was requested.
+- Remaining full-reference work: multi-ticket vouchers, complete cash/bank/expense
+  editors, combined packages, remaining service/group-seat editors, advanced
+  ledgers/reports and deliberate removal of legacy dependencies.

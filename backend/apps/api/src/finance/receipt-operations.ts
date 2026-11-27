@@ -2,16 +2,16 @@ import { money, paymentMethod, type MoneyInput } from "./money";
 import { assertBaseCurrency } from "./base-currency";
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { createHash } from "node:crypto";
-import { Prisma, type UmrahBooking, type TicketSale, type HotelBooking, type TransportBooking, type StarBooking } from "@prisma/client";
+import { Prisma, type UmrahBooking, type TicketSale, type HotelBooking, type TransportBooking, type StarBooking, type ServiceInvoice } from "@prisma/client";
 import type { AuthUser } from "../auth/auth.types";
 import type { PrismaService } from "../common/prisma.service";
 import type { SequenceService } from "../common/sequence.service";
 import type { AuditService } from "../common/audit.service";
 import type { AccountingService } from "./accounting.service";
 
-export const RECEIPT_SOURCES = ["bookingId", "ticketSaleId", "hotelBookingId", "transportBookingId", "starBookingId"] as const;
+export const RECEIPT_SOURCES = ["bookingId", "ticketSaleId", "hotelBookingId", "transportBookingId", "starBookingId", "serviceInvoiceId"] as const;
 export type ReceiptSource = typeof RECEIPT_SOURCES[number];
-type SourceRows = { bookingId: UmrahBooking; ticketSaleId: TicketSale; hotelBookingId: HotelBooking; transportBookingId: TransportBooking; starBookingId: StarBooking };
+type SourceRows = { bookingId: UmrahBooking; ticketSaleId: TicketSale; hotelBookingId: HotelBooking; transportBookingId: TransportBooking; starBookingId: StarBooking; serviceInvoiceId: ServiceInvoice };
 export type ReceiptInput = Partial<Record<ReceiptSource, string>> & { customerId?: string; branchId?: string; amount: MoneyInput; method: string; notes?: string };
 
 export function receiptSubmissionId(userId: string, key: unknown) {
@@ -53,7 +53,7 @@ export class ReceiptOperations {
   }
 
   private async source(tx: Prisma.TransactionClient, field: ReceiptSource, id: string) {
-    const table = { bookingId: "UmrahBooking", ticketSaleId: "TicketSale", hotelBookingId: "HotelBooking", transportBookingId: "TransportBooking", starBookingId: "StarBooking" }[field];
+    const table = { bookingId: "UmrahBooking", ticketSaleId: "TicketSale", hotelBookingId: "HotelBooking", transportBookingId: "TransportBooking", starBookingId: "StarBooking", serviceInvoiceId: "ServiceInvoice" }[field];
     // Identifiers come only from the fixed server map; request identifiers remain bound parameters.
     await tx.$queryRaw(Prisma.sql`SELECT id FROM ${Prisma.raw(`"${table}"`)} WHERE id = ${id} FOR UPDATE`);
     if (field === "bookingId") {
@@ -84,6 +84,14 @@ export class ReceiptOperations {
       return { id, customerId: row.customerId, branchId: row.branchId, net: row.sellingPrice, paid: row.paid, module: "transport", closed: ["CANCELLED", "CANCELED"].includes(row.status.toUpperCase()),
         read: () => tx.transportBooking.findUniqueOrThrow({ where: { id } }),
         apply: (paid: Prisma.Decimal) => tx.transportBooking.update({ where: { id }, data: { paid, paymentStatus: paid.equals(row.sellingPrice) ? "PAID" : "PARTIAL" } }) };
+    }
+    if (field === "serviceInvoiceId") {
+      const row = await tx.serviceInvoice.findUnique({ where: { id } });
+      if (!row) throw new NotFoundException("Service invoice not found");
+      await assertBaseCurrency(tx, { currency: "PKR" });
+      return { id, customerId: row.customerId, branchId: row.branchId, net: row.net, paid: row.paid, module: "service", closed: row.status !== "POSTED",
+        read: () => tx.serviceInvoice.findUniqueOrThrow({ where: { id } }),
+        apply: (paid: Prisma.Decimal) => tx.serviceInvoice.update({ where: { id }, data: { paid } }) };
     }
     const row = await tx.starBooking.findUnique({ where: { id } });
     if (!row) throw new NotFoundException("STAR booking not found");

@@ -539,11 +539,18 @@ export class PdfController {
       ]);
       inv.lines.forEach((l) =>
         doc.text(
-          `${l.description}  x${l.qty}${m === "EXCLUDED" ? "" : "  " + l.amount}`,
+          `${l.description}  x${l.qty}${m === "EXCLUDED" ? "" : `  @ ${l.unitPrice.toFixed(2)}  = ${l.amount.toFixed(2)}`}`,
         ),
       );
       this.pdf
-        .customerLines(m, [{ label: "Net", value: String(inv.net) }])
+        .customerLines(m, [
+          { label: "Subtotal", value: inv.sellingPrice.toFixed(2) },
+          { label: "Tax", value: inv.tax.toFixed(2) },
+          { label: "Discount", value: inv.discount.toFixed(2) },
+          { label: "Net", value: inv.net.toFixed(2) },
+          { label: "Paid", value: inv.paid.toFixed(2) },
+          { label: "Balance", value: inv.net.minus(inv.paid).toFixed(2) },
+        ])
         .forEach((x) => doc.text(`${x.label}: ${x.value}`));
     });
   }
