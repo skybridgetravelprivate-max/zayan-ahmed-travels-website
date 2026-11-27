@@ -61,7 +61,7 @@ export default async function StaffWorkspaceLayout({
   }
   const links = accountingModules(modules).map(({ key, title, group }) => ({ key, title, group }));
   if (user.isSuperAdmin) links.push({ key: "accounting-reports", title: "Reports", group: "Reports" });
-  if (user.isSuperAdmin) links.push({ key: "journal-voucher", title: "New journal voucher", group: "Vouchers" });
+  if (user.isSuperAdmin) links.push({ key: "journal-voucher", title: "New journal voucher", group: "Vouchers" }, { key: "cash-voucher", title: "New cash voucher", group: "Vouchers" });
   if (user.isSuperAdmin) links.push({ key: "new-service-invoice", title: "New general / quick invoice", group: "Vouchers" });
   links.push({ key: "communication-recovery", title: "Communication recovery", group: "Administration" });
   if (user.isSuperAdmin || user.permissions.includes("ticket.view")) {

@@ -2,6 +2,7 @@ import type { ManagementModule } from "./staff-management";
 import { workflowsFor } from "./staff-workflows";
 export function moduleHref(key: string) {
   if (key === "new-service-invoice") return "/admin/invoices";
+  if (key === "cash-voucher") return "/admin/cash-vouchers";
   if (key === "journal-voucher") return "/admin/vouchers";
   if (key === "accounting-reports") return "/admin/reports";
   if (key === "communication-recovery") return "/admin/communications";

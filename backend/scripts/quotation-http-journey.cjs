@@ -211,6 +211,8 @@ async function journey() {
       body: { memo: deniedJournalMemo, reason: "Synthetic authorization check", lines: journalLines },
     });
     assert.equal(deniedJournal.status, 403);
+    assert.equal((await request("/api/v1/finance/cash-vouchers", { actor: "branch-admin", method: "POST", body: { date: "2035-01-02", memo: deniedJournalMemo, lines: journalLines } })).status, 403);
+    assert.equal((await request("/api/v1/finance/cash-vouchers", { method: "POST", body: {} })).status, 401);
     const deniedVoucher = await request("/api/v1/finance/vouchers", { actor: "branch-admin", method: "POST", body: { date: "2035-01-02", memo: deniedJournalMemo, lines: journalLines } });
     assert.equal(deniedVoucher.status, 403);
     assert.equal((await request("/api/v1/finance/vouchers/submission/synthetic-denied-key", { actor: "branch-admin" })).status, 403);
